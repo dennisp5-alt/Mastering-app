@@ -1,10 +1,10 @@
-name: Build Dennis AI Mastering Lab v0.14 TEST APK
+name: Build Dennis AI Mastering Lab v0.14.1 TEST APK
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - 'DennisAiMasteringLab-v0.14.0-GitHubBuildSource.zip'
+      - 'DennisAiMasteringLab-v0.14.1-GitHubBuildSource.zip'
       - '.github/workflows/build-apk.yml'
 
 jobs:
@@ -31,16 +31,16 @@ jobs:
         with:
           gradle-version: '8.6'
 
-      - name: Unpack v0.14.0 source
+      - name: Unpack v0.14.1 source
         run: |
           rm -rf project
           mkdir -p project
-          unzip -q DennisAiMasteringLab-v0.14.0-GitHubBuildSource.zip -d project
+          unzip -q DennisAiMasteringLab-v0.14.1-GitHubBuildSource.zip -d project
 
       - name: Make side-by-side TEST package
         run: |
-          sed -i "s/applicationId 'com.dennis.aimasteringlab'/applicationId 'com.dennis.aimasteringlab.test'/" project/app/build.gradle
-          sed -i 's/android:label="Dennis AI Mastering Lab"/android:label="Dennis Mastering v0.14 TEST"/' project/app/src/main/AndroidManifest.xml
+          sed -i "s/applicationId 'com.dennis.aimasteringlab'/applicationId 'com.dennis.aimasteringlab.test141'/" project/app/build.gradle
+          sed -i 's/android:label="Dennis AI Mastering Lab"/android:label="Dennis Mastering v0.14.1 TEST"/' project/app/src/main/AndroidManifest.xml
 
       - name: Build debug APK
         working-directory: project
@@ -48,11 +48,11 @@ jobs:
 
       - name: Rename APK
         run: |
-          cp project/app/build/outputs/apk/debug/app-debug.apk DennisAiMasteringLab-v0.14.0-SonicFinish-TEST.apk
+          cp project/app/build/outputs/apk/debug/app-debug.apk DennisAiMasteringLab-v0.14.1-CandidatePipeline-TEST.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: DennisAiMasteringLab-v0.14.0-SonicFinish-TEST
-          path: DennisAiMasteringLab-v0.14.0-SonicFinish-TEST.apk
+          name: DennisAiMasteringLab-v0.14.1-CandidatePipeline-TEST
+          path: DennisAiMasteringLab-v0.14.1-CandidatePipeline-TEST.apk
           retention-days: 30
