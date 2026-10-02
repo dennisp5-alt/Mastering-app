@@ -1,126 +1,58 @@
-name: Build AutoFix True Colour Lab v0.4.0 TEST
+name: Build Dennis AI Mastering Lab v0.14.3 TEST APK
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - 'AutoFix-True-Colour-Lab/**'
-      - '.github/workflows/build-true-colour-lab.yml'
-
-permissions:
-  contents: read
+      - 'DennisAiMasteringLab-v0.14.3-GitHubBuildSource.zip'
+      - '.github/workflows/build-apk.yml'
 
 jobs:
   build:
-    name: True Colour Lab v0.4.0 TEST
     runs-on: ubuntu-latest
-    timeout-minutes: 30
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
 
-      - name: Install Android SDK 34
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.6'
+
+      - name: Unpack v0.14.3 source
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          rm -rf project
+          mkdir -p project
+          unzip -q DennisAiMasteringLab-v0.14.3-GitHubBuildSource.zip -d project
 
-      - name: Locate True Colour Lab project
-        id: project
-        shell: bash
+      - name: Make side-by-side TEST package
         run: |
-          set -euo pipefail
+          sed -i "s/applicationId 'com.dennis.aimasteringlab'/applicationId 'com.dennis.aimasteringlab.test143'/" project/app/build.gradle
+          sed -i 's/android:label="Dennis AI Mastering Lab"/android:label="Dennis Mastering v0.14.3 TEST"/' project/app/src/main/AndroidManifest.xml
 
-          candidates=(
-            "AutoFix-True-Colour-Lab"
-            "AutoFix-True-Colour-Lab-v0.4.0-TEST-source"
-            "true-colour-lab"
-            "."
-          )
+      - name: Build debug APK
+        working-directory: project
+        run: gradle --no-daemon :app:assembleDebug
 
-          PROJECT=""
-          for dir in "${candidates[@]}"; do
-            if [ -f "$dir/gradlew" ] || [ -f "$dir/settings.gradle" ] || [ -f "$dir/settings.gradle.kts" ]; then
-              PROJECT="$dir"
-              break
-            fi
-          done
-
-          if [ -z "$PROJECT" ]; then
-            found="$(find . -maxdepth 4 -type f \( -name settings.gradle -o -name settings.gradle.kts \) \
-              -not -path './.git/*' | head -n 1 || true)"
-            if [ -n "$found" ]; then
-              PROJECT="$(dirname "$found")"
-            fi
-          fi
-
-          if [ -z "$PROJECT" ]; then
-            echo "::error::Could not find the AutoFix True Colour Lab Gradle project."
-            echo "Extract the v0.4.0 TEST source into AutoFix-True-Colour-Lab/ in this repository."
-            exit 1
-          fi
-
-          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
-          echo "Using project directory: $PROJECT"
-
-      - name: Prepare Gradle
-        working-directory: ${{ steps.project.outputs.project }}
-        shell: bash
+      - name: Rename APK
         run: |
-          set -euo pipefail
-          if [ -f gradlew ]; then
-            chmod +x gradlew
-          else
-            echo "::error::gradlew is missing from the project."
-            exit 1
-          fi
+          cp project/app/build/outputs/apk/debug/app-debug.apk DennisAiMasteringLab-v0.14.3-BroadMastering-TEST.apk
 
-      - name: Run unit tests
-        working-directory: ${{ steps.project.outputs.project }}
-        run: ./gradlew testDebugUnitTest --stacktrace
-
-      - name: Build TEST APK
-        working-directory: ${{ steps.project.outputs.project }}
-        run: ./gradlew assembleDebug --stacktrace
-
-      - name: Collect and rename APK
-        id: apk
-        shell: bash
-        run: |
-          set -euo pipefail
-          PROJECT="${{ steps.project.outputs.project }}"
-
-          APK="$(find "$PROJECT" -type f -path '*/build/outputs/apk/debug/*.apk' | head -n 1 || true)"
-          if [ -z "$APK" ]; then
-            echo "::error::Build completed but no debug APK was found."
-            exit 1
-          fi
-
-          mkdir -p artifact
-          cp "$APK" "artifact/AutoFix-True-Colour-Lab-v0.4.0-TEST.apk"
-
-          sha256sum "artifact/AutoFix-True-Colour-Lab-v0.4.0-TEST.apk" \
-            > "artifact/AutoFix-True-Colour-Lab-v0.4.0-TEST-SHA256.txt"
-
-          echo "APK prepared:"
-          ls -lh artifact/
-
-      - name: Upload TEST APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AutoFix-True-Colour-Lab-v0.4.0-TEST
-          path: |
-            artifact/AutoFix-True-Colour-Lab-v0.4.0-TEST.apk
-            artifact/AutoFix-True-Colour-Lab-v0.4.0-TEST-SHA256.txt
-          if-no-files-found: error
+          name: DennisAiMasteringLab-v0.14.3-BroadMastering-TEST
+          path: DennisAiMasteringLab-v0.14.3-BroadMastering-TEST.apk
           retention-days: 30
