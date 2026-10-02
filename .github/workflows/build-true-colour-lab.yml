@@ -1,10 +1,10 @@
-name: Build AutoFix True Colour Lab v0.4.0 TEST
+name: Build AutoFix True Colour Lab v0.5.0 TEST
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - 'AutoFix-True-Colour-Lab-v0.4.0-TEST-GitHubBuildSource.zip'
+      - 'AutoFix-True-Colour-Lab-v0.5.0-TEST-GitHubBuildSource.zip'
       - '.github/workflows/build-true-colour-lab.yml'
 
 permissions:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    name: True Colour Lab v0.4.0 TEST
+    name: True Colour Lab v0.5.0 TEST
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -24,7 +24,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ZIP="AutoFix-True-Colour-Lab-v0.4.0-TEST-GitHubBuildSource.zip"
+          ZIP="AutoFix-True-Colour-Lab-v0.5.0-TEST-GitHubBuildSource.zip"
           test -f "$ZIP" || { echo "::error::Missing $ZIP"; exit 1; }
           unzip -t "$ZIP"
           rm -rf true-colour-build
@@ -106,14 +106,14 @@ jobs:
         run: |
           set -euo pipefail
           PROJECT="${{ steps.project.outputs.project }}"
-          APK="$PROJECT/release/AutoFix-True-Colour-Lab-v0.4.0-TEST.apk"
+          APK="$PROJECT/release/AutoFix-True-Colour-Lab-v0.5.0-TEST.apk"
           test -f "$APK" || { echo "::error::Signed TEST APK not found"; exit 1; }
 
           rm -rf artifact
           mkdir artifact
-          cp "$APK" artifact/AutoFix-True-Colour-Lab-v0.4.0-TEST.apk
-          sha256sum artifact/AutoFix-True-Colour-Lab-v0.4.0-TEST.apk \
-            > artifact/AutoFix-True-Colour-Lab-v0.4.0-TEST-SHA256.txt
+          cp "$APK" artifact/AutoFix-True-Colour-Lab-v0.5.0-TEST.apk
+          sha256sum artifact/AutoFix-True-Colour-Lab-v0.5.0-TEST.apk \
+            > artifact/AutoFix-True-Colour-Lab-v0.5.0-TEST-SHA256.txt
 
           echo "Signed APK ready:"
           ls -lh artifact
@@ -121,9 +121,9 @@ jobs:
       - name: Upload TEST APK
         uses: actions/upload-artifact@v4
         with:
-          name: AutoFix-True-Colour-Lab-v0.4.0-TEST
+          name: AutoFix-True-Colour-Lab-v0.5.0-TEST
           path: |
-            artifact/AutoFix-True-Colour-Lab-v0.4.0-TEST.apk
-            artifact/AutoFix-True-Colour-Lab-v0.4.0-TEST-SHA256.txt
+            artifact/AutoFix-True-Colour-Lab-v0.5.0-TEST.apk
+            artifact/AutoFix-True-Colour-Lab-v0.5.0-TEST-SHA256.txt
           if-no-files-found: error
           retention-days: 30
