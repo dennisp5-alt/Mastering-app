@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'AutoFix-True-Colour-Lab-v0.4.0-TEST-source.zip'
+      - 'AutoFix-True-Colour-Lab-v0.4.0-TEST-GitHubBuildSource.zip'
       - '.github/workflows/build-true-colour-lab.yml'
 
 permissions:
@@ -20,63 +20,39 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Verify source ZIP
+      - name: Verify and extract source
         shell: bash
         run: |
           set -euo pipefail
-          SOURCE_ZIP="AutoFix-True-Colour-Lab-v0.4.0-TEST-source.zip"
-          if [ ! -f "$SOURCE_ZIP" ]; then
-            echo "::error::Missing $SOURCE_ZIP at repository root."
-            exit 1
-          fi
-          unzip -t "$SOURCE_ZIP"
-          echo "Source ZIP verified."
-
-      - name: Extract True Colour Lab source
-        shell: bash
-        run: |
-          set -euo pipefail
+          ZIP="AutoFix-True-Colour-Lab-v0.4.0-TEST-GitHubBuildSource.zip"
+          test -f "$ZIP" || { echo "::error::Missing $ZIP"; exit 1; }
+          unzip -t "$ZIP"
           rm -rf true-colour-build
-          mkdir -p true-colour-build
-          unzip -q "AutoFix-True-Colour-Lab-v0.4.0-TEST-source.zip" -d true-colour-build
-          echo "Source extracted."
+          mkdir true-colour-build
+          unzip -q "$ZIP" -d true-colour-build
 
-      - name: Locate Gradle project
+      - name: Locate Android project
         id: project
         shell: bash
         run: |
           set -euo pipefail
-
-          SETTINGS="$(find true-colour-build -maxdepth 5 -type f \
-            \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \) \
-            | head -n 1 || true)"
-
-          if [ -n "$SETTINGS" ]; then
-            PROJECT="$(dirname "$SETTINGS")"
-          else
-            WRAPPER="$(find true-colour-build -maxdepth 5 -type f -name 'gradlew' \
-              | head -n 1 || true)"
-            if [ -z "$WRAPPER" ]; then
-              echo "::error::No Gradle Android project found inside source ZIP."
-              find true-colour-build -maxdepth 3 -type f | sort | head -n 100
-              exit 1
-            fi
-            PROJECT="$(dirname "$WRAPPER")"
-          fi
-
-          if [ ! -f "$PROJECT/gradlew" ]; then
-            echo "::error::Gradle project found at '$PROJECT' but gradlew is missing."
-            exit 1
-          fi
-
+          SETTINGS="$(find true-colour-build -type f -name settings.gradle | head -n 1 || true)"
+          test -n "$SETTINGS" || { echo "::error::settings.gradle not found"; exit 1; }
+          PROJECT="$(dirname "$SETTINGS")"
+          test -f "$PROJECT/app/build.gradle" || { echo "::error::app/build.gradle not found"; exit 1; }
           echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
-          echo "Gradle project: $PROJECT"
+          echo "Android project: $PROJECT"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -88,51 +64,35 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
-      - name: Prepare Gradle wrapper
+      - name: Run deterministic engine tests
         working-directory: ${{ steps.project.outputs.project }}
         shell: bash
         run: |
           set -euo pipefail
-          chmod +x gradlew
-          ./gradlew --version
+          chmod +x run-tests.sh
+          ./run-tests.sh
 
-      - name: Run unit tests
+      - name: Build debug APK
         working-directory: ${{ steps.project.outputs.project }}
         shell: bash
         run: |
           set -euo pipefail
-          ./gradlew testDebugUnitTest --stacktrace
+          gradle --no-daemon clean assembleDebug --stacktrace
 
-      - name: Build TEST APK
-        working-directory: ${{ steps.project.outputs.project }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          ./gradlew assembleDebug --stacktrace
-
-      - name: Collect and rename APK
+      - name: Collect APK and checksum
         shell: bash
         run: |
           set -euo pipefail
           PROJECT="${{ steps.project.outputs.project }}"
-
-          APK="$(find "$PROJECT" -type f -path '*/build/outputs/apk/debug/*.apk' \
-            | head -n 1 || true)"
-
-          if [ -z "$APK" ]; then
-            echo "::error::Gradle finished but no debug APK was found."
-            find "$PROJECT" -path '*/build/outputs/*' -type f -print || true
-            exit 1
-          fi
+          APK="$(find "$PROJECT/app/build/outputs/apk/debug" -type f -name '*.apk' | head -n 1 || true)"
+          test -n "$APK" || { echo "::error::No debug APK found"; exit 1; }
 
           rm -rf artifact
-          mkdir -p artifact
-          cp "$APK" "artifact/AutoFix-True-Colour-Lab-v0.4.0-TEST.apk"
-
-          sha256sum "artifact/AutoFix-True-Colour-Lab-v0.4.0-TEST.apk" \
-            > "artifact/AutoFix-True-Colour-Lab-v0.4.0-TEST-SHA256.txt"
-
-          ls -lh artifact/
+          mkdir artifact
+          cp "$APK" artifact/AutoFix-True-Colour-Lab-v0.4.0-TEST.apk
+          sha256sum artifact/AutoFix-True-Colour-Lab-v0.4.0-TEST.apk \
+            > artifact/AutoFix-True-Colour-Lab-v0.4.0-TEST-SHA256.txt
+          ls -lh artifact
 
       - name: Upload TEST APK
         uses: actions/upload-artifact@v4
