@@ -38,6 +38,25 @@ jobs:
           echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
           echo "Android project: $PROJECT"
 
+      - name: Read app version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${{ steps.source.outputs.project }}"
+          BUILD_FILE="$PROJECT/app/build.gradle"
+          if [ ! -f "$BUILD_FILE" ]; then
+            BUILD_FILE="$PROJECT/app/build.gradle.kts"
+          fi
+          test -f "$BUILD_FILE" || { echo "::error::App build.gradle not found"; exit 1; }
+
+          VERSION_NAME="$(grep -E 'versionName[[:space:]]*[= ]' "$BUILD_FILE" | head -n1 | sed -E 's/.*versionName[[:space:]]*[= ]+["\x27]([^"\x27]+)["\x27].*/\1/' || true)"
+          if [ -z "$VERSION_NAME" ] || [ "$VERSION_NAME" = "$(grep -E 'versionName[[:space:]]*[= ]' "$BUILD_FILE" | head -n1 || true)" ]; then
+            VERSION_NAME="0.1.0"
+          fi
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "App version: $VERSION_NAME"
+
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
@@ -45,7 +64,6 @@ jobs:
           java-version: '17'
 
       - name: Restore stable AI-camera debug signing key
-        id: signing_cache
         uses: actions/cache@v4
         with:
           path: ~/.android/debug.keystore
@@ -108,19 +126,21 @@ jobs:
         run: |
           set -euo pipefail
           PROJECT="${{ steps.source.outputs.project }}"
+          VERSION="${{ steps.version.outputs.version_name }}"
           APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
           test -f "$APK" || { echo "::error::APK not found"; exit 1; }
           rm -rf artifact
           mkdir artifact
-          cp "$APK" artifact/S23U-AutoPlus-AI-Camera-v0.1.1.apk
-          sha256sum artifact/S23U-AutoPlus-AI-Camera-v0.1.1.apk > artifact/S23U-AutoPlus-AI-Camera-v0.1.1-SHA256.txt
+          OUT="artifact/S23U-AutoPlus-AI-Camera-v${VERSION}.apk"
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" > "artifact/S23U-AutoPlus-AI-Camera-v${VERSION}-SHA256.txt"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: S23U-AutoPlus-AI-Camera-v0.1.1
+          name: S23U-AutoPlus-AI-Camera-v${{ steps.version.outputs.version_name }}
           path: |
-            artifact/S23U-AutoPlus-AI-Camera-v0.1.1.apk
-            artifact/S23U-AutoPlus-AI-Camera-v0.1.1-SHA256.txt
+            artifact/S23U-AutoPlus-AI-Camera-v${{ steps.version.outputs.version_name }}.apk
+            artifact/S23U-AutoPlus-AI-Camera-v${{ steps.version.outputs.version_name }}-SHA256.txt
           if-no-files-found: error
           retention-days: 30
