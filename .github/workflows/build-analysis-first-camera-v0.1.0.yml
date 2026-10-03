@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - 'S23U-Analysis-First-Camera-v0.1.0-GitHubBuildSource.zip'
+      - 'S23U-Analysis-First-Camera-v0.1.0-FIX1-GitHubBuildSource.zip'
       - '.github/workflows/build-analysis-first-camera-v0.1.0.yml'
 
 permissions:
@@ -25,7 +26,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ZIP="S23U-Analysis-First-Camera-v0.1.0-GitHubBuildSource.zip"
+          ZIP="S23U-Analysis-First-Camera-v0.1.0-FIX1-GitHubBuildSource.zip"
           test -f "$ZIP" || { echo "::error::Missing $ZIP"; exit 1; }
           unzip -t "$ZIP"
           rm -rf analysis-first-build
