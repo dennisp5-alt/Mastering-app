@@ -1,4 +1,4 @@
-name: Build S23U Auto+ AI Camera v0.1.0
+name: Build S23U Auto+ AI Camera
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    name: S23U Auto+ AI Camera v0.1.0
+    name: S23U Auto+ AI Camera
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -44,6 +44,38 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Restore stable AI-camera debug signing key
+        id: signing_cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: s23u-ai-camera-debug-keystore-v1
+
+      - name: Create signing key on first stable build
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Android Debug,O=AutoPlus AI Camera,C=AU" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -noprompt
+            echo "Created persistent debug signing key."
+          else
+            echo "Restored persistent debug signing key."
+          fi
+          keytool -list -v \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storepass android \
+            -alias androiddebugkey | grep -E 'SHA256:|Valid from:' || true
+
       - name: Set up Gradle 8.13
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -64,7 +96,7 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Build debug APK
+      - name: Build debug APK with stable signer
         working-directory: ${{ steps.source.outputs.project }}
         shell: bash
         run: |
@@ -80,15 +112,15 @@ jobs:
           test -f "$APK" || { echo "::error::APK not found"; exit 1; }
           rm -rf artifact
           mkdir artifact
-          cp "$APK" artifact/S23U-AutoPlus-AI-Camera-v0.1.0.apk
-          sha256sum artifact/S23U-AutoPlus-AI-Camera-v0.1.0.apk > artifact/S23U-AutoPlus-AI-Camera-v0.1.0-SHA256.txt
+          cp "$APK" artifact/S23U-AutoPlus-AI-Camera-v0.1.1.apk
+          sha256sum artifact/S23U-AutoPlus-AI-Camera-v0.1.1.apk > artifact/S23U-AutoPlus-AI-Camera-v0.1.1-SHA256.txt
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: S23U-AutoPlus-AI-Camera-v0.1.0
+          name: S23U-AutoPlus-AI-Camera-v0.1.1
           path: |
-            artifact/S23U-AutoPlus-AI-Camera-v0.1.0.apk
-            artifact/S23U-AutoPlus-AI-Camera-v0.1.0-SHA256.txt
+            artifact/S23U-AutoPlus-AI-Camera-v0.1.1.apk
+            artifact/S23U-AutoPlus-AI-Camera-v0.1.1-SHA256.txt
           if-no-files-found: error
           retention-days: 30
