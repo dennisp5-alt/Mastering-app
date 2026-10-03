@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'S23U_Camera_Capability_Probe_v0.1.0.zip'
+      - 'S23U_Camera_Capability_Probe_v0.1.0*.zip'
       - '.github/workflows/build-apk.yml'
 
 permissions:
@@ -20,12 +20,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Verify and extract probe source
+      - name: Verify and extract newest probe source
         shell: bash
         run: |
           set -euo pipefail
-          ZIP="S23U_Camera_Capability_Probe_v0.1.0.zip"
-          test -f "$ZIP" || { echo "::error::Missing $ZIP"; exit 1; }
+          ZIP="$(printf '%s\n' S23U_Camera_Capability_Probe_v0.1.0*.zip | sort -V | tail -n 1)"
+          test -f "$ZIP" || { echo "::error::No S23U probe ZIP found"; exit 1; }
+          echo "Using source ZIP: $ZIP"
           unzip -t "$ZIP"
           rm -rf s23u-probe-build
           mkdir s23u-probe-build
