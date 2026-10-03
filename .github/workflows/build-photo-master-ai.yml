@@ -1,18 +1,18 @@
-name: Build Photo Master AI v0.2.0 REAL-ML EXPERIMENTAL
+name: Build Photo Master AI v0.2.1 CAST-FIX EXPERIMENTAL
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - 'PhotoMasterAI-v0.2.0-REAL-ML-EXPERIMENTAL-GitHubBuildSource.zip'
-      - '.github/workflows/build-photo-master-ai-v0.2.0.yml'
+      - 'PhotoMasterAI-v0.2.1-CAST-FIX-EXPERIMENTAL-GitHubBuildSource.zip'
+      - '.github/workflows/build-photo-master-ai-v0.2.1.yml'
 
 permissions:
   contents: read
 
 jobs:
   build:
-    name: Photo Master AI v0.2.0 REAL-ML EXPERIMENTAL
+    name: Photo Master AI v0.2.1 CAST-FIX EXPERIMENTAL
     runs-on: ubuntu-latest
     timeout-minutes: 35
 
@@ -25,13 +25,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ZIP="PhotoMasterAI-v0.2.0-REAL-ML-EXPERIMENTAL-GitHubBuildSource.zip"
+          ZIP="PhotoMasterAI-v0.2.1-CAST-FIX-EXPERIMENTAL-GitHubBuildSource.zip"
           test -f "$ZIP" || { echo "::error::Missing $ZIP"; exit 1; }
           unzip -t "$ZIP"
-          rm -rf photomaster-v020-build
-          mkdir photomaster-v020-build
-          unzip -q "$ZIP" -d photomaster-v020-build
-          SETTINGS="$(find photomaster-v020-build -type f \( -name settings.gradle -o -name settings.gradle.kts \) | head -n 1 || true)"
+          rm -rf photomaster-v021-build
+          mkdir photomaster-v021-build
+          unzip -q "$ZIP" -d photomaster-v021-build
+          SETTINGS="$(find photomaster-v021-build -type f \( -name settings.gradle -o -name settings.gradle.kts \) | head -n 1 || true)"
           test -n "$SETTINGS" || { echo "::error::settings.gradle not found"; exit 1; }
           PROJECT="$(dirname "$SETTINGS")"
           BUILD_FILE="$PROJECT/app/build.gradle"
@@ -109,21 +109,21 @@ jobs:
           BADGING="$($AAPT dump badging "$APK" | head -n 1)"
           echo "$BADGING"
           echo "$BADGING" | grep -q "package: name='com.dennis.photomasterai'" || { echo "::error::Unexpected package name"; exit 1; }
-          echo "$BADGING" | grep -q "versionCode='3'" || { echo "::error::APK versionCode is not 3"; exit 1; }
-          echo "$BADGING" | grep -q "versionName='0.2.0'" || { echo "::error::APK versionName is not 0.2.0"; exit 1; }
+          echo "$BADGING" | grep -q "versionCode='4'" || { echo "::error::APK versionCode is not 4"; exit 1; }
+          echo "$BADGING" | grep -q "versionName='0.2.1'" || { echo "::error::APK versionName is not 0.2.1"; exit 1; }
           rm -rf artifact
           mkdir artifact
-          OUT="artifact/PhotoMasterAI-v0.2.0-REAL-ML-EXPERIMENTAL.apk"
+          OUT="artifact/PhotoMasterAI-v0.2.1-CAST-FIX-EXPERIMENTAL.apk"
           cp "$APK" "$OUT"
-          sha256sum "$OUT" > "artifact/PhotoMasterAI-v0.2.0-REAL-ML-EXPERIMENTAL-SHA256.txt"
+          sha256sum "$OUT" > "artifact/PhotoMasterAI-v0.2.1-CAST-FIX-EXPERIMENTAL-SHA256.txt"
           ls -lh artifact
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PhotoMasterAI-v0.2.0-REAL-ML-EXPERIMENTAL
+          name: PhotoMasterAI-v0.2.1-CAST-FIX-EXPERIMENTAL
           path: |
-            artifact/PhotoMasterAI-v0.2.0-REAL-ML-EXPERIMENTAL.apk
-            artifact/PhotoMasterAI-v0.2.0-REAL-ML-EXPERIMENTAL-SHA256.txt
+            artifact/PhotoMasterAI-v0.2.1-CAST-FIX-EXPERIMENTAL.apk
+            artifact/PhotoMasterAI-v0.2.1-CAST-FIX-EXPERIMENTAL-SHA256.txt
           if-no-files-found: error
           retention-days: 30
