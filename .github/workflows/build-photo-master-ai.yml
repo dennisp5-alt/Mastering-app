@@ -1,18 +1,18 @@
-name: Build Photo Master AI v0.1.0 EXPERIMENTAL
+name: Build Photo Master AI v0.1.1 EXPERIMENTAL
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - 'PhotoMasterAI-v0.1.0-EXPERIMENTAL-GitHubBuildSource.zip'
-      - '.github/workflows/build-photo-master-ai.yml'
+      - 'PhotoMasterAI-v0.1.1-EXPERIMENTAL-GitHubBuildSource.zip'
+      - '.github/workflows/build-photo-master-ai-v0.1.1.yml'
 
 permissions:
   contents: read
 
 jobs:
   build:
-    name: Photo Master AI v0.1.0 EXPERIMENTAL
+    name: Photo Master AI v0.1.1 EXPERIMENTAL
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -25,7 +25,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ZIP="PhotoMasterAI-v0.1.0-EXPERIMENTAL-GitHubBuildSource.zip"
+          ZIP="PhotoMasterAI-v0.1.1-EXPERIMENTAL-GitHubBuildSource.zip"
           test -f "$ZIP" || { echo "::error::Missing $ZIP"; exit 1; }
           unzip -t "$ZIP"
           rm -rf photo-master-build
@@ -106,18 +106,19 @@ jobs:
           BADGING="$($AAPT dump badging "$APK" | head -n 1)"
           echo "$BADGING"
           echo "$BADGING" | grep -q "package: name='com.dennis.photomasterai'" || { echo "::error::Unexpected package"; exit 1; }
-          echo "$BADGING" | grep -q "versionName='0.1.0'" || { echo "::error::Unexpected version"; exit 1; }
+          echo "$BADGING" | grep -q "versionCode='2'" || { echo "::error::Unexpected version code"; exit 1; }
+          echo "$BADGING" | grep -q "versionName='0.1.1'" || { echo "::error::Unexpected version"; exit 1; }
           rm -rf artifact
           mkdir artifact
-          cp "$APK" artifact/PhotoMasterAI-v0.1.0-EXPERIMENTAL.apk
-          sha256sum artifact/PhotoMasterAI-v0.1.0-EXPERIMENTAL.apk > artifact/PhotoMasterAI-v0.1.0-EXPERIMENTAL-SHA256.txt
+          cp "$APK" artifact/PhotoMasterAI-v0.1.1-EXPERIMENTAL.apk
+          sha256sum artifact/PhotoMasterAI-v0.1.1-EXPERIMENTAL.apk > artifact/PhotoMasterAI-v0.1.1-EXPERIMENTAL-SHA256.txt
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PhotoMasterAI-v0.1.0-EXPERIMENTAL
+          name: PhotoMasterAI-v0.1.1-EXPERIMENTAL
           path: |
-            artifact/PhotoMasterAI-v0.1.0-EXPERIMENTAL.apk
-            artifact/PhotoMasterAI-v0.1.0-EXPERIMENTAL-SHA256.txt
+            artifact/PhotoMasterAI-v0.1.1-EXPERIMENTAL.apk
+            artifact/PhotoMasterAI-v0.1.1-EXPERIMENTAL-SHA256.txt
           if-no-files-found: error
           retention-days: 30
