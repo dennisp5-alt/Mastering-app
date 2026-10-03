@@ -73,7 +73,7 @@ jobs:
         run: |
           set -euo pipefail
           PROJECT="${{ steps.project.outputs.project }}"
-          APK="$PROJECT/release/AutoFix-True-Colour-Lab-v0.8.0-EXPERIMENTAL.apk"
+          APK="$PROJECT/release/AutoFix-True-Colour-Lab-v0.8.0-TEST.apk"
           test -f "$APK" || { echo "::error::Signed TEST APK not found"; exit 1; }
           SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
           AAPT="$SDK/build-tools/34.0.0/aapt"
