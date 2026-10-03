@@ -1,18 +1,18 @@
-name: Build S23U Camera Probe APK
+name: Build S23U Auto+ AI Camera v0.1.0
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - 'S23U_Camera_Capability_Probe_v0.1.0*.zip'
-      - '.github/workflows/build-apk.yml'
+      - 'S23U_AI_Camera_v0.1.0*.zip'
+      - '.github/workflows/build-s23u-ai-camera.yml'
 
 permissions:
   contents: read
 
 jobs:
   build:
-    name: S23U Camera Capability Probe v0.1.0
+    name: S23U Auto+ AI Camera v0.1.0
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -20,30 +20,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Verify and extract newest probe source
+      - name: Select and extract newest source ZIP
+        id: source
         shell: bash
         run: |
           set -euo pipefail
-          ZIP="$(printf '%s\n' S23U_Camera_Capability_Probe_v0.1.0*.zip | sort -V | tail -n 1)"
-          test -f "$ZIP" || { echo "::error::No S23U probe ZIP found"; exit 1; }
-          echo "Using source ZIP: $ZIP"
+          ZIP="$(ls -1t S23U_AI_Camera_v0.1.0*.zip 2>/dev/null | head -n 1 || true)"
+          test -n "$ZIP" || { echo "::error::No S23U_AI_Camera_v0.1.0 source ZIP found"; exit 1; }
+          echo "Using: $ZIP"
           unzip -t "$ZIP"
-          rm -rf s23u-probe-build
-          mkdir s23u-probe-build
-          unzip -q "$ZIP" -d s23u-probe-build
-
-      - name: Locate Android project
-        id: project
-        shell: bash
-        run: |
-          set -euo pipefail
-          SETTINGS="$(find s23u-probe-build -type f \( -name settings.gradle -o -name settings.gradle.kts \) | head -n 1 || true)"
+          rm -rf s23u-ai-build
+          mkdir s23u-ai-build
+          unzip -q "$ZIP" -d s23u-ai-build
+          SETTINGS="$(find s23u-ai-build -type f \( -name settings.gradle -o -name settings.gradle.kts \) | head -n 1 || true)"
           test -n "$SETTINGS" || { echo "::error::settings.gradle not found"; exit 1; }
           PROJECT="$(dirname "$SETTINGS")"
-          test -f "$PROJECT/app/build.gradle" || test -f "$PROJECT/app/build.gradle.kts" || {
-            echo "::error::app build.gradle not found"
-            exit 1
-          }
           echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
           echo "Android project: $PROJECT"
 
@@ -65,44 +56,39 @@ jobs:
           SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
-
           SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
           if [ ! -x "$SDKMANAGER" ]; then
             SDKMANAGER="$(find "$SDK/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1 || true)"
           fi
-          test -n "$SDKMANAGER" && test -x "$SDKMANAGER" || {
-            echo "::error::sdkmanager not found"
-            exit 1
-          }
-
+          test -n "$SDKMANAGER" && test -x "$SDKMANAGER" || { echo "::error::sdkmanager not found"; exit 1; }
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Build debug APK
-        working-directory: ${{ steps.project.outputs.project }}
+        working-directory: ${{ steps.source.outputs.project }}
         shell: bash
         run: |
           set -euo pipefail
           gradle :app:assembleDebug --stacktrace
 
-      - name: Collect APK
+      - name: Collect APK and checksum
         shell: bash
         run: |
           set -euo pipefail
-          PROJECT="${{ steps.project.outputs.project }}"
+          PROJECT="${{ steps.source.outputs.project }}"
           APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
-          test -f "$APK" || { echo "::error::APK not found at $APK"; exit 1; }
+          test -f "$APK" || { echo "::error::APK not found"; exit 1; }
           rm -rf artifact
           mkdir artifact
-          cp "$APK" artifact/S23U-Camera-Capability-Probe-v0.1.0.apk
-          sha256sum artifact/S23U-Camera-Capability-Probe-v0.1.0.apk > artifact/S23U-Camera-Capability-Probe-v0.1.0-SHA256.txt
+          cp "$APK" artifact/S23U-AutoPlus-AI-Camera-v0.1.0.apk
+          sha256sum artifact/S23U-AutoPlus-AI-Camera-v0.1.0.apk > artifact/S23U-AutoPlus-AI-Camera-v0.1.0-SHA256.txt
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: S23U-Camera-Capability-Probe-v0.1.0
+          name: S23U-AutoPlus-AI-Camera-v0.1.0
           path: |
-            artifact/S23U-Camera-Capability-Probe-v0.1.0.apk
-            artifact/S23U-Camera-Capability-Probe-v0.1.0-SHA256.txt
+            artifact/S23U-AutoPlus-AI-Camera-v0.1.0.apk
+            artifact/S23U-AutoPlus-AI-Camera-v0.1.0-SHA256.txt
           if-no-files-found: error
           retention-days: 30
