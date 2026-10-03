@@ -1,19 +1,18 @@
-name: Build S23U Analysis-First Camera v0.1.0
+name: Build S23U Analysis-First Camera v0.1.1
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - 'S23U-Analysis-First-Camera-v0.1.0-GitHubBuildSource.zip'
-      - 'S23U-Analysis-First-Camera-v0.1.0-FIX1-GitHubBuildSource.zip'
-      - '.github/workflows/build-analysis-first-camera-v0.1.0.yml'
+      - 'S23U-Analysis-First-Camera-v0.1.1-GitHubBuildSource.zip'
+      - '.github/workflows/build-analysis-first-camera-v0.1.1.yml'
 
 permissions:
   contents: read
 
 jobs:
   build:
-    name: S23U Analysis-First Camera v0.1.0
+    name: S23U Analysis-First Camera v0.1.1
     runs-on: ubuntu-latest
     timeout-minutes: 35
 
@@ -26,7 +25,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ZIP="S23U-Analysis-First-Camera-v0.1.0-FIX1-GitHubBuildSource.zip"
+          ZIP="S23U-Analysis-First-Camera-v0.1.1-GitHubBuildSource.zip"
           test -f "$ZIP" || { echo "::error::Missing $ZIP"; exit 1; }
           unzip -t "$ZIP"
           rm -rf analysis-first-build
@@ -63,6 +62,26 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
+      - name: Run host checks
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf host-checks
+          mkdir host-checks
+          javac -d host-checks \
+            app/src/main/java/com/s23u/procamera/DeviceGate.java \
+            app/src/main/java/com/s23u/procamera/LensClassifier.java \
+            app/src/main/java/com/s23u/procamera/ZoomRouting.java \
+            app/src/main/java/com/s23u/procamera/OutputResolution.java \
+            app/src/main/java/com/s23u/procamera/OpticalVerification.java \
+            app/src/main/java/com/s23u/procamera/PortraitGeometry.java \
+            app/src/main/java/com/s23u/procamera/SceneStats.java \
+            app/src/main/java/com/s23u/procamera/SmartAutoEngine.java \
+            app/src/main/java/com/s23u/procamera/CoordinateMapper.java \
+            tools/HostChecks.java
+          java -cp host-checks com.s23u.procamera.HostChecks
+
       - name: Build signed release APK
         working-directory: ${{ steps.source.outputs.project }}
         shell: bash
@@ -91,29 +110,29 @@ jobs:
             echo "::error::Unexpected package name"
             exit 1
           }
-          echo "$BADGING" | grep -q "versionCode='1'" || {
-            echo "::error::APK versionCode is not 1"
+          echo "$BADGING" | grep -q "versionCode='2'" || {
+            echo "::error::APK versionCode is not 2"
             exit 1
           }
-          echo "$BADGING" | grep -q "versionName='0.1.0'" || {
-            echo "::error::APK versionName is not 0.1.0"
+          echo "$BADGING" | grep -q "versionName='0.1.1'" || {
+            echo "::error::APK versionName is not 0.1.1"
             exit 1
           }
           "$APKSIGNER" verify --verbose "$APK"
 
           rm -rf artifact
           mkdir artifact
-          OUT="artifact/S23U-Analysis-First-Camera-v0.1.0.apk"
+          OUT="artifact/S23U-Analysis-First-Camera-v0.1.1.apk"
           cp "$APK" "$OUT"
-          sha256sum "$OUT" > "artifact/S23U-Analysis-First-Camera-v0.1.0-SHA256.txt"
+          sha256sum "$OUT" > "artifact/S23U-Analysis-First-Camera-v0.1.1-SHA256.txt"
           ls -lh artifact
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: S23U-Analysis-First-Camera-v0.1.0
+          name: S23U-Analysis-First-Camera-v0.1.1
           path: |
-            artifact/S23U-Analysis-First-Camera-v0.1.0.apk
-            artifact/S23U-Analysis-First-Camera-v0.1.0-SHA256.txt
+            artifact/S23U-Analysis-First-Camera-v0.1.1.apk
+            artifact/S23U-Analysis-First-Camera-v0.1.1-SHA256.txt
           if-no-files-found: error
           retention-days: 30
