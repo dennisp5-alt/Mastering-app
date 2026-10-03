@@ -20,12 +20,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Select and extract newest source ZIP
+      - name: Select and extract highest-suffix source ZIP
         id: source
         shell: bash
         run: |
           set -euo pipefail
-          ZIP="$(ls -1t S23U_AI_Camera_v0.1.0*.zip 2>/dev/null | head -n 1 || true)"
+          ZIP="$(find . -maxdepth 1 -type f -name 'S23U_AI_Camera_v0.1.0*.zip' -printf '%f\n' | sort -V | tail -n 1 || true)"
           test -n "$ZIP" || { echo "::error::No S23U_AI_Camera_v0.1.0 source ZIP found"; exit 1; }
           echo "Using: $ZIP"
           unzip -t "$ZIP"
