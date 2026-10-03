@@ -1,10 +1,10 @@
-name: Build AutoFix True Colour Lab v0.7.2 TEST
+name: Build AutoFix True Colour Lab v0.8.0 EXPERIMENTAL
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - 'AutoFix-True-Colour-Lab-v0.7.2-TEST-GitHubBuildSource.zip'
+      - 'AutoFix-True-Colour-Lab-v0.8.0-EXPERIMENTAL-GitHubBuildSource.zip'
       - '.github/workflows/build-true-colour-lab.yml'
 
 permissions:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    name: True Colour Lab v0.7.2 TEST
+    name: True Colour Lab v0.8.0 EXPERIMENTAL
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -22,7 +22,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ZIP="AutoFix-True-Colour-Lab-v0.7.2-TEST-GitHubBuildSource.zip"
+          ZIP="AutoFix-True-Colour-Lab-v0.8.0-EXPERIMENTAL-GitHubBuildSource.zip"
           test -f "$ZIP" || { echo "::error::Missing $ZIP"; exit 1; }
           unzip -t "$ZIP"
           rm -rf true-colour-build && mkdir true-colour-build
@@ -73,23 +73,23 @@ jobs:
         run: |
           set -euo pipefail
           PROJECT="${{ steps.project.outputs.project }}"
-          APK="$PROJECT/release/AutoFix-True-Colour-Lab-v0.7.2-TEST.apk"
+          APK="$PROJECT/release/AutoFix-True-Colour-Lab-v0.8.0-EXPERIMENTAL.apk"
           test -f "$APK" || { echo "::error::Signed TEST APK not found"; exit 1; }
           SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
           AAPT="$SDK/build-tools/34.0.0/aapt"
           BADGING="$($AAPT dump badging "$APK" | head -n 1)"
           echo "$BADGING"
-          echo "$BADGING" | grep -q "versionCode='9'" || { echo "::error::APK versionCode is not 9"; exit 1; }
-          echo "$BADGING" | grep -q "versionName='0.7.2'" || { echo "::error::APK versionName is not 0.7.2"; exit 1; }
+          echo "$BADGING" | grep -q "versionCode='10'" || { echo "::error::APK versionCode is not 10"; exit 1; }
+          echo "$BADGING" | grep -q "versionName='0.8.0'" || { echo "::error::APK versionName is not 0.8.0"; exit 1; }
           rm -rf artifact && mkdir artifact
-          cp "$APK" artifact/AutoFix-True-Colour-Lab-v0.7.2-TEST.apk
-          sha256sum artifact/AutoFix-True-Colour-Lab-v0.7.2-TEST.apk > artifact/AutoFix-True-Colour-Lab-v0.7.2-TEST-SHA256.txt
+          cp "$APK" artifact/AutoFix-True-Colour-Lab-v0.8.0-EXPERIMENTAL.apk
+          sha256sum artifact/AutoFix-True-Colour-Lab-v0.8.0-EXPERIMENTAL.apk > artifact/AutoFix-True-Colour-Lab-v0.8.0-EXPERIMENTAL-SHA256.txt
       - name: Upload TEST APK
         uses: actions/upload-artifact@v4
         with:
-          name: AutoFix-True-Colour-Lab-v0.7.2-TEST
+          name: AutoFix-True-Colour-Lab-v0.8.0-EXPERIMENTAL
           path: |
-            artifact/AutoFix-True-Colour-Lab-v0.7.2-TEST.apk
-            artifact/AutoFix-True-Colour-Lab-v0.7.2-TEST-SHA256.txt
+            artifact/AutoFix-True-Colour-Lab-v0.8.0-EXPERIMENTAL.apk
+            artifact/AutoFix-True-Colour-Lab-v0.8.0-EXPERIMENTAL-SHA256.txt
           if-no-files-found: error
           retention-days: 30
