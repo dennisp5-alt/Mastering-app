@@ -1,18 +1,18 @@
-name: Build S23U Analysis-First Camera v0.2.1
+name: Build S23U Analysis-First Camera v0.3.0
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - 'S23U-Analysis-First-Camera-v0.2.1-GitHubBuildSource.zip'
-      - '.github/workflows/build-analysis-first-camera-v0.2.1.yml'
+      - 'S23U-Analysis-First-Camera-v0.3.0-GitHubBuildSource.zip'
+      - '.github/workflows/build-analysis-first-camera-v0.3.0.yml'
 
 permissions:
   contents: read
 
 jobs:
   build:
-    name: S23U Analysis-First Camera v0.2.1 Stability Guard
+    name: S23U Analysis-First Camera v0.3.0 Calibrated Colour + Natural Tone
     runs-on: ubuntu-latest
     timeout-minutes: 40
 
@@ -25,7 +25,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ZIP="S23U-Analysis-First-Camera-v0.2.1-GitHubBuildSource.zip"
+          ZIP="S23U-Analysis-First-Camera-v0.3.0-GitHubBuildSource.zip"
           test -f "$ZIP" || { echo "::error::Missing $ZIP"; exit 1; }
           unzip -t "$ZIP"
           rm -rf analysis-first-build
@@ -68,15 +68,41 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf host-checks host-stubs
-          mkdir -p host-checks host-stubs/android/os
+          mkdir -p host-checks host-stubs/android/os host-stubs/android/content
+
           cat > host-stubs/android/os/SystemClock.java <<'STUB'
           package android.os;
           public final class SystemClock {
               public static long elapsedRealtime() { return 0L; }
           }
           STUB
+
+          cat > host-stubs/android/content/Context.java <<'STUB'
+          package android.content;
+          public class Context {
+              public static final int MODE_PRIVATE = 0;
+              public SharedPreferences getSharedPreferences(String name, int mode) { return null; }
+          }
+          STUB
+
+          cat > host-stubs/android/content/SharedPreferences.java <<'STUB'
+          package android.content;
+          public interface SharedPreferences {
+              int getInt(String key, int defValue);
+              long getLong(String key, long defValue);
+              Editor edit();
+              interface Editor {
+                  Editor putInt(String key, int value);
+                  Editor putLong(String key, long value);
+                  void apply();
+              }
+          }
+          STUB
+
           javac -d host-checks \
             host-stubs/android/os/SystemClock.java \
+            host-stubs/android/content/Context.java \
+            host-stubs/android/content/SharedPreferences.java \
             app/src/main/java/com/s23u/procamera/DeviceGate.java \
             app/src/main/java/com/s23u/procamera/LensClassifier.java \
             app/src/main/java/com/s23u/procamera/ZoomRouting.java \
@@ -89,6 +115,8 @@ jobs:
             app/src/main/java/com/s23u/procamera/CoordinateMapper.java \
             app/src/main/java/com/s23u/procamera/ColourStats.java \
             app/src/main/java/com/s23u/procamera/LensColourProfile.java \
+            app/src/main/java/com/s23u/procamera/LensCalibrationStore.java \
+            app/src/main/java/com/s23u/procamera/NaturalTonality.java \
             app/src/main/java/com/s23u/procamera/TrueColourDecision.java \
             tools/HostChecks.java
           java -cp host-checks com.s23u.procamera.HostChecks
@@ -115,23 +143,23 @@ jobs:
           BADGING="$($AAPT dump badging "$APK" | head -n 1)"
           echo "$BADGING"
           echo "$BADGING" | grep -q "package: name='com.dennis.analysisfirstcamera'" || exit 1
-          echo "$BADGING" | grep -q "versionCode='4'" || { echo "::error::APK versionCode is not 4"; exit 1; }
-          echo "$BADGING" | grep -q "versionName='0.2.1'" || { echo "::error::APK versionName is not 0.2.1"; exit 1; }
+          echo "$BADGING" | grep -q "versionCode='5'" || { echo "::error::APK versionCode is not 5"; exit 1; }
+          echo "$BADGING" | grep -q "versionName='0.3.0'" || { echo "::error::APK versionName is not 0.3.0"; exit 1; }
           "$APKSIGNER" verify --verbose "$APK"
 
           rm -rf artifact
           mkdir artifact
-          OUT="artifact/S23U-Analysis-First-Camera-v0.2.1-STABILITY-GUARD.apk"
+          OUT="artifact/S23U-Analysis-First-Camera-v0.3.0-CALIBRATED-COLOUR-NATURAL-TONE.apk"
           cp "$APK" "$OUT"
-          sha256sum "$OUT" > "artifact/S23U-Analysis-First-Camera-v0.2.1-STABILITY-GUARD-SHA256.txt"
+          sha256sum "$OUT" > "artifact/S23U-Analysis-First-Camera-v0.3.0-CALIBRATED-COLOUR-NATURAL-TONE-SHA256.txt"
           ls -lh artifact
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: S23U-Analysis-First-Camera-v0.2.1-STABILITY-GUARD
+          name: S23U-Analysis-First-Camera-v0.3.0-CALIBRATED-COLOUR-NATURAL-TONE
           path: |
-            artifact/S23U-Analysis-First-Camera-v0.2.1-STABILITY-GUARD.apk
-            artifact/S23U-Analysis-First-Camera-v0.2.1-STABILITY-GUARD-SHA256.txt
+            artifact/S23U-Analysis-First-Camera-v0.3.0-CALIBRATED-COLOUR-NATURAL-TONE.apk
+            artifact/S23U-Analysis-First-Camera-v0.3.0-CALIBRATED-COLOUR-NATURAL-TONE-SHA256.txt
           if-no-files-found: error
           retention-days: 30
