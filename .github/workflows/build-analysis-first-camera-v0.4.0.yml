@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'S23U-Analysis-First-Camera-v0.4.0-GitHubBuildSource.zip'
+      - 'S23U-Analysis-First-Camera-v0.4.0-GitHubBuildSource*.zip'
       - '.github/workflows/build-analysis-first-camera-v0.4.0.yml'
 
 permissions:
@@ -25,8 +25,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ZIP="S23U-Analysis-First-Camera-v0.4.0-GitHubBuildSource.zip"
-          test -f "$ZIP" || { echo "::error::Missing $ZIP"; exit 1; }
+          ZIP="$(find . -maxdepth 1 -type f -name 'S23U-Analysis-First-Camera-v0.4.0-GitHubBuildSource*.zip' -printf '%f\n' | sort -V | tail -n 1 || true)"
+          test -n "$ZIP" || { echo "::error::No v0.4.0 source ZIP found"; exit 1; }
+          echo "Using source ZIP: $ZIP"
           unzip -t "$ZIP"
           rm -rf analysis-first-build
           mkdir analysis-first-build
