@@ -1,20 +1,20 @@
-name: Build S23U Analysis-First Camera v0.2.0
+name: Build S23U Analysis-First Camera v0.2.1
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - 'S23U-Analysis-First-Camera-v0.2.0-GitHubBuildSource.zip'
-      - '.github/workflows/build-analysis-first-camera-v0.2.0.yml'
+      - 'S23U-Analysis-First-Camera-v0.2.1-GitHubBuildSource.zip'
+      - '.github/workflows/build-analysis-first-camera-v0.2.1.yml'
 
 permissions:
   contents: read
 
 jobs:
   build:
-    name: S23U Analysis-First Camera v0.2.0 True Colour
+    name: S23U Analysis-First Camera v0.2.1 Stability Guard
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
 
     steps:
       - name: Checkout repository
@@ -25,7 +25,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ZIP="S23U-Analysis-First-Camera-v0.2.0-GitHubBuildSource.zip"
+          ZIP="S23U-Analysis-First-Camera-v0.2.1-GitHubBuildSource.zip"
           test -f "$ZIP" || { echo "::error::Missing $ZIP"; exit 1; }
           unzip -t "$ZIP"
           rm -rf analysis-first-build
@@ -83,6 +83,7 @@ jobs:
             app/src/main/java/com/s23u/procamera/OutputResolution.java \
             app/src/main/java/com/s23u/procamera/OpticalVerification.java \
             app/src/main/java/com/s23u/procamera/PortraitGeometry.java \
+            app/src/main/java/com/s23u/procamera/StabilityPolicy.java \
             app/src/main/java/com/s23u/procamera/SceneStats.java \
             app/src/main/java/com/s23u/procamera/SmartAutoEngine.java \
             app/src/main/java/com/s23u/procamera/CoordinateMapper.java \
@@ -114,23 +115,23 @@ jobs:
           BADGING="$($AAPT dump badging "$APK" | head -n 1)"
           echo "$BADGING"
           echo "$BADGING" | grep -q "package: name='com.dennis.analysisfirstcamera'" || exit 1
-          echo "$BADGING" | grep -q "versionCode='3'" || { echo "::error::APK versionCode is not 3"; exit 1; }
-          echo "$BADGING" | grep -q "versionName='0.2.0'" || { echo "::error::APK versionName is not 0.2.0"; exit 1; }
+          echo "$BADGING" | grep -q "versionCode='4'" || { echo "::error::APK versionCode is not 4"; exit 1; }
+          echo "$BADGING" | grep -q "versionName='0.2.1'" || { echo "::error::APK versionName is not 0.2.1"; exit 1; }
           "$APKSIGNER" verify --verbose "$APK"
 
           rm -rf artifact
           mkdir artifact
-          OUT="artifact/S23U-Analysis-First-Camera-v0.2.0-TRUE-COLOUR.apk"
+          OUT="artifact/S23U-Analysis-First-Camera-v0.2.1-STABILITY-GUARD.apk"
           cp "$APK" "$OUT"
-          sha256sum "$OUT" > "artifact/S23U-Analysis-First-Camera-v0.2.0-TRUE-COLOUR-SHA256.txt"
+          sha256sum "$OUT" > "artifact/S23U-Analysis-First-Camera-v0.2.1-STABILITY-GUARD-SHA256.txt"
           ls -lh artifact
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: S23U-Analysis-First-Camera-v0.2.0-TRUE-COLOUR
+          name: S23U-Analysis-First-Camera-v0.2.1-STABILITY-GUARD
           path: |
-            artifact/S23U-Analysis-First-Camera-v0.2.0-TRUE-COLOUR.apk
-            artifact/S23U-Analysis-First-Camera-v0.2.0-TRUE-COLOUR-SHA256.txt
+            artifact/S23U-Analysis-First-Camera-v0.2.1-STABILITY-GUARD.apk
+            artifact/S23U-Analysis-First-Camera-v0.2.1-STABILITY-GUARD-SHA256.txt
           if-no-files-found: error
           retention-days: 30
