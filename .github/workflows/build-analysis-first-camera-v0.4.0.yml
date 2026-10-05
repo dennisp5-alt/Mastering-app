@@ -1,18 +1,18 @@
-name: Build S23U Analysis-First Camera v0.4.0
+name: Build S23U Analysis-First Camera v0.4.1
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - 'S23U-Analysis-First-Camera-v0.4.0-GitHubBuildSource*.zip'
-      - '.github/workflows/build-analysis-first-camera-v0.4.0.yml'
+      - 'S23U-Analysis-First-Camera-v0.4.1-GitHubBuildSource*.zip'
+      - '.github/workflows/build-analysis-first-camera-v0.4.1.yml'
 
 permissions:
   contents: read
 
 jobs:
   build:
-    name: S23U Analysis-First Camera v0.4.0 Lens/ISO Detail IQ
+    name: S23U Analysis-First Camera v0.4.1 Clean Camera UI
     runs-on: ubuntu-latest
     timeout-minutes: 40
 
@@ -25,8 +25,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ZIP="$(find . -maxdepth 1 -type f -name 'S23U-Analysis-First-Camera-v0.4.0-GitHubBuildSource*.zip' -printf '%f\n' | sort -V | tail -n 1 || true)"
-          test -n "$ZIP" || { echo "::error::No v0.4.0 source ZIP found"; exit 1; }
+          ZIP="$(find . -maxdepth 1 -type f -name 'S23U-Analysis-First-Camera-v0.4.1-GitHubBuildSource*.zip' -printf '%f\n' | sort -V | tail -n 1 || true)"
+          test -n "$ZIP" || { echo "::error::No v0.4.1 source ZIP found"; exit 1; }
           echo "Using source ZIP: $ZIP"
           unzip -t "$ZIP"
           rm -rf analysis-first-build
@@ -145,23 +145,23 @@ jobs:
           BADGING="$($AAPT dump badging "$APK" | head -n 1)"
           echo "$BADGING"
           echo "$BADGING" | grep -q "package: name='com.dennis.analysisfirstcamera'" || exit 1
-          echo "$BADGING" | grep -q "versionCode='6'" || { echo "::error::APK versionCode is not 6"; exit 1; }
-          echo "$BADGING" | grep -q "versionName='0.4.0'" || { echo "::error::APK versionName is not 0.4.0"; exit 1; }
+          echo "$BADGING" | grep -q "versionCode='7'" || { echo "::error::APK versionCode is not 7"; exit 1; }
+          echo "$BADGING" | grep -q "versionName='0.4.1'" || { echo "::error::APK versionName is not 0.4.1"; exit 1; }
           "$APKSIGNER" verify --verbose "$APK"
 
           rm -rf artifact
           mkdir artifact
-          OUT="artifact/S23U-Analysis-First-Camera-v0.4.0-LENS-ISO-DETAIL-IQ.apk"
+          OUT="artifact/S23U-Analysis-First-Camera-v0.4.1-CLEAN-CAMERA-UI.apk"
           cp "$APK" "$OUT"
-          sha256sum "$OUT" > "artifact/S23U-Analysis-First-Camera-v0.4.0-LENS-ISO-DETAIL-IQ-SHA256.txt"
+          sha256sum "$OUT" > "artifact/S23U-Analysis-First-Camera-v0.4.1-CLEAN-CAMERA-UI-SHA256.txt"
           ls -lh artifact
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: S23U-Analysis-First-Camera-v0.4.0-LENS-ISO-DETAIL-IQ
+          name: S23U-Analysis-First-Camera-v0.4.1-CLEAN-CAMERA-UI
           path: |
-            artifact/S23U-Analysis-First-Camera-v0.4.0-LENS-ISO-DETAIL-IQ.apk
-            artifact/S23U-Analysis-First-Camera-v0.4.0-LENS-ISO-DETAIL-IQ-SHA256.txt
+            artifact/S23U-Analysis-First-Camera-v0.4.1-CLEAN-CAMERA-UI.apk
+            artifact/S23U-Analysis-First-Camera-v0.4.1-CLEAN-CAMERA-UI-SHA256.txt
           if-no-files-found: error
           retention-days: 30
