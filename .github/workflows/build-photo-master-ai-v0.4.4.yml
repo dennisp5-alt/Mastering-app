@@ -37,9 +37,11 @@ jobs:
             PhotoMasterAI-v0.4.1-Source.zip \
             -d photomaster-v044-build
 
-          SETTINGS="$(find photomaster-v044-build -type f \
-            -name settings.gradle -o -name settings.gradle.kts \
-            | head -n 1)"
+          SETTINGS="$(find photomaster-v044-build -type f -name 'settings.gradle' | head -n 1)"
+
+          if [ -z "$SETTINGS" ]; then
+            SETTINGS="$(find photomaster-v044-build -type f -name 'settings.gradle.kts' | head -n 1)"
+          fi
 
           test -n "$SETTINGS" || {
             echo "::error::settings.gradle not found"
@@ -59,7 +61,7 @@ jobs:
           project = Path(os.environ["PROJECT"])
 
           # =====================================================
-          # VERSION + CLASSIC INTERPRETER DEPENDENCIES
+          # VERSION AND DEPENDENCIES
           # =====================================================
 
           build_file = project / "app/build.gradle"
@@ -93,14 +95,14 @@ jobs:
               "    implementation "
               "'com.google.ai.edge.litert:litert:1.4.2'\n"
               "    implementation "
-              "'com.google.ai.edge.litert:litert-gpu-api:1.4.2'\n"
-              "    runtimeOnly "
-              "'com.google.ai.edge.litert:litert-gpu:1.4.2'"
+              "'com.google.ai.edge.litert:litert-gpu:1.4.2'\n"
+              "    implementation "
+              "'com.google.ai.edge.litert:litert-gpu-api:1.4.2'"
           )
 
           if old_dep not in build:
               raise RuntimeError(
-                  "LiteRT 2.2.0 dependency not found"
+                  "Original LiteRT 2.2.0 dependency not found"
               )
 
           build = build.replace(
@@ -112,7 +114,7 @@ jobs:
           build_file.write_text(build)
 
           # =====================================================
-          # ANDROID 12+ OPENCL VISIBILITY
+          # OPENCL VISIBILITY FOR ANDROID
           # =====================================================
 
           manifest_file = project / (
@@ -129,38 +131,33 @@ jobs:
                       "application element not found in manifest"
                   )
 
-              app_end = manifest.find(">", app_start)
+              app_tag_end = manifest.find(">", app_start)
 
-              if app_end < 0:
+              if app_tag_end < 0:
                   raise RuntimeError(
-                      "application start tag is malformed"
+                      "application start tag malformed"
                   )
 
               native_libs = (
-                  "\n        "
-                  '<uses-native-library '
-                  'android:name="libOpenCL.so" '
-                  'android:required="false" />'
-                  "\n        "
-                  '<uses-native-library '
-                  'android:name="libOpenCL-car.so" '
-                  'android:required="false" />'
-                  "\n        "
-                  '<uses-native-library '
-                  'android:name="libOpenCL-pixel.so" '
-                  'android:required="false" />'
+                  "\n"
+                  "        <uses-native-library "
+                  "android:name=\"libOpenCL.so\" "
+                  "android:required=\"false\" />\n"
+                  "        <uses-native-library "
+                  "android:name=\"libvndksupport.so\" "
+                  "android:required=\"false\" />"
               )
 
               manifest = (
-                  manifest[:app_end + 1]
+                  manifest[:app_tag_end + 1]
                   + native_libs
-                  + manifest[app_end + 1:]
+                  + manifest[app_tag_end + 1:]
               )
 
               manifest_file.write_text(manifest)
 
           # =====================================================
-          # v0.4.4 CLASSIC INTERPRETER GPU RUNTIME
+          # CLASSIC LITERT INTERPRETER + OPENCL GPU
           # =====================================================
 
           runtime_file = project / (
@@ -184,18 +181,15 @@ jobs:
               "import kotlin.math.sqrt",
               "",
               "/**",
-              " * Photo Master AI v0.4.4 neural runtime.",
+              " * Photo Master AI v0.4.4 NAFNet runtime.",
               " *",
-              " * Uses classic LiteRT Interpreter + TfLiteGpuDelegateV2",
-              " * instead of CompiledModel.",
+              " * Classic LiteRT Interpreter GPU delegate experiment.",
+              " * Forced OpenCL backend.",
+              " * FP32 precision requested.",
+              " * CPU neural fallback intentionally disabled.",
               " *",
-              " * Backend: forced OpenCL.",
-              " * Precision-loss allowance: disabled for stability.",
-              " *",
-              " * NAFNet input/output remains:",
-              " * [1,3,256,256] Float32 RGB [0,1] NCHW.",
-              " *",
-              " * CPU neural inference is intentionally disabled.",
+              " * Tensor contract:",
+              " * [1, 3, 256, 256] Float32 RGB NCHW [0,1].",
               " */",
               "class NeuralDenoiserRuntime(",
               "    context: Context,",
@@ -207,7 +201,7 @@ jobs:
               "",
               "    init {",
               "        require(!cpuOnly) {",
-              "            \"CPU NAFNet is disabled in v0.4.4\"",
+              "            \"CPU NAFNet disabled in v0.4.4\"",
               "        }",
               "    }",
               "",
@@ -232,7 +226,6 @@ jobs:
               "    private val interpreterOptions =",
               "        Interpreter.Options().apply {",
               "            addDelegate(gpuDelegate)",
-              "            setUseXNNPACK(false)",
               "        }",
               "",
               "    private val interpreter =",
@@ -250,7 +243,7 @@ jobs:
               "            .order(ByteOrder.nativeOrder())",
               "",
               "    val acceleratorLabel: String =",
-              "        \"Classic TfLiteGpuDelegateV2 / OpenCL / FP32-safe\"",
+              "        \"Classic LiteRT GPU / OpenCL / FP32\"",
               "",
               "    init {",
               "        verifyTensorContract()",
@@ -269,8 +262,7 @@ jobs:
               "            .asFloatBuffer()",
               "            .put(input)",
               "",
-              "        inputBuffer.position(0)",
-              "",
+              "        inputBuffer.rewind()",
               "        outputBuffer.clear()",
               "",
               "        interpreter.run(",
@@ -278,25 +270,19 @@ jobs:
               "            outputBuffer",
               "        )",
               "",
-              "        outputBuffer.position(0)",
-              "",
-              "        val outputFloats =",
-              "            outputBuffer",
-              "                .order(ByteOrder.nativeOrder())",
-              "                .asFloatBuffer()",
+              "        outputBuffer.rewind()",
               "",
               "        val out = FloatArray(ELEMENTS)",
               "",
-              "        outputFloats.get(out)",
+              "        outputBuffer",
+              "            .asFloatBuffer()",
+              "            .get(out)",
               "",
               "        validateOutput(input, out)",
               "",
               "        return out",
               "    }",
               "",
-              "    /**",
-              "     * Synthetic probe before full-photo tiling.",
-              "     */",
               "    fun selfTest() {",
               "        checkThread()",
               "",
@@ -307,8 +293,11 @@ jobs:
               "            for (x in 0 until TILE) {",
               "                val i = y * TILE + x",
               "",
-              "                val gx = x / (TILE - 1f)",
-              "                val gy = y / (TILE - 1f)",
+              "                val gx =",
+              "                    x / (TILE - 1f)",
+              "",
+              "                val gy =",
+              "                    y / (TILE - 1f)",
               "",
               "                probe[i] =",
               "                    (0.08f + 0.78f * gx)",
@@ -388,7 +377,6 @@ jobs:
               "        input: FloatArray,",
               "        out: FloatArray",
               "    ) {",
-              "",
               "        var inSum = 0.0",
               "        var inSum2 = 0.0",
               "",
@@ -432,7 +420,6 @@ jobs:
               "            }",
               "",
               "            finiteCount++",
-              "",
               "            outSum += b",
               "            outSum2 += b * b",
               "",
@@ -553,15 +540,12 @@ jobs:
               "        private fun loadModel(",
               "            context: Context",
               "        ): MappedByteBuffer {",
-              "",
               "            context.assets",
               "                .openFd(MODEL_NAME)",
               "                .use { afd ->",
-              "",
               "                    FileInputStream(",
               "                        afd.fileDescriptor",
               "                    ).channel.use { channel ->",
-              "",
               "                        return channel.map(",
               "                            FileChannel.MapMode.READ_ONLY,",
               "                            afd.startOffset,",
@@ -579,7 +563,8 @@ jobs:
           )
 
           # =====================================================
-          # PERFORMANCE-SAFE NEURAL CONTROLLER
+          # NEURAL CONTROLLER
+          # Keep v0.4.2 no-hang policy.
           # =====================================================
 
           neural = project / (
@@ -606,7 +591,7 @@ jobs:
           guards = (
               marker
               + "\n\n"
-              + "    // v0.4.4 classic GPU performance guards.\n"
+              + "    // v0.4.4 neural performance guards.\n"
               + "    private static final long "
               + "MAX_SELF_TEST_MS = 12_000L;\n"
               + "    private static final long "
@@ -622,7 +607,7 @@ jobs:
           )
 
           # =====================================================
-          # REMOVE STARTUP GPU -> CPU FALLBACK
+          # REMOVE STARTUP GPU TO CPU FALLBACK
           # =====================================================
 
           start_marker = (
@@ -793,7 +778,6 @@ jobs:
               '                accelerator, "",'
           )
 
-          # Report the actual v0.4.4 backend.
           s = s.replace(
               "NAFNet-SIDD width32 / LiteRT 2.2",
               "NAFNet-SIDD width32 / classic OpenCL GPU"
@@ -810,20 +794,20 @@ jobs:
           neural.write_text(s)
 
           # =====================================================
-          # VERIFY
+          # SOURCE VERIFICATION
           # =====================================================
 
           runtime_check = runtime_file.read_text()
-          neural_check = neural.read_text()
           build_check = build_file.read_text()
           manifest_check = manifest_file.read_text()
+          neural_check = neural.read_text()
 
           required_runtime = [
               "org.tensorflow.lite.Interpreter",
               "org.tensorflow.lite.gpu.GpuDelegate",
+              "GpuDelegateFactory.Options",
               "GpuBackend.OPENCL",
               "setPrecisionLossAllowed(false)",
-              "setUseXNNPACK(false)",
               "GPU delegate must run on its creation thread",
               "NAFNet classic GPU non-finite output",
           ]
@@ -831,24 +815,26 @@ jobs:
           for item in required_runtime:
               if item not in runtime_check:
                   raise RuntimeError(
-                      "Missing runtime component: " + item
+                      "Missing runtime component: "
+                      + item
                   )
 
           required_build = [
               "litert:1.4.2",
-              "litert-gpu-api:1.4.2",
               "litert-gpu:1.4.2",
+              "litert-gpu-api:1.4.2",
           ]
 
           for item in required_build:
               if item not in build_check:
                   raise RuntimeError(
-                      "Missing Gradle dependency: " + item
+                      "Missing Gradle dependency: "
+                      + item
                   )
 
           if "libOpenCL.so" not in manifest_check:
               raise RuntimeError(
-                  "OpenCL native-library manifest entry missing"
+                  "OpenCL manifest entry missing"
               )
 
           if (
@@ -864,35 +850,31 @@ jobs:
           )
 
           print(
-              "Backend: classic LiteRT Interpreter"
+              "Classic LiteRT Interpreter enabled"
           )
 
           print(
-              "Delegate: TfLiteGpuDelegateV2"
+              "OpenCL GPU forced"
           )
 
           print(
-              "GPU backend: forced OpenCL"
+              "FP32 precision requested"
           )
 
           print(
-              "Precision-loss allowance: disabled"
+              "CPU neural fallback disabled"
           )
 
           print(
-              "CPU neural fallback: disabled"
+              "NCHW contract validation retained"
           )
 
           print(
-              "NCHW tensor validation: retained"
+              "NaN and Infinity diagnostics retained"
           )
 
           print(
-              "NaN/+Inf/-Inf diagnostics: retained"
-          )
-
-          print(
-              "Performance guards: retained"
+              "Performance guards retained"
           )
           PY
 
@@ -954,9 +936,7 @@ jobs:
             --output "$MODEL.tmp" \
             "$URL"
 
-          mv \
-            "$MODEL.tmp" \
-            "$MODEL"
+          mv "$MODEL.tmp" "$MODEL"
 
           test "$(stat -c%s "$MODEL")" -eq 62454048 || {
             echo "::error::Unexpected NAFNet model size"
@@ -1051,9 +1031,7 @@ jobs:
 
           if [ ! -x "$SDKMANAGER" ]; then
             SDKMANAGER="$(
-              find "$SDK/cmdline-tools" \
-                -type f \
-                -name sdkmanager \
+              find "$SDK/cmdline-tools" -type f -name 'sdkmanager' \
                 | sort -V \
                 | tail -n 1
             )"
@@ -1090,4 +1068,51 @@ jobs:
 
           APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
 
-          test -f "$
+          test -f "$APK" || {
+            echo "::error::APK not found"
+            exit 1
+          }
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+
+          AAPT="$SDK/build-tools/35.0.0/aapt"
+
+          BADGING="$("$AAPT" dump badging "$APK" | head -n 1)"
+
+          echo "$BADGING"
+
+          echo "$BADGING" \
+            | grep -q \
+            "package: name='com.dennis.photomasterai'"
+
+          echo "$BADGING" \
+            | grep -q \
+            "versionCode='13'"
+
+          echo "$BADGING" \
+            | grep -q \
+            "versionName='0.4.4'"
+
+          unzip -l "$APK" \
+            | grep -q \
+            'assets/nafnet_sidd_width32_fp16.tflite'
+
+          rm -rf artifact
+          mkdir artifact
+
+          OUT="artifact/PhotoMasterAI-v0.4.4-CLASSIC-OPENCL-GPU.apk"
+
+          cp "$APK" "$OUT"
+
+          sha256sum "$OUT" \
+            > "artifact/PhotoMasterAI-v0.4.4-CLASSIC-OPENCL-GPU-SHA256.txt"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoMasterAI-v0.4.4-CLASSIC-OPENCL-GPU
+          path: |
+            artifact/PhotoMasterAI-v0.4.4-CLASSIC-OPENCL-GPU.apk
+            artifact/PhotoMasterAI-v0.4.4-CLASSIC-OPENCL-GPU-SHA256.txt
+          if-no-files-found: error
+          retention-days: 30
