@@ -25,8 +25,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ZIP="PhotoMasterAI-v0.3.1-REPAIR-INTELLIGENCE-FIX-GitHubBuildSource.zip"
-          test -f "$ZIP" || { echo "::error::Missing $ZIP"; exit 1; }
+          ZIP="$(find . -maxdepth 1 -type f \( -name 'PhotoMasterAI-v0.3.1-Source.zip' -o -name 'PhotoMasterAI-v0.3.1-REPAIR-INTELLIGENCE-FIX-GitHubBuildSource.zip' -o -name 'PhotoMasterAI-v0.3.1*.zip' \) -printf '%f\n' | sort -V | tail -n 1 || true)"
+          test -n "$ZIP" || { echo "::error::No PhotoMasterAI v0.3.1 source ZIP found in repository root"; exit 1; }
+          echo "Using source ZIP: $ZIP"
           unzip -t "$ZIP"
           rm -rf photomaster-v031-build
           mkdir photomaster-v031-build
