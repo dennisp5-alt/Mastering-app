@@ -1,0 +1,413 @@
+name: Build Photo Master AI v0.4.2 Neural Runtime Recovery
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-photo-master-ai-v0.4.2.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Photo Master AI v0.4.2 Neural Runtime Recovery
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract v0.4.1 and patch neural runtime
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -f PhotoMasterAI-v0.4.1-Source.zip || {
+            echo "::error::PhotoMasterAI-v0.4.1-Source.zip missing"
+            exit 1
+          }
+
+          rm -rf photomaster-v042-build
+          mkdir photomaster-v042-build
+          unzip -q PhotoMasterAI-v0.4.1-Source.zip -d photomaster-v042-build
+
+          SETTINGS="$(find photomaster-v042-build -type f \
+            \( -name settings.gradle -o -name settings.gradle.kts \) \
+            | head -n 1)"
+
+          PROJECT="$(dirname "$SETTINGS")"
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+
+          export PROJECT
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+
+          project = Path(os.environ["PROJECT"])
+
+          # -----------------------------
+          # Version bump
+          # -----------------------------
+          build_file = project / "app/build.gradle"
+          s = build_file.read_text()
+
+          assert "versionCode 10" in s
+          assert "versionName '0.4.1'" in s
+
+          s = s.replace("versionCode 10", "versionCode 11", 1)
+          s = s.replace("versionName '0.4.1'", "versionName '0.4.2'", 1)
+
+          build_file.write_text(s)
+
+          # -----------------------------
+          # Neural runtime recovery
+          # -----------------------------
+          neural = project / (
+              "app/src/main/java/com/dennis/"
+              "photomasterai/NeuralDenoiser.java"
+          )
+
+          s = neural.read_text()
+
+          # Add runtime performance guards.
+          old = """    private static final int PLANE = TILE * TILE;
+          """
+
+          new = """    private static final int PLANE = TILE * TILE;
+
+              // v0.4.2 neural runtime performance guards.
+              private static final long MAX_SELF_TEST_MS = 12_000L;
+              private static final long MAX_TILE_MS = 8_000L;
+              private static final long MAX_TOTAL_NEURAL_MS = 75_000L;
+          """
+
+          if old not in s:
+              raise RuntimeError("Could not find PLANE constant")
+
+          s = s.replace(old, new, 1)
+
+          # ------------------------------------------------
+          # REMOVE GPU -> full-photo CPU fallback.
+          #
+          # v0.4.1 could move hundreds of NAFNet tiles onto
+          # CPU whenever GPU validation failed. On-device
+          # this looks like an application hang.
+          # ------------------------------------------------
+          old = """            try {
+                      runtime = new NeuralDenoiserRuntime(context, false);
+                      runtime.selfTest();
+                      accelerator = runtime.getAcceleratorLabel();
+                  } catch (Throwable gpuProblem) {
+                      if (runtime != null) {
+                          try { runtime.close(); } catch (Throwable ignored) { }
+                          runtime = null;
+                      }
+                      runtime = new NeuralDenoiserRuntime(context, true);
+                      runtime.selfTest();
+                      accelerator = runtime.getAcceleratorLabel();
+                      gpuFallback = true;
+                  }
+          """
+
+          new = """            long selfTestStart = System.nanoTime();
+
+                  runtime = new NeuralDenoiserRuntime(context, false);
+                  runtime.selfTest();
+                  accelerator = runtime.getAcceleratorLabel();
+
+                  long selfTestMs = Math.max(
+                          1L,
+                          Math.round(
+                                  (System.nanoTime() - selfTestStart)
+                                          / 1_000_000.0));
+
+                  if (selfTestMs > MAX_SELF_TEST_MS) {
+                      throw new IllegalStateException(
+                              "GPU self-test exceeded performance guard: "
+                                      + selfTestMs + " ms");
+                  }
+          """
+
+          if old not in s:
+              raise RuntimeError(
+                  "Could not find v0.4.1 GPU/CPU self-test fallback"
+              )
+
+          s = s.replace(old, new, 1)
+
+          # ------------------------------------------------
+          # REMOVE per-tile CPU retry.
+          # A failed GPU tile now aborts the neural stage and
+          # lets the existing outer rollback/fallback protect
+          # the photo.
+          # ------------------------------------------------
+          old = """                    float[] restored;
+                      try {
+                          restored = runtime.run(input);
+                      } catch (Throwable tileProblem) {
+                          if (!gpuFallback) {
+                              try { runtime.close(); } catch (Throwable ignored) { }
+                              runtime = new NeuralDenoiserRuntime(context, true);
+                              runtime.selfTest();
+                              accelerator = runtime.getAcceleratorLabel();
+                              gpuFallback = true;
+                              restored = runtime.run(input);
+                          } else {
+                              throw tileProblem;
+                          }
+                      }
+          """
+
+          new = """                    long elapsedBeforeTileMs = Math.max(
+                              1L,
+                              Math.round(
+                                      (System.nanoTime() - start)
+                                              / 1_000_000.0));
+
+                      if (tiles > 0
+                              && elapsedBeforeTileMs > MAX_TOTAL_NEURAL_MS) {
+                          throw new IllegalStateException(
+                                  "GPU neural pass exceeded total performance "
+                                          + "guard after "
+                                          + tiles
+                                          + " tiles: "
+                                          + elapsedBeforeTileMs
+                                          + " ms");
+                      }
+
+                      long tileStart = System.nanoTime();
+
+                      float[] restored = runtime.run(input);
+
+                      long tileMs = Math.max(
+                              1L,
+                              Math.round(
+                                      (System.nanoTime() - tileStart)
+                                              / 1_000_000.0));
+
+                      if (tileMs > MAX_TILE_MS) {
+                          throw new IllegalStateException(
+                                  "GPU tile exceeded performance guard: "
+                                          + tileMs
+                                          + " ms");
+                      }
+          """
+
+          if old not in s:
+              raise RuntimeError(
+                  "Could not find v0.4.1 per-tile CPU fallback"
+              )
+
+          s = s.replace(old, new, 1)
+
+          # cpuFallback remains false only for the existing
+          # report formatting. No CPU runtime may be created.
+          if "new NeuralDenoiserRuntime(context, true)" in s:
+              raise RuntimeError(
+                  "Unsafe full-photo CPU fallback still present"
+              )
+
+          neural.write_text(s)
+
+          print("v0.4.2 neural runtime recovery patch applied")
+          PY
+
+          grep -q "versionCode 11" "$PROJECT/app/build.gradle"
+          grep -q "versionName '0.4.2'" "$PROJECT/app/build.gradle"
+
+          grep -q "MAX_TOTAL_NEURAL_MS = 75_000L" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          if grep -q \
+            "new NeuralDenoiserRuntime(context, true)" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+          then
+            echo "::error::CPU NAFNet fallback still present"
+            exit 1
+          fi
+
+          echo "v0.4.2 runtime guard verified"
+
+      - name: Fetch pinned NAFNet-SIDD model
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+          ASSETS="$PROJECT/app/src/main/assets"
+          MODEL="$ASSETS/nafnet_sidd_width32_fp16.tflite"
+
+          mkdir -p "$ASSETS"
+
+          URL='https://huggingface.co/litert-community/NAFNet-SIDD-width32-LiteRT/resolve/main/nafnet_sidd_width32_fp16.tflite?download=true'
+
+          curl \
+            --fail \
+            --location \
+            --retry 5 \
+            --retry-all-errors \
+            --connect-timeout 30 \
+            --output "$MODEL.tmp" \
+            "$URL"
+
+          mv "$MODEL.tmp" "$MODEL"
+
+          test "$(stat -c%s "$MODEL")" -eq 62454048
+
+          echo \
+          'f8fbaa422411683c53e802cf7cc7cf9be0a0de00886ad4af057232e26b172a0c  '"$MODEL" \
+          | sha256sum -c -
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Run restoration safety checks
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf host-checks
+          mkdir host-checks
+
+          javac -d host-checks \
+            app/src/main/java/com/dennis/photomasterai/DeepPixelRepair.java \
+            app/src/main/java/com/dennis/photomasterai/RepairSafetyPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/SocialSourcePolicy.java \
+            tools/DeepPixelRepairHostChecks.java \
+            tools/RepairSafetyPolicyHostChecks.java \
+            tools/NeuralDenoisePolicyHostChecks.java \
+            tools/SocialSourcePolicyHostChecks.java
+
+          java -cp host-checks \
+            com.dennis.photomasterai.DeepPixelRepairHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.RepairSafetyPolicyHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.NeuralDenoisePolicyHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.SocialSourcePolicyHostChecks
+
+      - name: Restore stable Photo Master signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: photo-master-ai-debug-keystore-v1
+
+      - name: Create signing key if needed
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.android"
+
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Photo Master AI,O=Dennis Photo Master,C=AU" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -noprompt
+          fi
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Configure Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(
+              find "$SDK/cmdline-tools" \
+                -type f \
+                -name sdkmanager \
+                | sort -V \
+                | tail -n 1
+            )"
+          fi
+
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Build v0.4.2 APK
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :app:assembleDebug --stacktrace
+
+      - name: Verify and collect APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+          APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
+
+          test -f "$APK"
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          AAPT="$SDK/build-tools/35.0.0/aapt"
+
+          BADGING="$("$AAPT" dump badging "$APK" | head -n 1)"
+          echo "$BADGING"
+
+          echo "$BADGING" \
+            | grep -q "package: name='com.dennis.photomasterai'"
+
+          echo "$BADGING" \
+            | grep -q "versionCode='11'"
+
+          echo "$BADGING" \
+            | grep -q "versionName='0.4.2'"
+
+          unzip -l "$APK" \
+            | grep -q 'assets/nafnet_sidd_width32_fp16.tflite'
+
+          rm -rf artifact
+          mkdir artifact
+
+          OUT="artifact/PhotoMasterAI-v0.4.2-NEURAL-RUNTIME-RECOVERY.apk"
+
+          cp "$APK" "$OUT"
+
+          sha256sum "$OUT" \
+            > artifact/PhotoMasterAI-v0.4.2-NEURAL-RUNTIME-RECOVERY-SHA256.txt
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoMasterAI-v0.4.2-NEURAL-RUNTIME-RECOVERY
+          path: |
+            artifact/PhotoMasterAI-v0.4.2-NEURAL-RUNTIME-RECOVERY.apk
+            artifact/PhotoMasterAI-v0.4.2-NEURAL-RUNTIME-RECOVERY-SHA256.txt
+          if-no-files-found: error
+          retention-days: 30
