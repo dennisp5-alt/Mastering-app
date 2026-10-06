@@ -198,10 +198,7 @@ jobs:
           s = engine_file.read_text()
 
           old = "\n".join([
-              "        Bitmap out = Bitmap.createBitmap(",
-              "                source.getWidth(),",
-              "                source.getHeight(),",
-              "                Bitmap.Config.ARGB_8888);",
+              "        Bitmap out = Bitmap.createBitmap(source.getWidth(), source.getHeight(), Bitmap.Config.ARGB_8888);",
               "        renderChunked(source, out, p);",
           ])
 
@@ -233,7 +230,11 @@ jobs:
                   "Master render anchor not found"
               )
 
-          s = s.replace(old, new, 1)
+          s = s.replace(
+              old,
+              new,
+              1
+          )
 
           engine_file.write_text(s)
 
@@ -296,6 +297,8 @@ jobs:
           echo \
           'f8fbaa422411683c53e802cf7cc7cf9be0a0de00886ad4af057232e26b172a0c  '"$MODEL" \
           | sha256sum -c -
+
+          echo "Pinned NAFNet-SIDD model verified"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -421,7 +424,10 @@ jobs:
           PROJECT="${{ steps.source.outputs.project }}"
           APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
 
-          test -f "$APK"
+          test -f "$APK" || {
+            echo "::error::APK not found"
+            exit 1
+          }
 
           SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
           AAPT="$SDK/build-tools/35.0.0/aapt"
@@ -445,7 +451,8 @@ jobs:
           unzip -l "$APK" \
             | grep -q 'assets/nafnet_sidd_width32_fp16.tflite'
 
-          mkdir -p artifact
+          rm -rf artifact
+          mkdir artifact
 
           OUT="artifact/PhotoMasterAI-v0.4.13-SMOOTH-SURFACE-TERMINAL-GUARD.apk"
 
@@ -458,9 +465,10 @@ jobs:
           Photo Master AI v0.4.13
           versionCode 22
 
-          BASE: exact successful v0.4.12 recovery build.
+          BASE
+          Exact successful v0.4.12 recovery build.
 
-          DUCK FIX:
+          DUCK FIX
           - Smooth/water low-detail detection retained.
           - 5% high-ring neural cap retained.
           - +0.015 smooth-scene ringing limit retained.
@@ -472,7 +480,7 @@ jobs:
           - Terminal output copies the original working bitmap pixels
             directly instead of re-rendering them.
 
-          EXPECTED DUCK:
+          EXPECTED DUCK
           - 5% rejected for excess ringing.
           - Around 4% checked once.
           - Metric floor detected; remaining lower trials skipped.
@@ -486,13 +494,21 @@ jobs:
             Smooth-scene terminal protection: ORIGINAL RETAINED —
             no safe measurable improvement
 
-          NEXT:
-          Test duck, portrait, flower, detailed landscape.
+          NEXT TESTS
+          1. Duck
+          2. Portrait
+          3. Flower
+          4. Detailed landscape
 
-          FROZEN:
-          NAFNet-SIDD width32 / Classic LiteRT OpenCL / FP32 / NCHW.
-          No CPU NAFNet fallback.
+          FROZEN
+          - NAFNet-SIDD width32
+          - Classic LiteRT / OpenCL GPU / FP32
+          - NCHW FLOAT32 [1,3,256,256]
+          - No CPU neural fallback
+          - Smooth-scene +0.015 ring limit unchanged
           EOF
+
+          echo "v0.4.13 APK and continuation notes prepared"
 
       - name: Upload v0.4.13 APK and notes
         uses: actions/upload-artifact@v4
