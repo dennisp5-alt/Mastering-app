@@ -235,8 +235,8 @@ jobs:
           PY
 
           # Temporarily expose the version expected by the
-          # original optics patch. Only build.gradle is changed.
-          # The v0.4.18 integrity code remains intact.
+          # original optics patch. Only build.gradle changes.
+          # All v0.4.18 integrity code remains present.
 
           python3 - <<'PY'
           from pathlib import Path
@@ -279,17 +279,18 @@ jobs:
 
           bash /tmp/apply-old-optics.sh
 
-          # Fix known old optics compile problem,
-          # add correction-density guard,
-          # promote to v0.4.19.
-
           python3 - <<'PY'
           from pathlib import Path
           import os
+          import re
 
           project = Path(
               os.environ["PROJECT"]
           )
+
+          # ==============================================
+          # PROMOTE TO v0.4.19
+          # ==============================================
 
           build_file = (
               project / "app/build.gradle"
@@ -355,9 +356,9 @@ jobs:
               1
           )
 
-          analysis_anchor = "\n".join([
-              "        boolean exactOriginalRetention =",
-          ])
+          analysis_anchor = (
+              "        boolean exactOriginalRetention ="
+          )
 
           analysis_insert = "\n".join([
               "        PhotoAnalysis currentAnalysis =",
@@ -404,13 +405,10 @@ jobs:
           # ==============================================
           # OPTICS CORRECTION-DENSITY SAFETY GUARD
           #
-          # If more than 1.5% of all pixels would be
-          # corrected, assume broad scene colour rather
-          # than local lens fringing and roll it back.
+          # Whitespace-independent insertion.
           #
-          # Robust insertion:
-          # insert directly before the single
-          # candidate.getPixels() re-analysis call.
+          # Find candidate.getPixels( as a standalone Java
+          # statement regardless of spaces/tabs or indentation.
           # ==============================================
 
           repair_file = project / (
@@ -420,52 +418,69 @@ jobs:
 
           repair = repair_file.read_text()
 
-          marker = "\n".join([
-              "                  candidate.getPixels(",
-              "                          pixels,",
-          ])
-
-          marker_count = repair.count(
-              marker
+          pattern = re.compile(
+              r'(?m)^(?P<indent>[ \t]*)'
+              r'candidate\.getPixels\(\s*$'
           )
 
-          if marker_count != 1:
+          matches = list(
+              pattern.finditer(
+                  repair
+              )
+          )
+
+          if len(matches) != 1:
               raise RuntimeError(
-                  "Expected exactly one optics candidate.getPixels "
-                  + "re-analysis anchor, found "
-                  + str(marker_count)
+                  "Expected exactly one optics "
+                  "candidate.getPixels re-analysis statement, found "
+                  + str(len(matches))
               )
 
-          density_guard = "\n".join([
-              "                  double correctedFraction =",
-              "                          correctedPixels",
-              "                                  / (double) pixelCount;",
-              "",
-              "                  if (correctedFraction > 0.015) {",
-              "",
-              "                      candidate.recycle();",
-              "",
-              "                      return new Result(",
-              "                              source,",
-              "                              sourceAnalysis,",
-              "                              true,",
-              "                              false,",
-              "                              String.format(",
-              "                                      Locale.US,",
-              "                                      \"• CA/fringe candidate: ROLLED BACK — correction density %.2f%% exceeds 1.50%% safety ceiling\\n\"",
-              "                                              + \"• Broad colour structure protected; original mastered pixels retained\",",
-              "                                      correctedFraction * 100.0));",
-              "                  }",
-              "",
-          ])
+          match = matches[0]
 
-          repair = repair.replace(
-              marker,
-              density_guard + marker,
-              1
+          indent = match.group(
+              "indent"
           )
 
-          repair_file.write_text(repair)
+          density_lines = [
+              "double correctedFraction =",
+              "        correctedPixels",
+              "                / (double) pixelCount;",
+              "",
+              "if (correctedFraction > 0.015) {",
+              "",
+              "    candidate.recycle();",
+              "",
+              "    return new Result(",
+              "            source,",
+              "            sourceAnalysis,",
+              "            true,",
+              "            false,",
+              "            String.format(",
+              "                    Locale.US,",
+              "                    \"• CA/fringe candidate: ROLLED BACK — correction density %.2f%% exceeds 1.50%% safety ceiling\\n\"",
+              "                            + \"• Broad colour structure protected; original mastered pixels retained\",",
+              "                    correctedFraction * 100.0));",
+              "}",
+              "",
+          ]
+
+          density_guard = "\n".join(
+              indent + line
+              if line
+              else ""
+              for line in density_lines
+          )
+
+          repair = (
+              repair[:match.start()]
+              + density_guard
+              + repair[match.start():]
+          )
+
+          repair_file.write_text(
+              repair
+          )
 
           print(
               "v0.4.19 optics composed on top of stable "
@@ -853,22 +868,22 @@ jobs:
           If authoritative ORIGINAL RETAINED mode is active,
           optics is completely withheld.
 
-          PREVIOUS v0.4.19 FAILURE
+          PREVIOUS WORKFLOW FAILURES
 
-          Run:
-          37476511283
+          Run 37476511283:
+          large whitespace-sensitive density anchor not found.
 
-          Failure was NOT Java compilation.
+          Run 37478423290:
+          smaller indentation-sensitive candidate.getPixels anchor
+          also failed.
 
-          Source reconstruction succeeded.
+          CURRENT FIX
 
-          Failure:
-          Optics correction-density insertion anchor not found.
+          v0.4.19 now uses a whitespace-independent regular
+          expression to locate the unique candidate.getPixels(
+          re-analysis statement.
 
-          FIX:
-          density safety guard now inserts directly before the
-          unique candidate.getPixels() re-analysis call instead
-          of relying on a large whitespace-sensitive Java block.
+          Image-processing logic is otherwise unchanged.
 
           OLD OPTICS COMPILE BUG
 
