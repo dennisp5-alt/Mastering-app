@@ -1,4 +1,183 @@
-      - name: Apply v0.4.13 terminal guard
+name: Build Photo Master AI v0.4.13 Recovery
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-photo-master-ai-v0.4.13-recovery.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Photo Master AI v0.4.13 Terminal Guard Recovery
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+
+    steps:
+      - name: Checkout repository with history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Recover exact v0.4.12 source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BASE=".github/workflows/build-photo-master-ai-v0.4.12-recovery.yml"
+
+          test -f "$BASE" || {
+            echo "::error::v0.4.12 recovery workflow missing"
+            exit 1
+          }
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          lines = Path(
+              ".github/workflows/build-photo-master-ai-v0.4.12-recovery.yml"
+          ).read_text().splitlines()
+
+          target = "Recover and build exact v0.4.12 source"
+
+          start = next(
+              i for i, line in enumerate(lines)
+              if line.strip() == "- name: " + target
+          )
+
+          run = next(
+              i for i in range(start, len(lines))
+              if lines[i].strip() == "run: |"
+          )
+
+          body = []
+
+          for line in lines[run + 1:]:
+              if line.startswith("      - name:"):
+                  break
+
+              if not line.strip():
+                  body.append("")
+              elif line.startswith("          "):
+                  body.append(line[10:])
+              else:
+                  raise RuntimeError(
+                      "Unexpected indentation while extracting v0.4.12"
+                  )
+
+          Path("/tmp/recover-v0412.sh").write_text(
+              "\n".join(body) + "\n"
+          )
+          PY
+
+          bash /tmp/recover-v0412.sh
+
+          PROJECT="$(
+            find photomaster-v044-build \
+              -type f \
+              \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \) \
+              -printf '%h\n' \
+              | head -n 1
+          )"
+
+          test -n "$PROJECT" || {
+            echo "::error::Recovered project not found"
+            exit 1
+          }
+
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+
+          grep -q \
+            "versionCode 21" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "versionName '0.4.12'" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "smoothSurfaceProtection" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PhotoMasterEngine.java"
+
+          echo "v0.4.12 source recovered successfully"
+
+      - name: Apply existing v0.4.13 terminal patch
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+
+          PATCH_FILE=".github/workflows/build-photo-master-ai-v0.4.13.yml"
+
+          test -f "$PATCH_FILE" || {
+            echo "::error::Existing v0.4.13 patch file missing"
+            exit 1
+          }
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          lines = Path(
+              ".github/workflows/build-photo-master-ai-v0.4.13.yml"
+          ).read_text().splitlines()
+
+          target = "Apply v0.4.13 terminal guard"
+
+          start = next(
+              i for i, line in enumerate(lines)
+              if line.strip() == "- name: " + target
+          )
+
+          run = next(
+              i for i in range(start, len(lines))
+              if lines[i].strip() == "run: |"
+          )
+
+          body = []
+
+          for line in lines[run + 1:]:
+              if line.startswith("      - name:"):
+                  break
+
+              if not line.strip():
+                  body.append("")
+              elif line.startswith("          "):
+                  body.append(line[10:])
+              else:
+                  raise RuntimeError(
+                      "Unexpected indentation in v0.4.13 patch"
+                  )
+
+          Path("/tmp/apply-v0413.sh").write_text(
+              "\n".join(body) + "\n"
+          )
+          PY
+
+          bash /tmp/apply-v0413.sh
+
+          grep -q \
+            "versionCode 22" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "versionName '0.4.13'" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "smoothSurfaceTerminalGuard" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PhotoMasterEngine.java"
+
+          grep -q \
+            "smooth metric floor; lower blends skipped" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          echo "Existing v0.4.13 patch applied"
+
+      - name: Enforce exact original-pixel terminal output
         shell: bash
         env:
           PROJECT: ${{ steps.source.outputs.project }}
@@ -11,503 +190,66 @@
 
           project = Path(os.environ["PROJECT"])
 
-          # VERSION
-          build_file = project / "app/build.gradle"
-          build = build_file.read_text()
-
-          if "versionCode 21" not in build:
-              raise RuntimeError("v0.4.12 versionCode not found")
-
-          if "versionName '0.4.12'" not in build:
-              raise RuntimeError("v0.4.12 versionName not found")
-
-          build = build.replace(
-              "versionCode 21",
-              "versionCode 22",
-              1
-          )
-
-          build = build.replace(
-              "versionName '0.4.12'",
-              "versionName '0.4.13'",
-              1
-          )
-
-          build_file.write_text(build)
-
-          # =====================================================
-          # STOP USELESS LOWER-BLEND TRIALS AT METRIC FLOOR
-          # =====================================================
-
-          neural_file = project / (
-              "app/src/main/java/com/dennis/"
-              "photomasterai/NeuralDenoiser.java"
-          )
-
-          neural = neural_file.read_text()
-
-          old_loop = "\n".join([
-              "            double[] adaptiveScales = {",
-              "                    0.80, 0.65, 0.50, 0.38,",
-              "                    0.30, 0.24, 0.20, 0.16",
-              "            };",
-              "",
-              "            for (double scale : adaptiveScales) {",
-          ])
-
-          new_loop = "\n".join([
-              "            double[] adaptiveScales = {",
-              "                    0.80, 0.65, 0.50, 0.38,",
-              "                    0.30, 0.24, 0.20, 0.16",
-              "            };",
-              "",
-              "            double previousTrialNoise = after.noise;",
-              "            double previousTrialChroma = after.flatChromaNoise;",
-              "            double previousTrialDetail = after.detail;",
-              "            double previousTrialRinging = after.ringing;",
-              "",
-              "            for (double scale : adaptiveScales) {",
-          ])
-
-          if old_loop not in neural:
-              raise RuntimeError(
-                  "Adaptive loop anchor not found"
-              )
-
-          neural = neural.replace(
-              old_loop,
-              new_loop,
-              1
-          )
-
-          loop_pos = neural.find(
-              "            for (double scale : adaptiveScales) {"
-          )
-
-          recycle_pos = neural.find(
-              "                trial.recycle();",
-              loop_pos
-          )
-
-          if loop_pos < 0 or recycle_pos < 0:
-              raise RuntimeError(
-                  "Adaptive trial recycle anchor not found"
-              )
-
-          floor_guard = "\n".join([
-              "                boolean smoothMetricFloor =",
-              "                        NeuralDenoisePolicy.isSmoothSurfaceDecision(decision)",
-              "                                && !trialQuality.accepted",
-              "                                && Math.abs(trialAfter.noise - previousTrialNoise) <= 0.00010",
-              "                                && Math.abs(trialAfter.flatChromaNoise - previousTrialChroma) <= 0.00010",
-              "                                && Math.abs(trialAfter.detail - previousTrialDetail) <= 0.00010",
-              "                                && Math.abs(trialAfter.ringing - previousTrialRinging) <= 0.0015;",
-              "",
-              "                if (smoothMetricFloor) {",
-              "                    adaptiveTrace.append(",
-              "                            \" -> smooth metric floor; lower blends skipped\");",
-              "                    trial.recycle();",
-              "                    break;",
-              "                }",
-              "",
-              "                previousTrialNoise = trialAfter.noise;",
-              "                previousTrialChroma = trialAfter.flatChromaNoise;",
-              "                previousTrialDetail = trialAfter.detail;",
-              "                previousTrialRinging = trialAfter.ringing;",
-              "",
-          ])
-
-          neural = (
-              neural[:recycle_pos]
-              + floor_guard
-              + neural[recycle_pos:]
-          )
-
-          neural_file.write_text(neural)
-
-          # =====================================================
-          # TERMINAL SMOOTH-SCENE STATE
-          # =====================================================
-
           engine_file = project / (
               "app/src/main/java/com/dennis/"
               "photomasterai/PhotoMasterEngine.java"
           )
 
-          engine = engine_file.read_text()
+          s = engine_file.read_text()
 
-          old_fields = "\n".join([
-              "        boolean smoothSurfaceProtection;",
-              "        boolean conservativeOutputRetained;",
-              "",
-              "        double postNeuralRingAllowance;",
+          old = "\n".join([
+              "        Bitmap out = Bitmap.createBitmap(source.getWidth(), source.getHeight(), Bitmap.Config.ARGB_8888);",
+              "        renderChunked(source, out, p);",
           ])
 
-          new_fields = "\n".join([
-              "        boolean smoothSurfaceProtection;",
-              "        boolean conservativeOutputRetained;",
-              "        boolean smoothSurfaceTerminalGuard;",
-              "",
-              "        double postNeuralRingAllowance;",
-          ])
-
-          if old_fields not in engine:
-              raise RuntimeError(
-                  "Terminal field anchor not found"
-              )
-
-          engine = engine.replace(
-              old_fields,
-              new_fields,
-              1
-          )
-
-          old_default = "\n".join([
-              "        return master(",
-              "                source,",
-              "                a,",
-              "                mode,",
-              "                ai,",
-              "                social,",
-              "                a,",
-              "                false);",
-          ])
-
-          new_default = "\n".join([
-              "        return master(",
-              "                source,",
-              "                a,",
-              "                mode,",
-              "                ai,",
-              "                social,",
-              "                a,",
-              "                false,",
-              "                false);",
-          ])
-
-          if old_default not in engine:
-              raise RuntimeError(
-                  "Default master wrapper not found"
-              )
-
-          engine = engine.replace(
-              old_default,
-              new_default,
-              1
-          )
-
-          old_extended = "\n".join([
-              "    public static Result master(Bitmap source, PhotoAnalysis a, Mode mode,",
-              "                                AiVisionAnalyzer.Result ai,",
-              "                                SocialSourceAnalyzer.Result social,",
-              "                                PhotoAnalysis originalBaseline,",
-              "                                boolean neuralAccepted) {",
-              "        Params p = buildParams(a, mode,",
-              "                ai == null ? AiVisionAnalyzer.Result.none() : ai,",
-              "                social == null ? SocialSourceAnalyzer.Result.none() : social);",
-          ])
-
-          new_extended = "\n".join([
-              "    public static Result master(Bitmap source, PhotoAnalysis a, Mode mode,",
-              "                                AiVisionAnalyzer.Result ai,",
-              "                                SocialSourceAnalyzer.Result social,",
-              "                                PhotoAnalysis originalBaseline,",
-              "                                boolean neuralAccepted) {",
-              "        return master(",
-              "                source, a, mode, ai, social, originalBaseline,",
-              "                neuralAccepted, false);",
-              "    }",
-              "",
-              "    public static Result master(Bitmap source, PhotoAnalysis a, Mode mode,",
-              "                                AiVisionAnalyzer.Result ai,",
-              "                                SocialSourceAnalyzer.Result social,",
-              "                                PhotoAnalysis originalBaseline,",
-              "                                boolean neuralAccepted,",
-              "                                boolean neuralQcRejected) {",
-              "        Params p = buildParams(a, mode,",
-              "                ai == null ? AiVisionAnalyzer.Result.none() : ai,",
-              "                social == null ? SocialSourceAnalyzer.Result.none() : social);",
-          ])
-
-          if old_extended not in engine:
-              raise RuntimeError(
-                  "Extended master method not found"
-              )
-
-          engine = engine.replace(
-              old_extended,
-              new_extended,
-              1
-          )
-
-          old_call = "\n".join([
-              "        configurePostNeuralCoordination(",
-              "                p,",
-              "                a,",
-              "                originalBaseline,",
-              "                neuralAccepted);",
-          ])
-
-          new_call = "\n".join([
-              "        configurePostNeuralCoordination(",
-              "                p,",
-              "                a,",
-              "                originalBaseline,",
-              "                neuralAccepted,",
-              "                neuralQcRejected);",
-          ])
-
-          if old_call not in engine:
-              raise RuntimeError(
-                  "Coordination call not found"
-              )
-
-          engine = engine.replace(
-              old_call,
-              new_call,
-              1
-          )
-
-          old_sig = "\n".join([
-              "    private static void configurePostNeuralCoordination(",
-              "            Params p,",
-              "            PhotoAnalysis checkpoint,",
-              "            PhotoAnalysis originalBaseline,",
-              "            boolean neuralAccepted) {",
-          ])
-
-          new_sig = "\n".join([
-              "    private static void configurePostNeuralCoordination(",
-              "            Params p,",
-              "            PhotoAnalysis checkpoint,",
-              "            PhotoAnalysis originalBaseline,",
-              "            boolean neuralAccepted,",
-              "            boolean neuralQcRejected) {",
-          ])
-
-          if old_sig not in engine:
-              raise RuntimeError(
-                  "Coordination signature not found"
-              )
-
-          engine = engine.replace(
-              old_sig,
-              new_sig,
-              1
-          )
-
-          config_pos = engine.find(
-              "    private static void configurePostNeuralCoordination("
-          )
-
-          old_return = "\n".join([
-              "        if (!neuralAccepted) {",
-              "            return;",
-              "        }",
-          ])
-
-          return_pos = engine.find(
-              old_return,
-              config_pos
-          )
-
-          if return_pos < 0:
-              raise RuntimeError(
-                  "Terminal insertion point not found"
-              )
-
-          terminal = "\n".join([
-              "        if (p.smoothSurfaceProtection",
-              "                && neuralQcRejected) {",
-              "",
-              "            p.smoothSurfaceTerminalGuard = true;",
-              "",
-              "            p.repairLuma = 0.0;",
-              "            p.repairChroma = 0.0;",
-              "            p.repairDeblock = 0.0;",
-              "            p.repairDetail = 0.0;",
-              "",
-              "            p.denoise = 0.0;",
-              "            p.sharpen = 0.0;",
-              "            p.microContrast = 0.0;",
-              "            p.aiSubjectSharpen = 0.0;",
-              "",
-              "            p.exposureEv = 0.0;",
-              "            p.shadowLift = 0.0;",
-              "            p.highlightProtect = 0.0;",
-              "            p.contrast = 1.0;",
-              "            p.gamma = 1.0;",
-              "",
-              "            p.saturation = 1.0;",
-              "            p.vibrance = 0.0;",
-              "            p.greenControl = 1.0;",
-              "            p.blueControl = 1.0;",
-              "",
-              "            p.wbR = 1.0;",
-              "            p.wbG = 1.0;",
-              "            p.wbB = 1.0;",
-              "",
-              "            p.aiSubjectLiftEv = 0.0;",
-              "            p.aiBackgroundDepthEv = 0.0;",
-              "",
-              "            p.exposureActive = false;",
-              "            p.wbActive = false;",
-              "            p.toneActive = false;",
-              "            p.denoiseActive = false;",
-              "            p.sharpenActive = false;",
-              "            p.colourActive = false;",
-              "",
-              "            return;",
-              "        }",
-              "",
-              "        if (!neuralAccepted) {",
-              "            return;",
-              "        }",
-          ])
-
-          engine = (
-              engine[:return_pos]
-              + terminal
-              + engine[return_pos + len(old_return):]
-          )
-
-          old_report = "\n".join([
-              "        if (p.smoothSurfaceProtection) {",
-              '            sb.append("Smooth-surface preservation: ACTIVE — water/sky/low-texture safe mode\\n");',
-              "        }",
-          ])
-
-          new_report = "\n".join([
-              "        if (p.smoothSurfaceProtection) {",
-              '            sb.append("Smooth-surface preservation: ACTIVE — water/sky/low-texture safe mode\\n");',
-              "        }",
+          new = "\n".join([
+              "        Bitmap out;",
               "",
               "        if (p.smoothSurfaceTerminalGuard) {",
-              '            sb.append("Smooth-scene terminal protection: ORIGINAL RETAINED — no safe measurable improvement\\n");',
+              "            out = source.copy(",
+              "                    Bitmap.Config.ARGB_8888,",
+              "                    false);",
+              "",
+              "            if (out == null) {",
+              "                throw new IllegalStateException(",
+              "                        \"Unable to retain terminal original pixels\");",
+              "            }",
+              "",
+              "        } else {",
+              "            out = Bitmap.createBitmap(",
+              "                    source.getWidth(),",
+              "                    source.getHeight(),",
+              "                    Bitmap.Config.ARGB_8888);",
+              "",
+              "            renderChunked(source, out, p);",
               "        }",
           ])
 
-          if old_report not in engine:
+          if old not in s:
               raise RuntimeError(
-                  "Terminal report point not found"
+                  "Master render anchor not found"
               )
 
-          engine = engine.replace(
-              old_report,
-              new_report,
+          s = s.replace(
+              old,
+              new,
               1
           )
 
-          old_change = "\n".join([
-              "            if (p.smoothSurfaceProtection) {",
-              '                sb.append("• Smooth-surface finishing limited to preserve natural low-texture areas\\n");',
-              "            }",
-          ])
-
-          new_change = "\n".join([
-              "            if (p.smoothSurfaceProtection) {",
-              '                sb.append("• Smooth-surface finishing limited to preserve natural low-texture areas\\n");',
-              "            }",
-              "",
-              "            if (p.smoothSurfaceTerminalGuard) {",
-              '                sb.append("• Terminal smooth-scene guard bypassed tone, colour and detail finishing; original pixels retained\\n");',
-              "            }",
-          ])
-
-          if old_change not in engine:
-              raise RuntimeError(
-                  "Terminal Change Guard point not found"
-              )
-
-          engine = engine.replace(
-              old_change,
-              new_change,
-              1
-          )
-
-          engine_file.write_text(engine)
-
-          # =====================================================
-          # PASS NEURAL-QC-ROLLBACK SIGNAL INTO MASTER ENGINE
-          # =====================================================
-
-          main_file = project / (
-              "app/src/main/java/com/dennis/"
-              "photomasterai/MainActivity.java"
-          )
-
-          main = main_file.read_text()
-
-          main_old = "\n".join([
-              "                    result = PhotoMasterEngine.master(",
-              "                            processingBitmap,",
-              "                            processingAnalysis,",
-              "                            mode,",
-              "                            ai,",
-              "                            social,",
-              "                            originalAnalysis,",
-              "                            neuralResult != null",
-              "                                    && neuralResult.accepted);",
-          ])
-
-          main_new = "\n".join([
-              "                    result = PhotoMasterEngine.master(",
-              "                            processingBitmap,",
-              "                            processingAnalysis,",
-              "                            mode,",
-              "                            ai,",
-              "                            social,",
-              "                            originalAnalysis,",
-              "                            neuralResult != null",
-              "                                    && neuralResult.accepted,",
-              "                            neuralResult != null",
-              "                                    && neuralResult.attempted",
-              "                                    && !neuralResult.accepted",
-              "                                    && neuralResult.report != null",
-              '                                    && neuralResult.report.contains("Neural rollback:"));',
-          ])
-
-          if main_old not in main:
-              raise RuntimeError(
-                  "MainActivity master call not found"
-              )
-
-          main = main.replace(
-              main_old,
-              main_new,
-              1
-          )
-
-          main_file.write_text(main)
+          engine_file.write_text(s)
 
           print(
-              "v0.4.13 smooth-scene terminal guard applied"
+              "Terminal smooth scenes now bypass rendering and copy original pixels exactly"
           )
           PY
 
           grep -q \
-            "versionCode 22" \
-            "$PROJECT/app/build.gradle"
-
-          grep -q \
-            "versionName '0.4.13'" \
-            "$PROJECT/app/build.gradle"
-
-          grep -q \
-            "smooth metric floor; lower blends skipped" \
-            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
-
-          grep -q \
-            "smoothSurfaceTerminalGuard" \
+            "if (p.smoothSurfaceTerminalGuard)" \
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/PhotoMasterEngine.java"
 
           grep -q \
-            "Smooth-scene terminal protection: ORIGINAL RETAINED" \
+            "Unable to retain terminal original pixels" \
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/PhotoMasterEngine.java"
-
-          grep -q \
-            'report.contains("Neural rollback:")' \
-            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
 
           grep -q \
             "GpuBackend.OPENCL" \
@@ -521,4 +263,260 @@
             exit 1
           fi
 
-          echo "v0.4.13 source verification passed"
+          echo "v0.4.13 terminal path verification passed"
+
+      - name: Fetch pinned NAFNet-SIDD model
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+          ASSETS="$PROJECT/app/src/main/assets"
+          MODEL="$ASSETS/nafnet_sidd_width32_fp16.tflite"
+
+          mkdir -p "$ASSETS"
+
+          URL='https://huggingface.co/litert-community/NAFNet-SIDD-width32-LiteRT/resolve/main/nafnet_sidd_width32_fp16.tflite?download=true'
+
+          curl \
+            --fail \
+            --location \
+            --retry 5 \
+            --retry-all-errors \
+            --connect-timeout 30 \
+            --output "$MODEL.tmp" \
+            "$URL"
+
+          mv "$MODEL.tmp" "$MODEL"
+
+          test "$(stat -c%s "$MODEL")" -eq 62454048 || {
+            echo "::error::Unexpected NAFNet model size"
+            exit 1
+          }
+
+          echo \
+          'f8fbaa422411683c53e802cf7cc7cf9be0a0de00886ad4af057232e26b172a0c  '"$MODEL" \
+          | sha256sum -c -
+
+          echo "Pinned NAFNet-SIDD model verified"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Run all safety host checks
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf host-checks
+          mkdir host-checks
+
+          javac -d host-checks \
+            app/src/main/java/com/dennis/photomasterai/DeepPixelRepair.java \
+            app/src/main/java/com/dennis/photomasterai/RepairSafetyPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/SocialSourcePolicy.java \
+            tools/DeepPixelRepairHostChecks.java \
+            tools/RepairSafetyPolicyHostChecks.java \
+            tools/NeuralDenoisePolicyHostChecks.java \
+            tools/SocialSourcePolicyHostChecks.java \
+            tools/SmoothSurfaceGuardHostChecks.java
+
+          java -cp host-checks \
+            com.dennis.photomasterai.DeepPixelRepairHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.RepairSafetyPolicyHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.NeuralDenoisePolicyHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.SocialSourcePolicyHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.SmoothSurfaceGuardHostChecks
+
+      - name: Restore stable signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: photo-master-ai-debug-keystore-v1
+
+      - name: Create signing key on first build
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$HOME/.android"
+
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Photo Master AI,O=Dennis Photo Master,C=AU" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -noprompt
+          fi
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Configure Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(
+              find "$SDK/cmdline-tools" \
+                -type f \
+                -name 'sdkmanager' \
+                | sort -V \
+                | tail -n 1
+            )"
+          fi
+
+          test -n "$SDKMANAGER" || {
+            echo "::error::sdkmanager not found"
+            exit 1
+          }
+
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Build v0.4.13 APK
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gradle \
+            :app:assembleDebug \
+            --stacktrace
+
+      - name: Verify and collect v0.4.13
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+          APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
+
+          test -f "$APK" || {
+            echo "::error::APK not found"
+            exit 1
+          }
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          AAPT="$SDK/build-tools/35.0.0/aapt"
+
+          BADGING="$(
+            "$AAPT" dump badging "$APK" \
+              | head -n 1
+          )"
+
+          echo "$BADGING"
+
+          echo "$BADGING" \
+            | grep -q "package: name='com.dennis.photomasterai'"
+
+          echo "$BADGING" \
+            | grep -q "versionCode='22'"
+
+          echo "$BADGING" \
+            | grep -q "versionName='0.4.13'"
+
+          unzip -l "$APK" \
+            | grep -q 'assets/nafnet_sidd_width32_fp16.tflite'
+
+          rm -rf artifact
+          mkdir artifact
+
+          OUT="artifact/PhotoMasterAI-v0.4.13-SMOOTH-SURFACE-TERMINAL-GUARD.apk"
+
+          cp "$APK" "$OUT"
+
+          sha256sum "$OUT" \
+            > "artifact/PhotoMasterAI-v0.4.13-SMOOTH-SURFACE-TERMINAL-GUARD-SHA256.txt"
+
+          cat > "artifact/PhotoMasterAI-v0.4.13-Notes.txt" <<EOF
+          Photo Master AI v0.4.13
+          versionCode 22
+
+          BASE
+          Exact successful v0.4.12 recovery build.
+
+          DUCK FIX
+          - Smooth/water low-detail detection retained.
+          - 5% high-ring neural cap retained.
+          - +0.015 smooth-scene ringing limit retained.
+          - Adaptive lower blends stop when measured metrics hit the same floor.
+          - Neural QC rollback is passed into PhotoMasterEngine.
+          - Smooth-scene QC rejection becomes terminal.
+          - Deep Pixel Repair, tone, highlight roll-off, WB, colour,
+            vibrance, sharpening and micro-contrast are bypassed.
+          - Terminal output copies the original working bitmap pixels
+            directly instead of re-rendering them.
+
+          EXPECTED DUCK
+          - 5% rejected for excess ringing.
+          - Around 4% checked once.
+          - Metric floor detected; remaining lower trials skipped.
+          - Original pixels restored.
+          - Final OUTPUT QC approximately:
+            noise 0.015
+            flat chroma 0.026
+            detail 0.014
+            ring 0.73
+          - Report:
+            Smooth-scene terminal protection: ORIGINAL RETAINED —
+            no safe measurable improvement
+
+          NEXT TESTS
+          1. Duck
+          2. Portrait
+          3. Flower
+          4. Detailed landscape
+
+          FROZEN
+          - NAFNet-SIDD width32
+          - Classic LiteRT / OpenCL GPU / FP32
+          - NCHW FLOAT32 [1,3,256,256]
+          - No CPU neural fallback
+          - Smooth-scene +0.015 ring limit unchanged
+          EOF
+
+          echo "v0.4.13 APK and continuation notes prepared"
+
+      - name: Upload v0.4.13 APK and notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoMasterAI-v0.4.13-SMOOTH-SURFACE-TERMINAL-GUARD
+          path: |
+            artifact/PhotoMasterAI-v0.4.13-SMOOTH-SURFACE-TERMINAL-GUARD.apk
+            artifact/PhotoMasterAI-v0.4.13-SMOOTH-SURFACE-TERMINAL-GUARD-SHA256.txt
+            artifact/PhotoMasterAI-v0.4.13-Notes.txt
+          if-no-files-found: error
+          retention-days: 30
