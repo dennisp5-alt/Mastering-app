@@ -1,18 +1,7 @@
-name: Photo Master AI v0.4.13 Patch Source
-
-on:
-  workflow_dispatch:
-
-jobs:
-  patch-source:
-    if: ${{ false }}
-    runs-on: ubuntu-latest
-
-    steps:
       - name: Apply v0.4.13 terminal guard
         shell: bash
         env:
-          PROJECT: patch-source-only
+          PROJECT: ${{ steps.source.outputs.project }}
         run: |
           set -euo pipefail
 
