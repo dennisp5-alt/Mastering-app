@@ -1,0 +1,888 @@
+name: Build Photo Master AI v0.4.19 Optics Fringe Guard
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-photo-master-ai-v0.4.19-optics.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Photo Master AI v0.4.19 Optics Fringe Guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+
+    steps:
+      - name: Checkout repository with history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Recover exact successful v0.4.18 integrity source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          V0418_COMMIT="f69b6b535d24088d25fd7b1938bba328e4cb5840"
+
+          git cat-file -e "${V0418_COMMIT}^{commit}" || {
+            echo "::error::Successful v0.4.18 integrity commit unavailable"
+            exit 1
+          }
+
+          git show \
+            "${V0418_COMMIT}:.github/workflows/build-photo-master-ai-v0.4.18-integrity.yml" \
+            > /tmp/v0418-integrity.yml
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          lines = Path(
+              "/tmp/v0418-integrity.yml"
+          ).read_text().splitlines()
+
+          def extract_step(name, destination):
+              step = None
+
+              for i, line in enumerate(lines):
+                  if line.strip() == "- name: " + name:
+                      step = i
+                      break
+
+              if step is None:
+                  raise RuntimeError(
+                      "Workflow step not found: " + name
+                  )
+
+              run = None
+
+              for i in range(step, len(lines)):
+                  if lines[i].strip() == "run: |":
+                      run = i
+                      break
+
+                  if (
+                      i > step
+                      and lines[i].startswith("      - name:")
+                  ):
+                      break
+
+              if run is None:
+                  raise RuntimeError(
+                      "Run block not found: " + name
+                  )
+
+              body = []
+
+              for line in lines[run + 1:]:
+                  if line.startswith("      - name:"):
+                      break
+
+                  if not line.strip():
+                      body.append("")
+
+                  elif line.startswith("          "):
+                      body.append(line[10:])
+
+                  else:
+                      raise RuntimeError(
+                          "Unexpected indentation while extracting: "
+                          + name
+                      )
+
+              Path(destination).write_text(
+                  "\n".join(body) + "\n"
+              )
+
+          extract_step(
+              "Recover intended v0.4.18 source and fix compile accessor",
+              "/tmp/recover-v0418-source.sh"
+          )
+
+          print(
+              "Extracted successful v0.4.18 integrity source construction"
+          )
+          PY
+
+          bash /tmp/recover-v0418-source.sh
+
+          PROJECT="$(
+            find photomaster-v044-build \
+              -type f \
+              \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \) \
+              -printf '%h\n' \
+              | head -n 1
+          )"
+
+          test -n "$PROJECT" || {
+            echo "::error::Recovered project not found"
+            exit 1
+          }
+
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+
+          grep -q \
+            "versionCode 27" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "versionName '0.4.18'" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "class NeuralIntegrityPolicy" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralIntegrityPolicy.java"
+
+          grep -q \
+            "class NeuralIntegrityGuard" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralIntegrityGuard.java"
+
+          grep -q \
+            "Final shadow-integrity guard: ROLLBACK" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+
+          grep -q \
+            "ring allowance +0.025" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          echo "Exact successful v0.4.18 integrity source recovered"
+
+      - name: Apply v0.4.19 optics fringe guard
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+
+          FAILED_OPTICS_COMMIT="a64754f7ad215cc80d5777e222ed108a96045333"
+
+          git cat-file -e "${FAILED_OPTICS_COMMIT}^{commit}" || {
+            echo "::error::Pinned optics source commit unavailable"
+            exit 1
+          }
+
+          git show \
+            "${FAILED_OPTICS_COMMIT}:.github/workflows/build-photo-master-ai-v0.4.18-recovery.yml" \
+            > /tmp/old-optics.yml
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          lines = Path(
+              "/tmp/old-optics.yml"
+          ).read_text().splitlines()
+
+          step_name = (
+              "Apply v0.4.18 optics fringe guard"
+          )
+
+          step = None
+
+          for i, line in enumerate(lines):
+              if line.strip() == "- name: " + step_name:
+                  step = i
+                  break
+
+          if step is None:
+              raise RuntimeError(
+                  "Pinned optics step not found"
+              )
+
+          run = None
+
+          for i in range(step, len(lines)):
+              if lines[i].strip() == "run: |":
+                  run = i
+                  break
+
+              if (
+                  i > step
+                  and lines[i].startswith("      - name:")
+              ):
+                  break
+
+          if run is None:
+              raise RuntimeError(
+                  "Pinned optics run block not found"
+              )
+
+          body = []
+
+          for line in lines[run + 1:]:
+              if line.startswith("      - name:"):
+                  break
+
+              if not line.strip():
+                  body.append("")
+
+              elif line.startswith("          "):
+                  body.append(line[10:])
+
+              else:
+                  raise RuntimeError(
+                      "Unexpected optics workflow indentation"
+                  )
+
+          Path(
+              "/tmp/apply-old-optics.sh"
+          ).write_text(
+              "\n".join(body) + "\n"
+          )
+          PY
+
+          # Temporarily expose the version expected by the
+          # original optics patch. This changes build.gradle only;
+          # all v0.4.18 integrity code remains present.
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+
+          project = Path(
+              os.environ["PROJECT"]
+          )
+
+          build_file = (
+              project / "app/build.gradle"
+          )
+
+          build = build_file.read_text()
+
+          if "versionCode 27" not in build:
+              raise RuntimeError(
+                  "v0.4.18 versionCode not found"
+              )
+
+          if "versionName '0.4.18'" not in build:
+              raise RuntimeError(
+                  "v0.4.18 versionName not found"
+              )
+
+          build = build.replace(
+              "versionCode 27",
+              "versionCode 26",
+              1
+          )
+
+          build = build.replace(
+              "versionName '0.4.18'",
+              "versionName '0.4.17'",
+              1
+          )
+
+          build_file.write_text(build)
+          PY
+
+          bash /tmp/apply-old-optics.sh
+
+          # Correct the known old optics compile fault,
+          # add the new density guard and promote to v0.4.19.
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+
+          project = Path(
+              os.environ["PROJECT"]
+          )
+
+          build_file = (
+              project / "app/build.gradle"
+          )
+
+          build = build_file.read_text()
+
+          if "versionCode 27" not in build:
+              raise RuntimeError(
+                  "Pinned optics patch did not produce versionCode 27"
+              )
+
+          if "versionName '0.4.18'" not in build:
+              raise RuntimeError(
+                  "Pinned optics patch did not produce versionName 0.4.18"
+              )
+
+          build = build.replace(
+              "versionCode 27",
+              "versionCode 28",
+              1
+          )
+
+          build = build.replace(
+              "versionName '0.4.18'",
+              "versionName '0.4.19'",
+              1
+          )
+
+          build_file.write_text(build)
+
+          # ==============================================
+          # FIX OLD OPTICS Result.analysis ACCESS
+          # ==============================================
+
+          main_file = project / (
+              "app/src/main/java/com/dennis/"
+              "photomasterai/MainActivity.java"
+          )
+
+          main = main_file.read_text()
+
+          bad_guard = "\n".join([
+              "        if (result == null",
+              "                || result.bitmap == null",
+              "                || result.analysis == null) {",
+          ])
+
+          good_guard = "\n".join([
+              "        if (result == null",
+              "                || result.bitmap == null",
+              "                || result.bitmap.isRecycled()) {",
+          ])
+
+          if bad_guard not in main:
+              raise RuntimeError(
+                  "Known optics Result.analysis guard not found"
+              )
+
+          main = main.replace(
+              bad_guard,
+              good_guard,
+              1
+          )
+
+          analysis_anchor = "\n".join([
+              "        boolean exactOriginalRetention =",
+          ])
+
+          analysis_insert = "\n".join([
+              "        PhotoAnalysis currentAnalysis =",
+              "                PhotoAnalysis.analyse(",
+              "                        result.bitmap);",
+              "",
+              "        boolean exactOriginalRetention =",
+          ])
+
+          if analysis_anchor not in main:
+              raise RuntimeError(
+                  "Optics current-analysis insertion anchor not found"
+              )
+
+          main = main.replace(
+              analysis_anchor,
+              analysis_insert,
+              1
+          )
+
+          remaining = main.count(
+              "result.analysis"
+          )
+
+          if remaining != 3:
+              raise RuntimeError(
+                  "Unexpected remaining optics result.analysis "
+                  + "reference count: "
+                  + str(remaining)
+              )
+
+          main = main.replace(
+              "result.analysis",
+              "currentAnalysis"
+          )
+
+          if "result.analysis" in main:
+              raise RuntimeError(
+                  "Unsupported result.analysis accessor remains"
+              )
+
+          main_file.write_text(main)
+
+          # ==============================================
+          # OPTICS CORRECTION-DENSITY SAFETY GUARD
+          #
+          # If more than 1.5% of all pixels would be altered,
+          # assume broad scene colour rather than local fringe.
+          # ==============================================
+
+          repair_file = project / (
+              "app/src/main/java/com/dennis/"
+              "photomasterai/OpticalDefectRepair.java"
+          )
+
+          repair = repair_file.read_text()
+
+          density_anchor = "\n".join([
+              "                  if (correctedPixels == 0) {",
+              "",
+              "                      candidate.recycle();",
+              "",
+              "                      return new Result(",
+              "                              source,",
+              "                              sourceAnalysis,",
+              "                              true,",
+              "                              false,",
+              "                              \"• CA/fringe evidence measured, \"",
+              "                                      + \"but no safe local correction pixels remained\\n\"",
+              "                                      + \"• Original mastered pixels retained\");",
+              "                  }",
+              "",
+              "                  candidate.getPixels(",
+          ])
+
+          density_replacement = "\n".join([
+              "                  if (correctedPixels == 0) {",
+              "",
+              "                      candidate.recycle();",
+              "",
+              "                      return new Result(",
+              "                              source,",
+              "                              sourceAnalysis,",
+              "                              true,",
+              "                              false,",
+              "                              \"• CA/fringe evidence measured, \"",
+              "                                      + \"but no safe local correction pixels remained\\n\"",
+              "                                      + \"• Original mastered pixels retained\");",
+              "                  }",
+              "",
+              "                  double correctedFraction =",
+              "                          correctedPixels",
+              "                                  / (double) pixelCount;",
+              "",
+              "                  if (correctedFraction > 0.015) {",
+              "",
+              "                      candidate.recycle();",
+              "",
+              "                      return new Result(",
+              "                              source,",
+              "                              sourceAnalysis,",
+              "                              true,",
+              "                              false,",
+              "                              String.format(",
+              "                                      Locale.US,",
+              "                                      \"• CA/fringe candidate: ROLLED BACK — correction density %.2f%% exceeds 1.50%% safety ceiling\\n\"",
+              "                                              + \"• Broad colour structure protected; original mastered pixels retained\",",
+              "                                      correctedFraction * 100.0));",
+              "                  }",
+              "",
+              "                  candidate.getPixels(",
+          ])
+
+          if density_anchor not in repair:
+              raise RuntimeError(
+                  "Optics correction-density insertion anchor not found"
+              )
+
+          repair = repair.replace(
+              density_anchor,
+              density_replacement,
+              1
+          )
+
+          repair_file.write_text(repair)
+
+          print(
+              "v0.4.19 optics composed on top of stable "
+              "v0.4.18 integrity baseline"
+          )
+          PY
+
+          # ==============================================
+          # SOURCE VERIFICATION
+          # ==============================================
+
+          grep -q \
+            "versionCode 28" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "versionName '0.4.19'" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "class OpticalFringePolicy" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/OpticalFringePolicy.java"
+
+          grep -q \
+            "class OpticalDefectRepair" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/OpticalDefectRepair.java"
+
+          grep -q \
+            "applyOpticsIntelligence" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+
+          grep -q \
+            "PhotoAnalysis currentAnalysis" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+
+          if grep -q \
+            "result.analysis" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+          then
+            echo "::error::Unsupported result.analysis accessor remains"
+            exit 1
+          fi
+
+          grep -q \
+            "correction density" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/OpticalDefectRepair.java"
+
+          grep -q \
+            "MAX_CHANNEL_DELTA = 10" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/OpticalDefectRepair.java"
+
+          # v0.4.18 integrity baseline must still exist.
+
+          grep -q \
+            "class NeuralIntegrityPolicy" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralIntegrityPolicy.java"
+
+          grep -q \
+            "class NeuralIntegrityGuard" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralIntegrityGuard.java"
+
+          grep -q \
+            "localized tile/shadow integrity failure" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+
+          grep -q \
+            "Final shadow-integrity guard: ROLLBACK" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+
+          # Frozen neural path.
+
+          grep -q \
+            "ring allowance +0.025" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "SOFT_TOTAL_NEURAL_MS = 90_000L" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "MAX_TOTAL_NEURAL_MS = 240_000L" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "MAX_TILE_MS = 8_000L" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "GpuBackend.OPENCL" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiserRuntime.kt"
+
+          if grep -q \
+            "new NeuralDenoiserRuntime(context, true)" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+          then
+            echo "::error::CPU neural fallback detected"
+            exit 1
+          fi
+
+          echo "v0.4.19 optics source verification passed"
+
+      - name: Fetch pinned NAFNet-SIDD model
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+          ASSETS="$PROJECT/app/src/main/assets"
+          MODEL="$ASSETS/nafnet_sidd_width32_fp16.tflite"
+
+          mkdir -p "$ASSETS"
+
+          URL='https://huggingface.co/litert-community/NAFNet-SIDD-width32-LiteRT/resolve/main/nafnet_sidd_width32_fp16.tflite?download=true'
+
+          curl \
+            --fail \
+            --location \
+            --retry 5 \
+            --retry-all-errors \
+            --connect-timeout 30 \
+            --output "$MODEL.tmp" \
+            "$URL"
+
+          mv "$MODEL.tmp" "$MODEL"
+
+          test "$(stat -c%s "$MODEL")" -eq 62454048 || {
+            echo "::error::Unexpected NAFNet model size"
+            exit 1
+          }
+
+          echo \
+          'f8fbaa422411683c53e802cf7cc7cf9be0a0de00886ad4af057232e26b172a0c  '"$MODEL" \
+          | sha256sum -c -
+
+          echo "Pinned NAFNet-SIDD model verified"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Run all safety host checks
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf host-checks
+          mkdir host-checks
+
+          javac -d host-checks \
+            app/src/main/java/com/dennis/photomasterai/DeepPixelRepair.java \
+            app/src/main/java/com/dennis/photomasterai/RepairSafetyPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/SocialSourcePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralIntegrityPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/OpticalFringePolicy.java \
+            tools/DeepPixelRepairHostChecks.java \
+            tools/RepairSafetyPolicyHostChecks.java \
+            tools/NeuralDenoisePolicyHostChecks.java \
+            tools/SocialSourcePolicyHostChecks.java \
+            tools/SmoothSurfaceGuardHostChecks.java \
+            tools/NeuralIntegrityPolicyHostChecks.java \
+            tools/OpticalFringePolicyHostChecks.java
+
+          java -cp host-checks \
+            com.dennis.photomasterai.DeepPixelRepairHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.RepairSafetyPolicyHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.NeuralDenoisePolicyHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.SocialSourcePolicyHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.SmoothSurfaceGuardHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.NeuralIntegrityPolicyHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.OpticalFringePolicyHostChecks
+
+      - name: Restore stable Photo Master debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: photo-master-ai-debug-keystore-v1
+
+      - name: Create signing key on first build
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$HOME/.android"
+
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Photo Master AI,O=Dennis Photo Master,C=AU" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -noprompt
+          fi
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Configure Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(
+              find "$SDK/cmdline-tools" \
+                -type f \
+                -name 'sdkmanager' \
+                | sort -V \
+                | tail -n 1
+            )"
+          fi
+
+          test -n "$SDKMANAGER" || {
+            echo "::error::sdkmanager not found"
+            exit 1
+          }
+
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Build v0.4.19 APK
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gradle \
+            :app:assembleDebug \
+            --stacktrace
+
+      - name: Verify package and prepare artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+          APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
+
+          test -f "$APK" || {
+            echo "::error::APK not found"
+            exit 1
+          }
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          AAPT="$SDK/build-tools/35.0.0/aapt"
+
+          BADGING="$(
+            "$AAPT" dump badging "$APK" \
+              | head -n 1
+          )"
+
+          echo "$BADGING"
+
+          echo "$BADGING" \
+            | grep -q "package: name='com.dennis.photomasterai'"
+
+          echo "$BADGING" \
+            | grep -q "versionCode='28'"
+
+          echo "$BADGING" \
+            | grep -q "versionName='0.4.19'"
+
+          unzip -l "$APK" \
+            | grep -q 'assets/nafnet_sidd_width32_fp16.tflite'
+
+          rm -rf artifact
+          mkdir artifact
+
+          OUT="artifact/PhotoMasterAI-v0.4.19-OPTICS-FRINGE-GUARD.apk"
+
+          cp "$APK" "$OUT"
+
+          sha256sum "$OUT" \
+            > "artifact/PhotoMasterAI-v0.4.19-OPTICS-FRINGE-GUARD-SHA256.txt"
+
+          cat > "artifact/PhotoMasterAI-v0.4.19-Notes.txt" <<EOF
+          Photo Master AI — v0.4.19 Continuation Notes
+
+          Version:
+          v0.4.19
+          versionCode 28
+
+          BASELINE
+          Exact successful v0.4.18 Neural Integrity Guard.
+
+          Commit:
+          f69b6b535d24088d25fd7b1938bba328e4cb5840
+
+          v0.4.18 INTEGRITY BASELINE FROZEN
+          - waterfall bad neural result rejected
+          - duck good 5% neural result passed
+          - landscape correctly withheld neural
+          - person neural result passed
+          - local integrity guard retained
+          - final shadow integrity guard retained
+          - NAFNet/runtime/QC thresholds unchanged
+
+          NEW v0.4.19
+          OPTICS INTELLIGENCE v1
+          Chromatic aberration / colour-fringe guard.
+
+          Generic cross-camera processing.
+
+          Looks for narrow isolated:
+          - purple/green fringe
+          - red/cyan fringe
+          - high-contrast edge colour displacement
+
+          Stronger suspicion is applied toward the outer image area.
+
+          CORRECTION
+          - local only
+          - luminance preserving
+          - non-generative
+          - max RGB channel correction 10/255
+          - no crop
+          - no resize
+          - no invented detail
+
+          SAFETY
+          - weak evidence = no change
+          - excessive/global colour evidence = no change
+          - more than 1.50% corrected pixels = full rollback
+          - fringe evidence must improve
+          - detail/noise/chroma/ringing/tone/saturation/clipping
+            must stay inside safety limits
+          - any failed test = full optics rollback
+
+          ORIGINAL RETENTION
+          If authoritative ORIGINAL RETAINED mode is active,
+          optics is withheld completely.
+
+          OLD OPTICS BUILD FIX
+          Previous experimental optics build used the nonexistent
+          PhotoMasterEngine.Result.analysis field.
+
+          v0.4.19 instead runs:
+          PhotoAnalysis.analyse(result.bitmap)
+
+          FIRST TESTS
+          1. Landscape with branches/roof edges.
+          2. Backlit leaves against bright sky.
+          3. Person photo.
+          4. Duck.
+          5. Waterfall.
+
+          REPORT
+          Look for:
+          OPTICS INTELLIGENCE
+
+          Possible outcomes:
+          - no significant optical fringe evidence
+          - optics candidate rolled back
+          - colour-fringe repair APPLIED
+
+          NEXT AFTER VALIDATION
+          Measured vignetting correction.
+          Geometric distortion correction comes later.
+          EOF
+
+          echo "v0.4.19 APK and continuation notes prepared"
+
+      - name: Upload APK and continuation notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoMasterAI-v0.4.19-OPTICS-FRINGE-GUARD
+          path: |
+            artifact/PhotoMasterAI-v0.4.19-OPTICS-FRINGE-GUARD.apk
+            artifact/PhotoMasterAI-v0.4.19-OPTICS-FRINGE-GUARD-SHA256.txt
+            artifact/PhotoMasterAI-v0.4.19-Notes.txt
+          if-no-files-found: error
+          retention-days: 30
