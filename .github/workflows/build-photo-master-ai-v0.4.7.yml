@@ -1,0 +1,1039 @@
+name: Build Photo Master AI v0.4.7 Low-Detail QC Hotfix
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-photo-master-ai-v0.4.7.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Photo Master AI v0.4.7 Low-Detail QC Hotfix
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build v0.4.5 baseline and apply v0.4.6 stability fixes
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BASE=".github/workflows/build-photo-master-ai-v0.4.5.yml"
+
+          test -f "$BASE" || {
+            echo "::error::Known-good v0.4.5 workflow missing"
+            exit 1
+          }
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path(
+              ".github/workflows/build-photo-master-ai-v0.4.5.yml"
+          )
+
+          lines = p.read_text().splitlines()
+
+          step = None
+
+          for i, line in enumerate(lines):
+              if "Build proven v0.4.4 source baseline" in line:
+                  step = i
+                  break
+
+          if step is None:
+              raise RuntimeError(
+                  "Known-good v0.4.5 source step not found"
+              )
+
+          run = None
+
+          for i in range(step, len(lines)):
+              if lines[i].strip() == "run: |":
+                  run = i
+                  break
+
+          if run is None:
+              raise RuntimeError(
+                  "Known-good v0.4.5 run block not found"
+              )
+
+          body = []
+
+          for line in lines[run + 1:]:
+              if line.startswith("      - name:"):
+                  break
+
+              if not line.strip():
+                  body.append("")
+              elif line.startswith("          "):
+                  body.append(line[10:])
+              else:
+                  raise RuntimeError(
+                      "Unexpected v0.4.5 workflow indentation"
+                  )
+
+          Path("/tmp/v045-source.sh").write_text(
+              "\n".join(body) + "\n"
+          )
+
+          print(
+              "Extracted known-good v0.4.5 source builder"
+          )
+          PY
+
+          bash /tmp/v045-source.sh
+
+          SETTINGS="$(
+            find photomaster-v044-build \
+              -type f \
+              -name 'settings.gradle' \
+              | head -n 1
+          )"
+
+          if [ -z "$SETTINGS" ]; then
+            SETTINGS="$(
+              find photomaster-v044-build \
+                -type f \
+                -name 'settings.gradle.kts' \
+                | head -n 1
+            )"
+          fi
+
+          test -n "$SETTINGS" || {
+            echo "::error::Generated project not found"
+            exit 1
+          }
+
+          PROJECT="$(dirname "$SETTINGS")"
+
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+
+          export PROJECT
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          project = Path(os.environ["PROJECT"])
+
+          build_file = project / "app/build.gradle"
+          build = build_file.read_text()
+
+          if "versionCode 14" not in build:
+              raise RuntimeError(
+                  "v0.4.5 versionCode 14 not found"
+              )
+
+          if "versionName '0.4.5'" not in build:
+              raise RuntimeError(
+                  "v0.4.5 versionName not found"
+              )
+
+          build = build.replace(
+              "versionCode 14",
+              "versionCode 15",
+              1
+          )
+
+          build = build.replace(
+              "versionName '0.4.5'",
+              "versionName '0.4.6'",
+              1
+          )
+
+          build_file.write_text(build)
+
+          neural = project / (
+              "app/src/main/java/com/dennis/"
+              "photomasterai/NeuralDenoiser.java"
+          )
+
+          s = neural.read_text()
+
+          old = (
+              '        int tiles = 0;\n'
+              '        String accelerator = "LiteRT GPU";\n'
+              '        NeuralDenoiserRuntime runtime = null;'
+          )
+
+          new = (
+              '        int tiles = 0;\n'
+              '        String accelerator = "LiteRT GPU";\n'
+              '        long selfTestMs = 0L;\n'
+              '        boolean slowSelfTestWarning = false;\n'
+              '        long maxTileMs = 0L;\n'
+              '        int slowestTile = -1;\n'
+              '        int slowestTileX = -1;\n'
+              '        int slowestTileY = -1;\n'
+              '        NeuralDenoiserRuntime runtime = null;'
+          )
+
+          if old not in s:
+              raise RuntimeError(
+                  "Neural timing declaration point not found"
+              )
+
+          s = s.replace(
+              old,
+              new,
+              1
+          )
+
+          if (
+              "            long selfTestMs = Math.max("
+              not in s
+          ):
+              raise RuntimeError(
+                  "Self-test timing assignment not found"
+              )
+
+          s = s.replace(
+              "            long selfTestMs = Math.max(",
+              "            selfTestMs = Math.max(",
+              1
+          )
+
+          pattern = re.compile(
+              r'\n\s*if '
+              r'\(selfTestMs > MAX_SELF_TEST_MS\) '
+              r'\{\s*'
+              r'throw new IllegalStateException\(\s*'
+              r'"Classic GPU self-test exceeded '
+              r'performance guard: "\s*'
+              r'\+ selfTestMs \+ " ms"\);\s*'
+              r'\}',
+              re.MULTILINE
+          )
+
+          s, count = pattern.subn(
+              '\n'
+              '            slowSelfTestWarning = '
+              'selfTestMs > MAX_SELF_TEST_MS;',
+              s,
+              count=1
+          )
+
+          if count != 1:
+              raise RuntimeError(
+                  "Fatal self-test timing block not found"
+              )
+
+          pattern = re.compile(
+              r'\s*if '
+              r'\(tileMs > MAX_TILE_MS\) '
+              r'\{\s*'
+              r'throw new IllegalStateException\(\s*'
+              r'"Classic GPU tile exceeded '
+              r'performance guard: "\s*'
+              r'\+ tileMs \+ " ms"\);\s*'
+              r'\}',
+              re.MULTILINE
+          )
+
+          replacement = '''
+                    int currentTile = tiles + 1;
+
+                    if (tileMs > maxTileMs) {
+                        maxTileMs = tileMs;
+                        slowestTile = currentTile;
+                        slowestTileX = writeX;
+                        slowestTileY = writeY;
+                    }
+
+                    if (tileMs > MAX_TILE_MS) {
+                        throw new IllegalStateException(
+                                "Classic GPU tile #"
+                                        + currentTile
+                                        + " at ("
+                                        + writeX
+                                        + ","
+                                        + writeY
+                                        + ") exceeded performance guard: "
+                                        + tileMs
+                                        + " ms");
+                    }'''
+
+          s, count = pattern.subn(
+              replacement,
+              s,
+              count=1
+          )
+
+          if count != 1:
+              raise RuntimeError(
+                  "Tile performance guard not found"
+              )
+
+          timing_anchor = (
+              '                before.ringing,\n'
+              '                after.ringing);\n\n'
+              '        String adaptiveLine;'
+          )
+
+          timing_insert = (
+              '                before.ringing,\n'
+              '                after.ringing);\n\n'
+              '        metrics += String.format(\n'
+              '                Locale.US,\n'
+              '                "\\n• GPU timing: '
+              'self-test %.1fs%s | '
+              'slowest tile #%d %d ms '
+              'at (%d,%d)",\n'
+              '                selfTestMs / 1000.0,\n'
+              '                slowSelfTestWarning '
+              '? " (slow but valid)" : "",\n'
+              '                slowestTile,\n'
+              '                maxTileMs,\n'
+              '                slowestTileX,\n'
+              '                slowestTileY);\n\n'
+              '        String adaptiveLine;'
+          )
+
+          if timing_anchor not in s:
+              raise RuntimeError(
+                  "Adaptive metrics anchor not found"
+              )
+
+          s = s.replace(
+              timing_anchor,
+              timing_insert,
+              1
+          )
+
+          neural.write_text(s)
+
+          ai_file = project / (
+              "app/src/main/java/com/dennis/"
+              "photomasterai/AiVisionAnalyzer.java"
+          )
+
+          ai = ai_file.read_text()
+
+          old = (
+              '            boolean person = '
+              '!faces.isEmpty() || coverage > 0.025 '
+              '|| hasAny(labels, 0.45f, '
+              '"person", "people", "human", '
+              '"portrait", "face", "selfie");'
+          )
+
+          new = (
+              '            boolean personLabel = '
+              'hasAny(labels, 0.55f, '
+              '"person", "people", "human", '
+              '"portrait", "face", "selfie", '
+              '"skin", "smile");\n'
+              '            boolean person = '
+              '!faces.isEmpty() || personLabel;'
+          )
+
+          if old not in ai:
+              raise RuntimeError(
+                  "Original person trust rule not found"
+              )
+
+          ai = ai.replace(
+              old,
+              new,
+              1
+          )
+
+          ai_file.write_text(ai)
+
+          engine = project / (
+              "app/src/main/java/com/dennis/"
+              "photomasterai/PhotoMasterEngine.java"
+          )
+
+          e = engine.read_text()
+
+          old = (
+              '                    float subject = '
+              '(p.neuralMode && p.ai != null '
+              '&& p.ai.available)\n'
+              '                            ? '
+              'p.ai.subjectAt(x, sy, width, height) '
+              ': 0f;'
+          )
+
+          new = (
+              '                    float subject = '
+              '(p.neuralMode && p.ai != null '
+              '&& p.ai.available && p.ai.personLike)\n'
+              '                            ? '
+              'p.ai.subjectAt(x, sy, width, height) '
+              ': 0f;'
+          )
+
+          if old not in e:
+              raise RuntimeError(
+                  "Subject mask use point not found"
+              )
+
+          e = e.replace(
+              old,
+              new,
+              1
+          )
+
+          person_pattern = re.compile(
+              r'        if \(ai\.personLike '
+              r'&& ai\.personCoverage > 0\.012\) \{\s*'
+              r'p\.aiSubjectLiftEv = '
+              r'max \? 0\.12 : 0\.065;\s*'
+              r'p\.aiSubjectSharpen = '
+              r'max \? 0\.055 : 0\.030;\s*'
+              r'p\.aiBackgroundDepthEv = '
+              r'max \? 0\.035 : 0\.015;\s*'
+              r'p\.sharpen = Math\.min'
+              r'\(p\.sharpen, max \? 0\.16 : 0\.13\);\s*'
+              r'p\.microContrast = Math\.min'
+              r'\(p\.microContrast, max \? 0\.14 : 0\.09\);\s*'
+              r'\}',
+              re.MULTILINE
+          )
+
+          person_replacement = "\n".join([
+              "        if (ai.personLike && ai.personCoverage > 0.012) {",
+              "            double personCoverage =",
+              "                    clamp(ai.personCoverage, 0.0, 1.0);",
+              "",
+              "            if (personCoverage >= 0.65) {",
+              "                p.aiSubjectLiftEv =",
+              "                        max ? 0.070 : 0.045;",
+              "                p.aiBackgroundDepthEv =",
+              "                        max ? 0.012 : 0.007;",
+              "            } else if (personCoverage >= 0.40) {",
+              "                p.aiSubjectLiftEv =",
+              "                        max ? 0.090 : 0.055;",
+              "                p.aiBackgroundDepthEv =",
+              "                        max ? 0.022 : 0.010;",
+              "            } else {",
+              "                p.aiSubjectLiftEv =",
+              "                        max ? 0.12 : 0.065;",
+              "                p.aiBackgroundDepthEv =",
+              "                        max ? 0.035 : 0.015;",
+              "            }",
+              "",
+              "            p.aiSubjectSharpen =",
+              "                    max ? 0.055 : 0.030;",
+              "",
+              "            p.sharpen = Math.min(",
+              "                    p.sharpen,",
+              "                    max ? 0.16 : 0.13);",
+              "",
+              "            p.microContrast = Math.min(",
+              "                    p.microContrast,",
+              "                    max ? 0.14 : 0.09);",
+              "        }",
+          ])
+
+          e, person_count = person_pattern.subn(
+              person_replacement,
+              e,
+              count=1
+          )
+
+          if person_count != 1:
+              raise RuntimeError(
+                  "Person finishing profile not found"
+              )
+
+          engine.write_text(e)
+
+          print("Photo Master AI v0.4.6 patch applied")
+          print("NAFNet/OpenCL/blend/QC unchanged")
+          print("Slow valid self-test is warning-only")
+          print("Tile timing diagnostics enabled")
+          print("Person-mask semantic trust enabled")
+          print("Large portraits use gentler relighting")
+          PY
+
+          grep -q \
+            "versionCode 15" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "versionName '0.4.6'" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "MAX_TOTAL_NEURAL_MS = 90_000L" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "slowSelfTestWarning" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "Classic GPU tile #" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "GPU timing: self-test" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "boolean person = !faces.isEmpty() || personLabel" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/AiVisionAnalyzer.java"
+
+          grep -q \
+            "p.ai.available && p.ai.personLike" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PhotoMasterEngine.java"
+
+          grep -q \
+            "personCoverage >= 0.65" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PhotoMasterEngine.java"
+
+          grep -q \
+            "Adaptive blend recovery" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "GpuBackend.OPENCL" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiserRuntime.kt"
+
+          if grep -q \
+            "new NeuralDenoiserRuntime(context, true)" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+          then
+            echo "::error::CPU NAFNet fallback detected"
+            exit 1
+          fi
+
+          echo "v0.4.6 source verification passed"
+
+      - name: Apply v0.4.7 low-detail QC and classifier hotfix
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          project = Path(os.environ["PROJECT"])
+
+          # VERSION
+
+          build_file = project / "app/build.gradle"
+          build = build_file.read_text()
+
+          if "versionCode 15" not in build:
+              raise RuntimeError(
+                  "v0.4.6 versionCode 15 not found"
+              )
+
+          if "versionName '0.4.6'" not in build:
+              raise RuntimeError(
+                  "v0.4.6 versionName not found"
+              )
+
+          build = build.replace(
+              "versionCode 15",
+              "versionCode 16",
+              1
+          )
+
+          build = build.replace(
+              "versionName '0.4.6'",
+              "versionName '0.4.7'",
+              1
+          )
+
+          build_file.write_text(build)
+
+          # LOW-DETAIL-AWARE NEURAL QC
+
+          policy_file = project / (
+              "app/src/main/java/com/dennis/"
+              "photomasterai/NeuralDenoisePolicy.java"
+          )
+
+          policy = policy_file.read_text()
+
+          old = (
+              "        double minDetail = bestBenefit >= 0.25 ? 0.92 : "
+              "(decision.personLike ? 0.95 : 0.935);\n"
+              "        boolean detailSafe = detailRatio >= minDetail;\n"
+              "        boolean ringingSafe = afterRinging <= "
+              "beforeRinging + 0.025;"
+          )
+
+          new = (
+              "        double minDetail = bestBenefit >= 0.25 ? 0.92 : "
+              "(decision.personLike ? 0.95 : 0.935);\n"
+              "        double absoluteDetailLoss = "
+              "Math.max(0.0, beforeDetail - afterDetail);\n"
+              "        boolean veryLowDetailSource = "
+              "beforeDetail <= 0.020;\n"
+              "        boolean lowDetailRecoverySafe = "
+              "veryLowDetailSource\n"
+              "                && bestBenefit >= 0.18\n"
+              "                && absoluteDetailLoss <= "
+              "Math.min(0.00125, beforeDetail * 0.09);\n"
+              "        boolean detailSafe = detailRatio >= minDetail "
+              "|| lowDetailRecoverySafe;\n"
+              "        boolean ringingSafe = afterRinging <= "
+              "beforeRinging + 0.025;"
+          )
+
+          if old not in policy:
+              raise RuntimeError(
+                  "Neural detail QC anchor not found"
+              )
+
+          policy = policy.replace(
+              old,
+              new,
+              1
+          )
+
+          old = (
+              "        return new Quality(true, lumaBenefit, "
+              "chromaBenefit, detailRatio,\n"
+              "                \"accepted by neural denoise QC\");"
+          )
+
+          new = (
+              "        String acceptedReason = "
+              "lowDetailRecoverySafe && detailRatio < minDetail\n"
+              "                ? \"accepted by low-detail "
+              "absolute-loss neural QC\"\n"
+              "                : \"accepted by neural denoise QC\";\n"
+              "        return new Quality(true, lumaBenefit, "
+              "chromaBenefit, detailRatio,\n"
+              "                acceptedReason);"
+          )
+
+          if old not in policy:
+              raise RuntimeError(
+                  "Neural accepted-reason anchor not found"
+              )
+
+          policy = policy.replace(
+              old,
+              new,
+              1
+          )
+
+          policy_file.write_text(policy)
+
+          # HOST CHECK FOR DUCK-STYLE LOW-DETAIL CASE
+
+          host_file = project / (
+              "tools/NeuralDenoisePolicyHostChecks.java"
+          )
+
+          host = host_file.read_text()
+
+          host_anchor = (
+              '        System.out.println('
+              '"Neural denoise policy host checks passed");'
+          )
+
+          if host_anchor not in host:
+              raise RuntimeError(
+                  "Neural host-check anchor not found"
+              )
+
+          host_test = "\n".join([
+              "        NeuralDenoisePolicy.Decision lowDetail = NeuralDenoisePolicy.decide(",
+              "                0.015, 0.026, 0.014, 12_000_000L, true, false, false, false);",
+              "        check(lowDetail.active,",
+              '                "low-detail noisy image should enter neural denoise");',
+              "",
+              "        NeuralDenoisePolicy.Quality lowDetailSafe = NeuralDenoisePolicy.evaluate(",
+              "                0.015, 0.026, 0.014, 0.73, 0.68, 0.57, 0.06, 0.000, 0.000,",
+              "                0.0116, 0.0204, 0.0129, 0.74, 0.68, 0.57, 0.06, 0.000, 0.000,",
+              "                lowDetail);",
+              "        check(lowDetailSafe.accepted,",
+              '                "tiny absolute detail loss with strong denoise benefit should pass on very-low-detail sources");',
+              "        check(lowDetailSafe.reason.contains(\"low-detail\"),",
+              '                "low-detail acceptance should be reported explicitly");',
+              "",
+              "        NeuralDenoisePolicy.Quality lowDetailUnsafe = NeuralDenoisePolicy.evaluate(",
+              "                0.015, 0.026, 0.014, 0.73, 0.68, 0.57, 0.06, 0.000, 0.000,",
+              "                0.0105, 0.0180, 0.0118, 0.74, 0.68, 0.57, 0.06, 0.000, 0.000,",
+              "                lowDetail);",
+              "        check(!lowDetailUnsafe.accepted,",
+              '                "large absolute detail loss must still be rejected");',
+              "",
+          ])
+
+          host = host.replace(
+              host_anchor,
+              host_test + host_anchor,
+              1
+          )
+
+          host_file.write_text(host)
+
+          # FIX FALSE ANIMAL TAGS FROM SHORT SUBSTRINGS
+
+          ai_file = project / (
+              "app/src/main/java/com/dennis/"
+              "photomasterai/AiVisionAnalyzer.java"
+          )
+
+          ai = ai_file.read_text()
+
+          old = (
+              '            boolean animal = insect || '
+              'hasAny(labels, 0.48f, "animal", "bird", '
+              '"dog", "cat", "wildlife", "pet");'
+          )
+
+          new = (
+              '            boolean animal = insect || '
+              'hasAny(labels, 0.48f, "animal", "bird", "wildlife")\n'
+              '                    || hasExact(labels, 0.48f, '
+              '"dog", "cat", "pet");'
+          )
+
+          if old not in ai:
+              raise RuntimeError(
+                  "Animal classifier anchor not found"
+              )
+
+          ai = ai.replace(
+              old,
+              new,
+              1
+          )
+
+          helper_anchor = (
+              "    private static String safeMessage(Throwable t) {"
+          )
+
+          if helper_anchor not in ai:
+              raise RuntimeError(
+                  "AI helper insertion anchor not found"
+              )
+
+          exact_helper = "\n".join([
+              "    private static boolean hasExact(List<LabelScore> labels, float min, String... terms) {",
+              "        if (labels == null) return false;",
+              "        for (LabelScore score : labels) {",
+              "            if (score.confidence < min) continue;",
+              "            String s = score.label.trim().toLowerCase(Locale.US);",
+              "            for (String term : terms) {",
+              "                if (s.equals(term)) return true;",
+              "            }",
+              "        }",
+              "        return false;",
+              "    }",
+              "",
+          ])
+
+          ai = ai.replace(
+              helper_anchor,
+              exact_helper + helper_anchor,
+              1
+          )
+
+          ai_file.write_text(ai)
+
+          # HONEST PERSON-MASK REPORTING
+
+          engine_file = project / (
+              "app/src/main/java/com/dennis/"
+              "photomasterai/PhotoMasterEngine.java"
+          )
+
+          engine = engine_file.read_text()
+
+          report_pattern = re.compile(
+              r'                if \(p\.ai\.personCoverage > 0\.012\) '
+              r'sb\.append\("[^"]*Neural person mask drives local '
+              r'subject/background finishing\\n"\);\s*'
+              r'                else sb\.append\("[^"]*Neural scene labels '
+              r'drive the finishing profile; no person mask applied\\n"\);',
+              re.MULTILINE
+          )
+
+          report_replacement = "\n".join([
+              '                if (p.ai.personLike && p.ai.personCoverage > 0.012) sb.append("\\u2022 Neural person mask drives local subject/background finishing\\n");',
+              '                else if (!p.ai.personLike && p.ai.personCoverage > 0.012) sb.append("\\u2022 Segmentation mask ignored — no supporting person evidence\\n");',
+              '                else sb.append("\\u2022 Neural scene labels drive the finishing profile; no person mask applied\\n");',
+          ])
+
+          engine, report_count = report_pattern.subn(
+              lambda m: report_replacement,
+              engine,
+              count=1
+          )
+
+          if report_count != 1:
+              raise RuntimeError(
+                  "Person-mask report anchor not found"
+              )
+
+          engine_file.write_text(engine)
+
+          print("Photo Master AI v0.4.7 hotfix applied")
+          print("Normal neural ratio QC unchanged")
+          print("Very-low-detail absolute-loss recovery added")
+          print("Short animal labels now require exact match")
+          print("Ignored raw person masks are reported honestly")
+          PY
+
+          grep -q \
+            "versionCode 16" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "versionName '0.4.7'" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "lowDetailRecoverySafe" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java"
+
+          grep -q \
+            "accepted by low-detail absolute-loss neural QC" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java"
+
+          grep -q \
+            'hasExact(labels, 0.48f, "dog", "cat", "pet")' \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/AiVisionAnalyzer.java"
+
+          grep -q \
+            "Segmentation mask ignored" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PhotoMasterEngine.java"
+
+          grep -q \
+            "Adaptive blend recovery" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "slowSelfTestWarning" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "GpuBackend.OPENCL" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiserRuntime.kt"
+
+          echo "v0.4.7 source verification passed"
+
+      - name: Fetch pinned NAFNet-SIDD model
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+
+          ASSETS="$PROJECT/app/src/main/assets"
+
+          MODEL="$ASSETS/nafnet_sidd_width32_fp16.tflite"
+
+          mkdir -p "$ASSETS"
+
+          URL='https://huggingface.co/litert-community/NAFNet-SIDD-width32-LiteRT/resolve/main/nafnet_sidd_width32_fp16.tflite?download=true'
+
+          curl \
+            --fail \
+            --location \
+            --retry 5 \
+            --retry-all-errors \
+            --connect-timeout 30 \
+            --output "$MODEL.tmp" \
+            "$URL"
+
+          mv "$MODEL.tmp" "$MODEL"
+
+          test "$(stat -c%s "$MODEL")" -eq 62454048 || {
+            echo "::error::Unexpected NAFNet model size"
+            exit 1
+          }
+
+          echo \
+          'f8fbaa422411683c53e802cf7cc7cf9be0a0de00886ad4af057232e26b172a0c  '"$MODEL" \
+          | sha256sum -c -
+
+          echo "Pinned NAFNet-SIDD model verified"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Run restoration safety host checks
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf host-checks
+          mkdir host-checks
+
+          javac -d host-checks \
+            app/src/main/java/com/dennis/photomasterai/DeepPixelRepair.java \
+            app/src/main/java/com/dennis/photomasterai/RepairSafetyPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/SocialSourcePolicy.java \
+            tools/DeepPixelRepairHostChecks.java \
+            tools/RepairSafetyPolicyHostChecks.java \
+            tools/NeuralDenoisePolicyHostChecks.java \
+            tools/SocialSourcePolicyHostChecks.java
+
+          java -cp host-checks \
+            com.dennis.photomasterai.DeepPixelRepairHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.RepairSafetyPolicyHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.NeuralDenoisePolicyHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.SocialSourcePolicyHostChecks
+
+      - name: Restore stable Photo Master debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: photo-master-ai-debug-keystore-v1
+
+      - name: Create signing key on first build
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$HOME/.android"
+
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Photo Master AI,O=Dennis Photo Master,C=AU" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -noprompt
+          fi
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Configure Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(
+              find "$SDK/cmdline-tools" \
+                -type f \
+                -name 'sdkmanager' \
+                | sort -V \
+                | tail -n 1
+            )"
+          fi
+
+          test -n "$SDKMANAGER" || {
+            echo "::error::sdkmanager not found"
+            exit 1
+          }
+
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Build v0.4.7 APK
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gradle \
+            :app:assembleDebug \
+            --stacktrace
+
+      - name: Verify package and collect APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+
+          APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
+
+          test -f "$APK" || {
+            echo "::error::APK not found"
+            exit 1
+          }
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+
+          AAPT="$SDK/build-tools/35.0.0/aapt"
+
+          BADGING="$(
+            "$AAPT" dump badging "$APK" \
+              | head -n 1
+          )"
+
+          echo "$BADGING"
+
+          echo "$BADGING" \
+            | grep -q \
+            "package: name='com.dennis.photomasterai'"
+
+          echo "$BADGING" \
+            | grep -q \
+            "versionCode='16'"
+
+          echo "$BADGING" \
+            | grep -q \
+            "versionName='0.4.7'"
+
+          unzip -l "$APK" \
+            | grep -q \
+            'assets/nafnet_sidd_width32_fp16.tflite'
+
+          rm -rf artifact
+          mkdir artifact
+
+          OUT="artifact/PhotoMasterAI-v0.4.7-LOW-DETAIL-QC-HOTFIX.apk"
+
+          cp "$APK" "$OUT"
+
+          sha256sum "$OUT" \
+            > "artifact/PhotoMasterAI-v0.4.7-LOW-DETAIL-QC-HOTFIX-SHA256.txt"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoMasterAI-v0.4.7-LOW-DETAIL-QC-HOTFIX
+          path: |
+            artifact/PhotoMasterAI-v0.4.7-LOW-DETAIL-QC-HOTFIX.apk
+            artifact/PhotoMasterAI-v0.4.7-LOW-DETAIL-QC-HOTFIX-SHA256.txt
+          if-no-files-found: error
+          retention-days: 30
