@@ -235,8 +235,8 @@ jobs:
           PY
 
           # Temporarily expose the version expected by the
-          # original optics patch. This changes build.gradle only;
-          # all v0.4.18 integrity code remains present.
+          # original optics patch. Only build.gradle is changed.
+          # The v0.4.18 integrity code remains intact.
 
           python3 - <<'PY'
           from pathlib import Path
@@ -279,8 +279,9 @@ jobs:
 
           bash /tmp/apply-old-optics.sh
 
-          # Correct the known old optics compile fault,
-          # add the new density guard and promote to v0.4.19.
+          # Fix known old optics compile problem,
+          # add correction-density guard,
+          # promote to v0.4.19.
 
           python3 - <<'PY'
           from pathlib import Path
@@ -403,8 +404,13 @@ jobs:
           # ==============================================
           # OPTICS CORRECTION-DENSITY SAFETY GUARD
           #
-          # If more than 1.5% of all pixels would be altered,
-          # assume broad scene colour rather than local fringe.
+          # If more than 1.5% of all pixels would be
+          # corrected, assume broad scene colour rather
+          # than local lens fringing and roll it back.
+          #
+          # Robust insertion:
+          # insert directly before the single
+          # candidate.getPixels() re-analysis call.
           # ==============================================
 
           repair_file = project / (
@@ -414,39 +420,23 @@ jobs:
 
           repair = repair_file.read_text()
 
-          density_anchor = "\n".join([
-              "                  if (correctedPixels == 0) {",
-              "",
-              "                      candidate.recycle();",
-              "",
-              "                      return new Result(",
-              "                              source,",
-              "                              sourceAnalysis,",
-              "                              true,",
-              "                              false,",
-              "                              \"• CA/fringe evidence measured, \"",
-              "                                      + \"but no safe local correction pixels remained\\n\"",
-              "                                      + \"• Original mastered pixels retained\");",
-              "                  }",
-              "",
+          marker = "\n".join([
               "                  candidate.getPixels(",
+              "                          pixels,",
           ])
 
-          density_replacement = "\n".join([
-              "                  if (correctedPixels == 0) {",
-              "",
-              "                      candidate.recycle();",
-              "",
-              "                      return new Result(",
-              "                              source,",
-              "                              sourceAnalysis,",
-              "                              true,",
-              "                              false,",
-              "                              \"• CA/fringe evidence measured, \"",
-              "                                      + \"but no safe local correction pixels remained\\n\"",
-              "                                      + \"• Original mastered pixels retained\");",
-              "                  }",
-              "",
+          marker_count = repair.count(
+              marker
+          )
+
+          if marker_count != 1:
+              raise RuntimeError(
+                  "Expected exactly one optics candidate.getPixels "
+                  + "re-analysis anchor, found "
+                  + str(marker_count)
+              )
+
+          density_guard = "\n".join([
               "                  double correctedFraction =",
               "                          correctedPixels",
               "                                  / (double) pixelCount;",
@@ -467,17 +457,11 @@ jobs:
               "                                      correctedFraction * 100.0));",
               "                  }",
               "",
-              "                  candidate.getPixels(",
           ])
 
-          if density_anchor not in repair:
-              raise RuntimeError(
-                  "Optics correction-density insertion anchor not found"
-              )
-
           repair = repair.replace(
-              density_anchor,
-              density_replacement,
+              marker,
+              density_guard + marker,
               1
           )
 
@@ -526,6 +510,10 @@ jobs:
           fi
 
           grep -q \
+            "correctedFraction" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/OpticalDefectRepair.java"
+
+          grep -q \
             "correction density" \
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/OpticalDefectRepair.java"
 
@@ -533,7 +521,9 @@ jobs:
             "MAX_CHANNEL_DELTA = 10" \
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/OpticalDefectRepair.java"
 
-          # v0.4.18 integrity baseline must still exist.
+          # ==============================================
+          # v0.4.18 INTEGRITY BASELINE MUST REMAIN
+          # ==============================================
 
           grep -q \
             "class NeuralIntegrityPolicy" \
@@ -551,7 +541,9 @@ jobs:
             "Final shadow-integrity guard: ROLLBACK" \
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
 
-          # Frozen neural path.
+          # ==============================================
+          # FROZEN NEURAL PATH MUST REMAIN
+          # ==============================================
 
           grep -q \
             "ring allowance +0.025" \
@@ -794,7 +786,9 @@ jobs:
 
           Version:
           v0.4.19
-          versionCode 28
+
+          versionCode:
+          28
 
           BASELINE
           Exact successful v0.4.18 Neural Integrity Guard.
@@ -803,6 +797,7 @@ jobs:
           f69b6b535d24088d25fd7b1938bba328e4cb5840
 
           v0.4.18 INTEGRITY BASELINE FROZEN
+
           - waterfall bad neural result rejected
           - duck good 5% neural result passed
           - landscape correctly withheld neural
@@ -812,66 +807,102 @@ jobs:
           - NAFNet/runtime/QC thresholds unchanged
 
           NEW v0.4.19
+
           OPTICS INTELLIGENCE v1
+
           Chromatic aberration / colour-fringe guard.
 
           Generic cross-camera processing.
 
-          Looks for narrow isolated:
+          Detects narrow isolated:
           - purple/green fringe
           - red/cyan fringe
           - high-contrast edge colour displacement
 
-          Stronger suspicion is applied toward the outer image area.
+          Stronger optical suspicion toward outer image areas.
 
           CORRECTION
+
           - local only
           - luminance preserving
           - non-generative
-          - max RGB channel correction 10/255
+          - maximum 10/255 RGB channel change
           - no crop
           - no resize
           - no invented detail
 
           SAFETY
+
           - weak evidence = no change
           - excessive/global colour evidence = no change
-          - more than 1.50% corrected pixels = full rollback
+          - corrected pixel density above 1.50% = full rollback
           - fringe evidence must improve
-          - detail/noise/chroma/ringing/tone/saturation/clipping
-            must stay inside safety limits
-          - any failed test = full optics rollback
+          - detail must remain safe
+          - noise must remain safe
+          - chroma must remain safe
+          - ringing must remain safe
+          - median/tone must remain safe
+          - saturation must remain safe
+          - highlight/shadow clipping must remain safe
 
-          ORIGINAL RETENTION
+          Any failed optics QC:
+          FULL OPTICS ROLLBACK.
+
+          EXACT ORIGINAL RETENTION
+
           If authoritative ORIGINAL RETAINED mode is active,
-          optics is withheld completely.
+          optics is completely withheld.
 
-          OLD OPTICS BUILD FIX
-          Previous experimental optics build used the nonexistent
-          PhotoMasterEngine.Result.analysis field.
+          PREVIOUS v0.4.19 FAILURE
 
-          v0.4.19 instead runs:
+          Run:
+          37476511283
+
+          Failure was NOT Java compilation.
+
+          Source reconstruction succeeded.
+
+          Failure:
+          Optics correction-density insertion anchor not found.
+
+          FIX:
+          density safety guard now inserts directly before the
+          unique candidate.getPixels() re-analysis call instead
+          of relying on a large whitespace-sensitive Java block.
+
+          OLD OPTICS COMPILE BUG
+
+          Previous optics experiment referenced nonexistent:
+          PhotoMasterEngine.Result.analysis
+
+          v0.4.19 uses:
           PhotoAnalysis.analyse(result.bitmap)
 
           FIRST TESTS
-          1. Landscape with branches/roof edges.
-          2. Backlit leaves against bright sky.
-          3. Person photo.
-          4. Duck.
-          5. Waterfall.
+
+          1. Branches / roof edge against bright sky.
+          2. Backlit leaves.
+          3. Normal daylight landscape.
+          4. Person photo.
+          5. Duck.
+          6. Waterfall regression photo.
 
           REPORT
+
           Look for:
           OPTICS INTELLIGENCE
 
           Possible outcomes:
+
           - no significant optical fringe evidence
-          - optics candidate rolled back
-          - colour-fringe repair APPLIED
+          - CA/fringe candidate ROLLED BACK
+          - Chromatic-aberration / colour-fringe repair: APPLIED
 
           NEXT AFTER VALIDATION
+
           Measured vignetting correction.
-          Geometric distortion correction comes later.
+
+          Geometric barrel/pincushion correction remains later.
           EOF
 
           echo "v0.4.19 APK and continuation notes prepared"
