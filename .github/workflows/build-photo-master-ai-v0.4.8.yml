@@ -101,7 +101,9 @@ jobs:
               "/tmp/v047-patch.sh"
           )
 
-          print("Extracted exact v0.4.7 construction steps")
+          print(
+              "Extracted exact v0.4.7 construction steps"
+          )
           PY
 
           bash /tmp/v046-source.sh
@@ -204,7 +206,9 @@ jobs:
           # =====================================================
           # ADAPTIVE QC DIAGNOSTICS ONLY
           #
-          # NO QC THRESHOLDS OR IMAGE PROCESSING ARE CHANGED.
+          # No image-processing decisions are changed.
+          # No QC thresholds are changed.
+          # No adaptive blend strengths are changed.
           # =====================================================
 
           neural_file = project / (
@@ -214,20 +218,22 @@ jobs:
 
           neural = neural_file.read_text()
 
-          # Replace initial failed-candidate trace.
+          old_initial = "\n".join([
+              "            adaptiveTrace.append(String.format(",
+              "                    Locale.US,",
+              '                    "%.0f%% failed (%s)",',
+              "                    decision.blend * 100.0,",
+              "                    quality.reason));",
+          ])
 
-          old_initial = """            adaptiveTrace.append(String.format(
-                    Locale.US,
-                    "%.0f%% failed (%s)",
-                    decision.blend * 100.0,
-                    quality.reason));"""
-
-          new_initial = """            appendAdaptiveDiagnostic(
-                    adaptiveTrace,
-                    decision.blend,
-                    before,
-                    after,
-                    quality);"""
+          new_initial = "\n".join([
+              "            appendAdaptiveDiagnostic(",
+              "                    adaptiveTrace,",
+              "                    decision.blend,",
+              "                    before,",
+              "                    after,",
+              "                    quality);",
+          ])
 
           if old_initial not in neural:
               raise RuntimeError(
@@ -240,23 +246,24 @@ jobs:
               1
           )
 
-          # Replace each adaptive trial's simple accepted/failed
-          # message with full diagnostic information.
+          old_trial = "\n".join([
+              "                adaptiveTrace.append(String.format(",
+              "                        Locale.US,",
+              '                        " -> %.0f%% %s",',
+              "                        trialBlend * 100.0,",
+              "                        trialQuality.accepted",
+              '                                ? "accepted"',
+              '                                : "failed"));',
+          ])
 
-          old_trial = """                adaptiveTrace.append(String.format(
-                        Locale.US,
-                        " -> %.0f%% %s",
-                        trialBlend * 100.0,
-                        trialQuality.accepted
-                                ? "accepted"
-                                : "failed"));"""
-
-          new_trial = """                appendAdaptiveDiagnostic(
-                        adaptiveTrace,
-                        trialBlend,
-                        before,
-                        trialAfter,
-                        trialQuality);"""
+          new_trial = "\n".join([
+              "                appendAdaptiveDiagnostic(",
+              "                        adaptiveTrace,",
+              "                        trialBlend,",
+              "                        before,",
+              "                        trialAfter,",
+              "                        trialQuality);",
+          ])
 
           if old_trial not in neural:
               raise RuntimeError(
@@ -269,9 +276,6 @@ jobs:
               1
           )
 
-          # Insert diagnostics helper immediately before
-          # blendCandidate(). It reads measurements only.
-
           anchor = (
               "    private static Bitmap blendCandidate("
           )
@@ -281,112 +285,121 @@ jobs:
                   "blendCandidate insertion anchor not found"
               )
 
-          helper = r'''    private static void appendAdaptiveDiagnostic(
-            StringBuilder trace,
-            double blend,
-            PhotoAnalysis before,
-            PhotoAnalysis after,
-            NeuralDenoisePolicy.Quality quality) {
-
-        double beforeNoise =
-                Math.max(1.0e-9, before.noise);
-
-        double beforeChroma =
-                Math.max(1.0e-9, before.flatChromaNoise);
-
-        double beforeDetail =
-                Math.max(1.0e-9, before.detail);
-
-        double noiseBenefit =
-                (before.noise - after.noise)
-                        / beforeNoise
-                        * 100.0;
-
-        double chromaBenefit =
-                (before.flatChromaNoise
-                        - after.flatChromaNoise)
-                        / beforeChroma
-                        * 100.0;
-
-        double detailLoss =
-                Math.max(
-                        0.0,
-                        before.detail - after.detail);
-
-        double detailRatio =
-                after.detail
-                        / beforeDetail
-                        * 100.0;
-
-        double beforeDr =
-                before.p95 - before.p05;
-
-        double afterDr =
-                after.p95 - after.p05;
-
-        double ringDelta =
-                after.ringing - before.ringing;
-
-        double medianDelta =
-                after.medianLum - before.medianLum;
-
-        double drDelta =
-                afterDr - beforeDr;
-
-        double satDelta =
-                after.avgSat - before.avgSat;
-
-        double shadowClipDelta =
-                after.shadowClip - before.shadowClip;
-
-        double highlightClipDelta =
-                after.highlightClip - before.highlightClip;
-
-        if (trace.length() > 0) {
-            trace.append("\n  ↳ ");
-        }
-
-        trace.append(String.format(
-                Locale.US,
-                "%.0f%% %s"
-                        + " | noise %.4f→%.4f (%+.1f%%)"
-                        + " | chroma %.4f→%.4f (%+.1f%%)"
-                        + " | detail %.4f→%.4f"
-                        + " loss %.4f"
-                        + " ratio %.1f%%"
-                        + " | ring %.3f→%.3f Δ%+.3f"
-                        + " | median Δ%+.4f"
-                        + " | DR Δ%+.4f"
-                        + " | sat Δ%+.4f"
-                        + " | clip S Δ%+.4f"
-                        + " / H Δ%+.4f"
-                        + " | reason: %s",
-                blend * 100.0,
-                quality.accepted
-                        ? "ACCEPTED"
-                        : "FAILED",
-                before.noise,
-                after.noise,
-                noiseBenefit,
-                before.flatChromaNoise,
-                after.flatChromaNoise,
-                chromaBenefit,
-                before.detail,
-                after.detail,
-                detailLoss,
-                detailRatio,
-                before.ringing,
-                after.ringing,
-                ringDelta,
-                medianDelta,
-                drDelta,
-                satDelta,
-                shadowClipDelta,
-                highlightClipDelta,
-                quality.reason));
-    }
-
-'''
+          helper = "\n".join([
+              "    private static void appendAdaptiveDiagnostic(",
+              "            StringBuilder trace,",
+              "            double blend,",
+              "            PhotoAnalysis before,",
+              "            PhotoAnalysis after,",
+              "            NeuralDenoisePolicy.Quality quality) {",
+              "",
+              "        double beforeNoise =",
+              "                Math.max(1.0e-9, before.noise);",
+              "",
+              "        double beforeChroma =",
+              "                Math.max(",
+              "                        1.0e-9,",
+              "                        before.flatChromaNoise);",
+              "",
+              "        double beforeDetail =",
+              "                Math.max(1.0e-9, before.detail);",
+              "",
+              "        double noiseBenefit =",
+              "                (before.noise - after.noise)",
+              "                        / beforeNoise",
+              "                        * 100.0;",
+              "",
+              "        double chromaBenefit =",
+              "                (before.flatChromaNoise",
+              "                        - after.flatChromaNoise)",
+              "                        / beforeChroma",
+              "                        * 100.0;",
+              "",
+              "        double detailLoss =",
+              "                Math.max(",
+              "                        0.0,",
+              "                        before.detail",
+              "                                - after.detail);",
+              "",
+              "        double detailRatio =",
+              "                after.detail",
+              "                        / beforeDetail",
+              "                        * 100.0;",
+              "",
+              "        double beforeDr =",
+              "                before.p95 - before.p05;",
+              "",
+              "        double afterDr =",
+              "                after.p95 - after.p05;",
+              "",
+              "        double ringDelta =",
+              "                after.ringing",
+              "                        - before.ringing;",
+              "",
+              "        double medianDelta =",
+              "                after.medianLum",
+              "                        - before.medianLum;",
+              "",
+              "        double drDelta =",
+              "                afterDr - beforeDr;",
+              "",
+              "        double satDelta =",
+              "                after.avgSat",
+              "                        - before.avgSat;",
+              "",
+              "        double shadowClipDelta =",
+              "                after.shadowClip",
+              "                        - before.shadowClip;",
+              "",
+              "        double highlightClipDelta =",
+              "                after.highlightClip",
+              "                        - before.highlightClip;",
+              "",
+              "        if (trace.length() > 0) {",
+              '            trace.append("\\n  -> ");',
+              "        }",
+              "",
+              "        trace.append(String.format(",
+              "                Locale.US,",
+              '                "%.0f%% %s"',
+              '                        + " | noise %.4f->%.4f (%+.1f%%)"',
+              '                        + " | chroma %.4f->%.4f (%+.1f%%)"',
+              '                        + " | detail %.4f->%.4f"',
+              '                        + " loss %.4f"',
+              '                        + " ratio %.1f%%"',
+              '                        + " | ring %.3f->%.3f d%+.3f"',
+              '                        + " | median d%+.4f"',
+              '                        + " | DR d%+.4f"',
+              '                        + " | sat d%+.4f"',
+              '                        + " | clip S d%+.4f"',
+              '                        + " / H d%+.4f"',
+              '                        + " | reason: %s",',
+              "                blend * 100.0,",
+              "                quality.accepted",
+              '                        ? "ACCEPTED"',
+              '                        : "FAILED",',
+              "                before.noise,",
+              "                after.noise,",
+              "                noiseBenefit,",
+              "                before.flatChromaNoise,",
+              "                after.flatChromaNoise,",
+              "                chromaBenefit,",
+              "                before.detail,",
+              "                after.detail,",
+              "                detailLoss,",
+              "                detailRatio,",
+              "                before.ringing,",
+              "                after.ringing,",
+              "                ringDelta,",
+              "                medianDelta,",
+              "                drDelta,",
+              "                satDelta,",
+              "                shadowClipDelta,",
+              "                highlightClipDelta,",
+              "                quality.reason));",
+              "    }",
+              "",
+          ])
 
           neural = neural.replace(
               anchor,
@@ -396,11 +409,25 @@ jobs:
 
           neural_file.write_text(neural)
 
-          print("v0.4.8 adaptive QC diagnostics applied")
-          print("No image-processing decisions changed")
-          print("No NAFNet settings changed")
-          print("No QC thresholds changed")
-          print("No adaptive blend strengths changed")
+          print(
+              "v0.4.8 adaptive QC diagnostics applied"
+          )
+
+          print(
+              "No image-processing decisions changed"
+          )
+
+          print(
+              "No NAFNet settings changed"
+          )
+
+          print(
+              "No QC thresholds changed"
+          )
+
+          print(
+              "No adaptive blend strengths changed"
+          )
           PY
 
           grep -q \
