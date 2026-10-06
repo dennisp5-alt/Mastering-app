@@ -1,4 +1,4 @@
-name: Build Photo Master AI v0.4.18 Integrity Guard
+name: Build Photo Master AI v0.4.18 Integrity Guard Fix
 
 on:
   workflow_dispatch:
@@ -21,28 +21,28 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Recover exact successful v0.4.17 source
+      - name: Recover intended v0.4.18 source and fix compile accessor
         id: source
         shell: bash
         run: |
           set -euo pipefail
 
-          V0417_COMMIT="e8ce236742228236b9e113163a527498fcf0f15e"
+          FAILED_COMMIT="c5d57e5193906ef4a0354c25dcdd2f25995ef5fd"
 
-          git cat-file -e "${V0417_COMMIT}^{commit}" || {
-            echo "::error::Successful v0.4.17 commit unavailable"
+          git cat-file -e "${FAILED_COMMIT}^{commit}" || {
+            echo "::error::Pinned v0.4.18 integrity commit unavailable"
             exit 1
           }
 
           git show \
-            "${V0417_COMMIT}:.github/workflows/build-photo-master-ai-v0.4.17-recovery.yml" \
-            > /tmp/v0417-recovery.yml
+            "${FAILED_COMMIT}:.github/workflows/build-photo-master-ai-v0.4.18-integrity.yml" \
+            > /tmp/v0418-integrity.yml
 
           python3 - <<'PY'
           from pathlib import Path
 
           lines = Path(
-              "/tmp/v0417-recovery.yml"
+              "/tmp/v0418-integrity.yml"
           ).read_text().splitlines()
 
           def extract_step(name, destination):
@@ -99,21 +99,21 @@ jobs:
               )
 
           extract_step(
-              "Recover exact successful v0.4.16 source",
-              "/tmp/recover-v0416-source.sh"
+              "Recover exact successful v0.4.17 source",
+              "/tmp/recover-v0417-source.sh"
           )
 
           extract_step(
-              "Apply v0.4.17 smooth ring calibration",
-              "/tmp/apply-v0417-calibration.sh"
+              "Apply v0.4.18 neural integrity guard",
+              "/tmp/apply-v0418-integrity.sh"
           )
 
           print(
-              "Extracted exact successful v0.4.17 construction"
+              "Extracted intended v0.4.18 integrity construction"
           )
           PY
 
-          bash /tmp/recover-v0416-source.sh
+          bash /tmp/recover-v0417-source.sh
 
           PROJECT="$(
             find photomaster-v044-build \
@@ -130,697 +130,7 @@ jobs:
 
           export PROJECT
 
-          bash /tmp/apply-v0417-calibration.sh
-
-          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
-
-          grep -q \
-            "versionCode 26" \
-            "$PROJECT/app/build.gradle"
-
-          grep -q \
-            "versionName '0.4.17'" \
-            "$PROJECT/app/build.gradle"
-
-          grep -q \
-            "ring allowance +0.025" \
-            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
-
-          grep -q \
-            "SOFT_TOTAL_NEURAL_MS = 90_000L" \
-            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
-
-          grep -q \
-            "MAX_TOTAL_NEURAL_MS = 240_000L" \
-            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
-
-          grep -q \
-            "MAX_TILE_MS = 8_000L" \
-            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
-
-          grep -q \
-            "Authoritative-original checkpoint: VERIFIED" \
-            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
-
-          grep -q \
-            "GpuBackend.OPENCL" \
-            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiserRuntime.kt"
-
-          if grep -q \
-            "new NeuralDenoiserRuntime(context, true)" \
-            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
-          then
-            echo "::error::CPU neural fallback detected"
-            exit 1
-          fi
-
-          echo "Exact successful v0.4.17 source recovered"
-
-      - name: Apply v0.4.18 neural integrity guard
-        shell: bash
-        env:
-          PROJECT: ${{ steps.source.outputs.project }}
-        run: |
-          set -euo pipefail
-
-          python3 - <<'PY'
-          from pathlib import Path
-          import os
-
-          project = Path(os.environ["PROJECT"])
-
-          build_file = project / "app/build.gradle"
-          build = build_file.read_text()
-
-          if "versionCode 26" not in build:
-              raise RuntimeError(
-                  "v0.4.17 versionCode not found"
-              )
-
-          if "versionName '0.4.17'" not in build:
-              raise RuntimeError(
-                  "v0.4.17 versionName not found"
-              )
-
-          build = build.replace(
-              "versionCode 26",
-              "versionCode 27",
-              1
-          )
-
-          build = build.replace(
-              "versionName '0.4.17'",
-              "versionName '0.4.18'",
-              1
-          )
-
-          build_file.write_text(build)
-          PY
-
-          cat > \
-          "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralIntegrityPolicy.java" \
-          <<'JAVA'
-          package com.dennis.photomasterai;
-
-          public final class NeuralIntegrityPolicy {
-
-              private NeuralIntegrityPolicy() {
-              }
-
-              public static boolean suspiciousBlock(
-                      double localDeltaOutlier,
-                      double meanAbsDelta,
-                      double darkFractionRise,
-                      double sourceMean,
-                      double candidateMean) {
-
-                  boolean localToneOutlier =
-                          localDeltaOutlier >= 0.055
-                                  && meanAbsDelta >= 0.045;
-
-                  boolean darkCollapse =
-                          sourceMean >= 0.070
-                                  && candidateMean
-                                  <= sourceMean - 0.075
-                                  && darkFractionRise >= 0.18;
-
-                  return localToneOutlier
-                          || darkCollapse;
-              }
-
-              public static boolean catastrophicBlock(
-                      double localDeltaOutlier,
-                      double meanAbsDelta,
-                      double darkFractionRise,
-                      double sourceMean,
-                      double candidateMean) {
-
-                  boolean extremeTone =
-                          localDeltaOutlier >= 0.110
-                                  && meanAbsDelta >= 0.070;
-
-                  boolean extremeCollapse =
-                          sourceMean >= 0.090
-                                  && candidateMean
-                                  <= sourceMean - 0.130
-                                  && darkFractionRise >= 0.30;
-
-                  return extremeTone
-                          || extremeCollapse;
-              }
-
-              public static boolean darkCollapseBlock(
-                      double darkFractionRise,
-                      double sourceMean,
-                      double candidateMean) {
-
-                  return sourceMean >= 0.070
-                          && candidateMean
-                          <= sourceMean - 0.060
-                          && darkFractionRise >= 0.15;
-              }
-
-              public static boolean suspiciousBoundary(
-                      double deltaA,
-                      double deltaB,
-                      double sourceMeanA,
-                      double sourceMeanB) {
-
-                  return Math.abs(
-                          deltaA - deltaB) >= 0.070
-                          && Math.abs(
-                          sourceMeanA - sourceMeanB) <= 0.100;
-              }
-
-              public static boolean rejectNeuralCandidate(
-                      int totalBlocks,
-                      int suspiciousBlocks,
-                      int catastrophicBlocks,
-                      int darkCollapseBlocks,
-                      int suspiciousBoundaries) {
-
-                  if (totalBlocks <= 0) {
-                      return true;
-                  }
-
-                  if (catastrophicBlocks >= 1) {
-                      return true;
-                  }
-
-                  int suspiciousLimit =
-                          Math.max(
-                                  2,
-                                  (int) Math.ceil(
-                                          totalBlocks
-                                                  * 0.003));
-
-                  int darkCollapseLimit =
-                          Math.max(
-                                  2,
-                                  (int) Math.ceil(
-                                          totalBlocks
-                                                  * 0.002));
-
-                  int boundaryLimit =
-                          Math.max(
-                                  4,
-                                  (int) Math.ceil(
-                                          totalBlocks
-                                                  * 0.006));
-
-                  return suspiciousBlocks
-                          >= suspiciousLimit
-                          || darkCollapseBlocks
-                          >= darkCollapseLimit
-                          || suspiciousBoundaries
-                          >= boundaryLimit;
-              }
-
-              public static boolean finalShadowCollapseUnsafe(
-                      double checkpointShadowClip,
-                      double outputShadowClip,
-                      double checkpointBlackFraction,
-                      double outputBlackFraction) {
-
-                  double clipRise =
-                          outputShadowClip
-                                  - checkpointShadowClip;
-
-                  double blackRise =
-                          outputBlackFraction
-                                  - checkpointBlackFraction;
-
-                  boolean severeClipRise =
-                          clipRise >= 0.008
-                                  && outputShadowClip >= 0.012;
-
-                  boolean severeBlackRise =
-                          blackRise >= 0.045
-                                  && outputBlackFraction >= 0.075;
-
-                  boolean combinedRegression =
-                          clipRise >= 0.004
-                                  && blackRise >= 0.025;
-
-                  return severeClipRise
-                          || severeBlackRise
-                          || combinedRegression;
-              }
-          }
-          JAVA
-
-          cat > \
-          "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralIntegrityGuard.java" \
-          <<'JAVA'
-          package com.dennis.photomasterai;
-
-          import android.graphics.Bitmap;
-          import android.graphics.Color;
-
-          import java.util.Locale;
-
-          public final class NeuralIntegrityGuard {
-
-              private static final int BLOCK_SIZE = 128;
-              private static final int SAMPLE_STEP = 4;
-              private static final int DARK_LEVEL = 18;
-
-              private NeuralIntegrityGuard() {
-              }
-
-              public static final class Result {
-
-                  public final boolean accepted;
-                  public final String report;
-
-                  Result(
-                          boolean accepted,
-                          String report) {
-
-                      this.accepted = accepted;
-                      this.report = report;
-                  }
-              }
-
-              private static final class BlockStats {
-
-                  double sourceMean;
-                  double candidateMean;
-                  double signedDelta;
-                  double meanAbsDelta;
-                  double darkFractionRise;
-              }
-
-              public static Result evaluate(
-                      Bitmap source,
-                      Bitmap candidate) {
-
-                  if (source == null
-                          || candidate == null
-                          || source.isRecycled()
-                          || candidate.isRecycled()) {
-
-                      return new Result(
-                              false,
-                              "• Neural local-integrity guard: "
-                                      + "REJECTED — bitmap unavailable");
-                  }
-
-                  if (source.getWidth()
-                          != candidate.getWidth()
-                          || source.getHeight()
-                          != candidate.getHeight()) {
-
-                      return new Result(
-                              false,
-                              "• Neural local-integrity guard: "
-                                      + "REJECTED — candidate dimensions changed");
-                  }
-
-                  int width =
-                          source.getWidth();
-
-                  int height =
-                          source.getHeight();
-
-                  if (width < 64
-                          || height < 64) {
-
-                      return new Result(
-                              true,
-                              "• Neural local-integrity guard: "
-                                      + "PASSED — image below regional analysis size");
-                  }
-
-                  int cols =
-                          (width + BLOCK_SIZE - 1)
-                                  / BLOCK_SIZE;
-
-                  int rows =
-                          (height + BLOCK_SIZE - 1)
-                                  / BLOCK_SIZE;
-
-                  int totalBlocks =
-                          cols * rows;
-
-                  BlockStats[] blocks =
-                          new BlockStats[totalBlocks];
-
-                  int maxPixels =
-                          BLOCK_SIZE
-                                  * BLOCK_SIZE;
-
-                  int[] sourcePixels =
-                          new int[maxPixels];
-
-                  int[] candidatePixels =
-                          new int[maxPixels];
-
-                  double globalSignedSum = 0.0;
-                  long globalSamples = 0L;
-
-                  int blockIndex = 0;
-
-                  for (int by = 0;
-                       by < rows;
-                       by++) {
-
-                      int y =
-                              by * BLOCK_SIZE;
-
-                      int blockHeight =
-                              Math.min(
-                                      BLOCK_SIZE,
-                                      height - y);
-
-                      for (int bx = 0;
-                           bx < cols;
-                           bx++) {
-
-                          int x =
-                                  bx * BLOCK_SIZE;
-
-                          int blockWidth =
-                                  Math.min(
-                                          BLOCK_SIZE,
-                                          width - x);
-
-                          source.getPixels(
-                                  sourcePixels,
-                                  0,
-                                  blockWidth,
-                                  x,
-                                  y,
-                                  blockWidth,
-                                  blockHeight);
-
-                          candidate.getPixels(
-                                  candidatePixels,
-                                  0,
-                                  blockWidth,
-                                  x,
-                                  y,
-                                  blockWidth,
-                                  blockHeight);
-
-                          double sourceSum = 0.0;
-                          double candidateSum = 0.0;
-                          double absDeltaSum = 0.0;
-
-                          int darkSource = 0;
-                          int darkCandidate = 0;
-                          int samples = 0;
-
-                          for (int py = 0;
-                               py < blockHeight;
-                               py += SAMPLE_STEP) {
-
-                              int row =
-                                      py * blockWidth;
-
-                              for (int px = 0;
-                                   px < blockWidth;
-                                   px += SAMPLE_STEP) {
-
-                                  int index =
-                                          row + px;
-
-                                  int sourceLuma =
-                                          luma(
-                                                  sourcePixels[
-                                                          index]);
-
-                                  int candidateLuma =
-                                          luma(
-                                                  candidatePixels[
-                                                          index]);
-
-                                  sourceSum
-                                          += sourceLuma;
-
-                                  candidateSum
-                                          += candidateLuma;
-
-                                  absDeltaSum
-                                          += Math.abs(
-                                                  candidateLuma
-                                                          - sourceLuma);
-
-                                  if (sourceLuma
-                                          <= DARK_LEVEL) {
-
-                                      darkSource++;
-                                  }
-
-                                  if (candidateLuma
-                                          <= DARK_LEVEL) {
-
-                                      darkCandidate++;
-                                  }
-
-                                  samples++;
-                              }
-                          }
-
-                          BlockStats stats =
-                                  new BlockStats();
-
-                          if (samples > 0) {
-
-                              stats.sourceMean =
-                                      sourceSum
-                                              / samples
-                                              / 255.0;
-
-                              stats.candidateMean =
-                                      candidateSum
-                                              / samples
-                                              / 255.0;
-
-                              stats.signedDelta =
-                                      stats.candidateMean
-                                              - stats.sourceMean;
-
-                              stats.meanAbsDelta =
-                                      absDeltaSum
-                                              / samples
-                                              / 255.0;
-
-                              stats.darkFractionRise =
-                                      (
-                                              darkCandidate
-                                                      - darkSource
-                                      ) / (double) samples;
-
-                              globalSignedSum
-                                      += stats.signedDelta
-                                      * samples;
-
-                              globalSamples
-                                      += samples;
-                          }
-
-                          blocks[
-                                  blockIndex++] =
-                                  stats;
-                      }
-                  }
-
-                  double globalSignedDelta =
-                          globalSamples > 0
-                                  ? globalSignedSum
-                                  / globalSamples
-                                  : 0.0;
-
-                  int suspiciousBlocks = 0;
-                  int catastrophicBlocks = 0;
-                  int darkCollapseBlocks = 0;
-
-                  double maxLocalOutlier = 0.0;
-                  double maxMeanAbsDelta = 0.0;
-                  double maxDarkRise = 0.0;
-
-                  for (BlockStats block
-                       : blocks) {
-
-                      if (block == null) {
-                          continue;
-                      }
-
-                      double localOutlier =
-                              Math.abs(
-                                      block.signedDelta
-                                              - globalSignedDelta);
-
-                      maxLocalOutlier =
-                              Math.max(
-                                      maxLocalOutlier,
-                                      localOutlier);
-
-                      maxMeanAbsDelta =
-                              Math.max(
-                                      maxMeanAbsDelta,
-                                      block.meanAbsDelta);
-
-                      maxDarkRise =
-                              Math.max(
-                                      maxDarkRise,
-                                      block.darkFractionRise);
-
-                      if (NeuralIntegrityPolicy
-                              .suspiciousBlock(
-                                      localOutlier,
-                                      block.meanAbsDelta,
-                                      block.darkFractionRise,
-                                      block.sourceMean,
-                                      block.candidateMean)) {
-
-                          suspiciousBlocks++;
-                      }
-
-                      if (NeuralIntegrityPolicy
-                              .catastrophicBlock(
-                                      localOutlier,
-                                      block.meanAbsDelta,
-                                      block.darkFractionRise,
-                                      block.sourceMean,
-                                      block.candidateMean)) {
-
-                          catastrophicBlocks++;
-                      }
-
-                      if (NeuralIntegrityPolicy
-                              .darkCollapseBlock(
-                                      block.darkFractionRise,
-                                      block.sourceMean,
-                                      block.candidateMean)) {
-
-                          darkCollapseBlocks++;
-                      }
-                  }
-
-                  int suspiciousBoundaries = 0;
-
-                  for (int by = 0;
-                       by < rows;
-                       by++) {
-
-                      for (int bx = 0;
-                           bx < cols;
-                           bx++) {
-
-                          int index =
-                                  by * cols + bx;
-
-                          BlockStats current =
-                                  blocks[index];
-
-                          if (current == null) {
-                              continue;
-                          }
-
-                          if (bx + 1 < cols) {
-
-                              BlockStats right =
-                                      blocks[
-                                              index + 1];
-
-                              if (right != null
-                                      && NeuralIntegrityPolicy
-                                      .suspiciousBoundary(
-                                              current.signedDelta,
-                                              right.signedDelta,
-                                              current.sourceMean,
-                                              right.sourceMean)) {
-
-                                  suspiciousBoundaries++;
-                              }
-                          }
-
-                          if (by + 1 < rows) {
-
-                              BlockStats down =
-                                      blocks[
-                                              index + cols];
-
-                              if (down != null
-                                      && NeuralIntegrityPolicy
-                                      .suspiciousBoundary(
-                                              current.signedDelta,
-                                              down.signedDelta,
-                                              current.sourceMean,
-                                              down.sourceMean)) {
-
-                                  suspiciousBoundaries++;
-                              }
-                          }
-                      }
-                  }
-
-                  boolean rejected =
-                          NeuralIntegrityPolicy
-                                  .rejectNeuralCandidate(
-                                          totalBlocks,
-                                          suspiciousBlocks,
-                                          catastrophicBlocks,
-                                          darkCollapseBlocks,
-                                          suspiciousBoundaries);
-
-                  String metrics =
-                          String.format(
-                                  Locale.US,
-                                  "• Local integrity blocks %d | "
-                                          + "suspicious %d | catastrophic %d | "
-                                          + "dark-collapse %d | seams %d\n"
-                                          + "• Max local tone outlier %.3f | "
-                                          + "max local absolute delta %.3f | "
-                                          + "max dark-fraction rise %.1f%%",
-                                  totalBlocks,
-                                  suspiciousBlocks,
-                                  catastrophicBlocks,
-                                  darkCollapseBlocks,
-                                  suspiciousBoundaries,
-                                  maxLocalOutlier,
-                                  maxMeanAbsDelta,
-                                  maxDarkRise * 100.0);
-
-                  if (rejected) {
-
-                      return new Result(
-                              false,
-                              "• Neural local-integrity guard: "
-                                      + "REJECTED — localized tile/shadow "
-                                      + "discontinuity detected\n"
-                                      + metrics);
-                  }
-
-                  return new Result(
-                          true,
-                          "• Neural local-integrity guard: PASSED\n"
-                                  + metrics);
-              }
-
-              private static int luma(
-                      int color) {
-
-                  int r =
-                          Color.red(color);
-
-                  int g =
-                          Color.green(color);
-
-                  int b =
-                          Color.blue(color);
-
-                  return (
-                          77 * r
-                                  + 150 * g
-                                  + 29 * b
-                                  + 128
-                  ) >> 8;
-              }
-          }
-          JAVA
+          bash /tmp/apply-v0418-integrity.sh
 
           python3 - <<'PY'
           from pathlib import Path
@@ -835,367 +145,85 @@ jobs:
 
           main = main_file.read_text()
 
-          old_neural = "\n".join([
-              "                    neuralResult = NeuralDenoiser.process(this, originalBitmap, originalAnalysis, ai, social,",
-              "                            mode == PhotoMasterEngine.Mode.AI_MAX);",
-              "                    if (neuralResult.accepted && neuralResult.bitmap != null) {",
-          ])
-
-          new_neural = "\n".join([
-              "                    neuralResult = NeuralDenoiser.process(this, originalBitmap, originalAnalysis, ai, social,",
-              "                            mode == PhotoMasterEngine.Mode.AI_MAX);",
-              "",
-              "                    if (neuralResult.accepted",
-              "                            && neuralResult.bitmap != null) {",
-              "",
-              "                        NeuralIntegrityGuard.Result integrity =",
-              "                                NeuralIntegrityGuard.evaluate(",
-              "                                        originalBitmap,",
-              "                                        neuralResult.bitmap);",
-              "",
-              "                        String integrityReport =",
-              "                                neuralResult.report",
-              "                                        + \"\\n\"",
-              "                                        + integrity.report;",
-              "",
-              "                        if (!integrity.accepted) {",
-              "",
-              "                            Bitmap rejectedNeural =",
-              "                                    neuralResult.bitmap;",
-              "",
-              "                            neuralResult =",
-              "                                    new NeuralDenoiser.Result(",
-              "                                            originalBitmap,",
-              "                                            originalAnalysis,",
-              "                                            true,",
-              "                                            false,",
-              "                                            integrityReport",
-              "                                                    + \"\\n• Neural rollback: localized tile/shadow integrity failure\");",
-              "",
-              "                            if (rejectedNeural != originalBitmap",
-              "                                    && !rejectedNeural.isRecycled()) {",
-              "",
-              "                                rejectedNeural.recycle();",
-              "                            }",
-              "",
-              "                        } else {",
-              "",
-              "                            neuralResult =",
-              "                                    new NeuralDenoiser.Result(",
-              "                                            neuralResult.bitmap,",
-              "                                            neuralResult.analysis,",
-              "                                            neuralResult.attempted,",
-              "                                            neuralResult.accepted,",
-              "                                            integrityReport);",
-              "                        }",
-              "                    }",
-              "",
-              "                    if (neuralResult.accepted && neuralResult.bitmap != null) {",
-          ])
-
-          if old_neural not in main:
-              raise RuntimeError(
-                  "Neural integrity insertion anchor not found"
-              )
-
-          main = main.replace(
-              old_neural,
-              new_neural,
-              1
-          )
-
-          old_master_tail = "\n".join([
-              '                                    && neuralResult.report.contains("Neural rollback:"));',
-              "                } finally {",
-          ])
-
-          new_master_tail = "\n".join([
-              '                                    && neuralResult.report.contains("Neural rollback:"));',
-              "",
-              "                    rawResult =",
-              "                            enforceFinalOutputIntegrity(",
-              "                                    rawResult,",
-              "                                    processingBitmap,",
-              "                                    processingAnalysis,",
-              "                                    neuralResult != null",
-              "                                            && neuralResult.accepted);",
-              "                } finally {",
-          ])
-
-          if old_master_tail not in main:
-              raise RuntimeError(
-                  "Final output integrity insertion anchor not found"
-              )
-
-          main = main.replace(
-              old_master_tail,
-              new_master_tail,
-              1
-          )
-
-          helper_anchor = (
-              "    private PhotoMasterEngine.Result "
-              "enforceAuthoritativeOriginalCheckpoint("
-          )
-
-          if helper_anchor not in main:
-              raise RuntimeError(
-                  "MainActivity checkpoint helper anchor not found"
-              )
-
-          helpers = "\n".join([
-              "    private PhotoMasterEngine.Result enforceFinalOutputIntegrity(",
-              "            PhotoMasterEngine.Result result,",
-              "            Bitmap checkpointBitmap,",
-              "            PhotoAnalysis checkpointAnalysis,",
-              "            boolean neuralCheckpoint) {",
-              "",
+          old_guard = "\n".join([
               "        if (result == null",
               "                || result.bitmap == null",
               "                || result.analysis == null",
               "                || checkpointBitmap == null",
               "                || checkpointBitmap.isRecycled()",
               "                || checkpointAnalysis == null) {",
-              "",
-              "            return result;",
-              "        }",
+          ])
+
+          new_guard = "\n".join([
+              "        if (result == null",
+              "                || result.bitmap == null",
+              "                || result.bitmap.isRecycled()",
+              "                || checkpointBitmap == null",
+              "                || checkpointBitmap.isRecycled()",
+              "                || checkpointAnalysis == null) {",
+          ])
+
+          if old_guard not in main:
+              raise RuntimeError(
+                  "v0.4.18 bad Result.analysis guard not found"
+              )
+
+          main = main.replace(
+              old_guard,
+              new_guard,
+              1
+          )
+
+          analysis_anchor = "\n".join([
+              "        boolean shadowUnsafe =",
+              "                NeuralIntegrityPolicy.finalShadowCollapseUnsafe(",
+          ])
+
+          analysis_replacement = "\n".join([
+              "        PhotoAnalysis outputAnalysis =",
+              "                PhotoAnalysis.analyse(",
+              "                        result.bitmap);",
               "",
               "        boolean shadowUnsafe =",
               "                NeuralIntegrityPolicy.finalShadowCollapseUnsafe(",
-              "                        checkpointAnalysis.shadowClip,",
-              "                        result.analysis.shadowClip,",
-              "                        checkpointAnalysis.blackFraction,",
-              "                        result.analysis.blackFraction);",
-              "",
-              "        if (!shadowUnsafe) {",
-              "            return result;",
-              "        }",
-              "",
-              "        Bitmap.Config checkpointConfig =",
-              "                checkpointBitmap.getConfig();",
-              "",
-              "        if (checkpointConfig == null",
-              "                || checkpointConfig == Bitmap.Config.HARDWARE) {",
-              "",
-              "            checkpointConfig = Bitmap.Config.ARGB_8888;",
-              "        }",
-              "",
-              "        Bitmap safeCheckpoint =",
-              "                checkpointBitmap.copy(",
-              "                        checkpointConfig,",
-              "                        false);",
-              "",
-              "        if (safeCheckpoint == null) {",
-              "            throw new IllegalStateException(",
-              "                    \"Unable to preserve shadow-safe checkpoint\");",
-              "        }",
-              "",
-              "        PhotoAnalysis safeAnalysis =",
-              "                PhotoAnalysis.analyse(",
-              "                        safeCheckpoint);",
-              "",
-              "        String correctedReport =",
-              "                replaceOutputQcMetrics(",
-              "                        result.report,",
-              "                        safeAnalysis);",
-              "",
-              "        correctedReport =",
-              "                insertIntegrityReport(",
-              "                        correctedReport,",
-              "                        String.format(",
-              "                                Locale.US,",
-              "                                \"• Final shadow-integrity guard: ROLLBACK\\n\"",
-              "                                        + \"• Shadow clip %.2f%% -> %.2f%% | black %.1f%% -> %.1f%%\\n\"",
-              "                                        + \"• Unsafe downstream shadow collapse rejected — %s checkpoint retained\",",
-              "                                checkpointAnalysis.shadowClip * 100.0,",
-              "                                result.analysis.shadowClip * 100.0,",
-              "                                checkpointAnalysis.blackFraction * 100.0,",
-              "                                result.analysis.blackFraction * 100.0,",
-              "                                neuralCheckpoint",
-              "                                        ? \"accepted neural\"",
-              "                                        : \"pre-finishing\"));",
-              "",
-              "        Bitmap rejectedOutput =",
-              "                result.bitmap;",
-              "",
-              "        PhotoMasterEngine.Result safeResult =",
-              "                new PhotoMasterEngine.Result(",
-              "                        safeCheckpoint,",
-              "                        correctedReport,",
-              "                        safeAnalysis);",
-              "",
-              "        if (rejectedOutput != checkpointBitmap",
-              "                && rejectedOutput != safeCheckpoint",
-              "                && !rejectedOutput.isRecycled()) {",
-              "",
-              "            rejectedOutput.recycle();",
-              "        }",
-              "",
-              "        return safeResult;",
-              "    }",
-              "",
-              "    private String insertIntegrityReport(",
-              "            String sourceReport,",
-              "            String integrityReport) {",
-              "",
-              "        if (sourceReport == null) {",
-              "            return integrityReport;",
-              "        }",
-              "",
-              "        if (integrityReport == null",
-              "                || integrityReport.trim().isEmpty()) {",
-              "",
-              "            return sourceReport;",
-              "        }",
-              "",
-              "        String marker = \"\\nOUTPUT QC\\n\";",
-              "",
-              "        int markerAt =",
-              "                sourceReport.indexOf(",
-              "                        marker);",
-              "",
-              "        String section =",
-              "                \"\\nFINAL OUTPUT INTEGRITY\\n\"",
-              "                        + integrityReport",
-              "                        + \"\\n\";",
-              "",
-              "        if (markerAt < 0) {",
-              "            return sourceReport",
-              "                    + section;",
-              "        }",
-              "",
-              "        return sourceReport.substring(",
-              "                0,",
-              "                markerAt)",
-              "                + section",
-              "                + sourceReport.substring(",
-              "                        markerAt);",
-              "    }",
-              "",
           ])
 
+          if analysis_anchor not in main:
+              raise RuntimeError(
+                  "Final shadow-analysis insertion anchor not found"
+              )
+
           main = main.replace(
-              helper_anchor,
-              helpers + helper_anchor,
+              analysis_anchor,
+              analysis_replacement,
               1
           )
+
+          main = main.replace(
+              "result.analysis.shadowClip",
+              "outputAnalysis.shadowClip"
+          )
+
+          main = main.replace(
+              "result.analysis.blackFraction",
+              "outputAnalysis.blackFraction"
+          )
+
+          if "result.analysis" in main:
+              raise RuntimeError(
+                  "Unsupported PhotoMasterEngine.Result.analysis "
+                  "reference remains"
+              )
 
           main_file.write_text(main)
 
           print(
-              "v0.4.18 neural/local output integrity guards applied"
+              "Compile accessor fixed: final output is re-analysed "
+              "directly from result.bitmap"
           )
           PY
 
-          cat > \
-          "$PROJECT/tools/NeuralIntegrityPolicyHostChecks.java" \
-          <<'JAVA'
-          package com.dennis.photomasterai;
-
-          public final class NeuralIntegrityPolicyHostChecks {
-
-              public static void main(String[] args) {
-
-                  require(
-                          !NeuralIntegrityPolicy.suspiciousBlock(
-                                  0.020,
-                                  0.025,
-                                  0.02,
-                                  0.30,
-                                  0.31),
-                          "ordinary local denoise change was flagged");
-
-                  require(
-                          NeuralIntegrityPolicy.suspiciousBlock(
-                                  0.070,
-                                  0.060,
-                                  0.03,
-                                  0.30,
-                                  0.23),
-                          "large local tone discontinuity was missed");
-
-                  require(
-                          NeuralIntegrityPolicy.catastrophicBlock(
-                                  0.130,
-                                  0.090,
-                                  0.35,
-                                  0.25,
-                                  0.10),
-                          "catastrophic neural block was missed");
-
-                  require(
-                          NeuralIntegrityPolicy.suspiciousBoundary(
-                                  0.010,
-                                  0.090,
-                                  0.30,
-                                  0.32),
-                          "tile-like delta seam was missed");
-
-                  require(
-                          !NeuralIntegrityPolicy.suspiciousBoundary(
-                                  0.010,
-                                  0.090,
-                                  0.20,
-                                  0.45),
-                          "real source transition was treated as a tile seam");
-
-                  require(
-                          !NeuralIntegrityPolicy.rejectNeuralCandidate(
-                                  800,
-                                  1,
-                                  0,
-                                  0,
-                                  2),
-                          "isolated mild regional change rejected entire neural pass");
-
-                  require(
-                          NeuralIntegrityPolicy.rejectNeuralCandidate(
-                                  800,
-                                  1,
-                                  1,
-                                  0,
-                                  1),
-                          "catastrophic regional corruption did not reject neural pass");
-
-                  require(
-                          NeuralIntegrityPolicy.rejectNeuralCandidate(
-                                  800,
-                                  4,
-                                  0,
-                                  2,
-                                  3),
-                          "multiple suspicious regions did not reject neural pass");
-
-                  require(
-                          NeuralIntegrityPolicy.finalShadowCollapseUnsafe(
-                                  0.0007,
-                                  0.0176,
-                                  0.024,
-                                  0.081),
-                          "waterfall-style shadow collapse was not rejected");
-
-                  require(
-                          !NeuralIntegrityPolicy.finalShadowCollapseUnsafe(
-                                  0.0018,
-                                  0.0024,
-                                  0.004,
-                                  0.006),
-                          "normal finishing change was rejected");
-
-                  System.out.println(
-                          "NeuralIntegrityPolicyHostChecks PASSED");
-              }
-
-              private static void require(
-                      boolean condition,
-                      String message) {
-
-                  if (!condition) {
-                      throw new AssertionError(message);
-                  }
-              }
-          }
-          JAVA
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
 
           grep -q \
             "versionCode 27" \
@@ -1212,6 +240,18 @@ jobs:
           grep -q \
             "class NeuralIntegrityGuard" \
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralIntegrityGuard.java"
+
+          grep -q \
+            "PhotoAnalysis outputAnalysis" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+
+          if grep -q \
+            "result.analysis" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+          then
+            echo "::error::Unsupported result.analysis accessor still present"
+            exit 1
+          fi
 
           grep -q \
             "localized tile/shadow integrity failure" \
@@ -1253,7 +293,7 @@ jobs:
             exit 1
           fi
 
-          echo "v0.4.18 integrity source verification passed"
+          echo "Corrected v0.4.18 integrity source verified"
 
       - name: Fetch pinned NAFNet-SIDD model
         shell: bash
@@ -1459,53 +499,94 @@ jobs:
           cat > "artifact/PhotoMasterAI-v0.4.18-Notes.txt" <<EOF
           Photo Master AI — v0.4.18 Continuation Notes
 
-          Version: v0.4.18
-          versionCode: 27
+          Version:
+          v0.4.18
+
+          versionCode:
+          27
 
           BASELINE
           Exact successful v0.4.17 source.
-          Commit:
+
+          v0.4.17 commit:
           e8ce236742228236b9e113163a527498fcf0f15e
 
-          IMPORTANT
-          Failed optics v0.4.18 code is NOT included.
-          This build starts fresh from stable v0.4.17.
+          INTEGRITY PATCH SOURCE
+          c5d57e5193906ef4a0354c25dcdd2f25995ef5fd
 
-          v0.4.17 NEURAL BASELINE FROZEN
-          NAFNet-SIDD width32 / OpenCL / FP32 / NCHW.
-          No CPU fallback.
-          8s per-tile guard.
-          90s soft total warning.
-          240s hard total guard.
-          Smooth 5% high-ring cap.
-          Smooth ring allowance +0.025.
+          FIRST v0.4.18 BUILD FAILURE
+          All source generation and host checks passed.
 
-          NEW v0.4.18
-          Neural Local Integrity Guard:
-          compares source vs accepted neural output in 128x128 regions.
-          Detects abnormal local tone shifts, dark collapse and
-          tile-like discontinuities.
-          Bad candidate is rejected before PhotoMasterEngine.
+          APK compilation failed because PhotoMasterEngine.Result
+          does not expose a public analysis field.
 
-          Final Shadow Integrity Guard:
-          compares PhotoMaster output against the exact pre-finishing
-          checkpoint.
-          Severe shadow clipping / black collapse causes full rollback
-          to the checkpoint.
+          FIX
+          Final-output integrity now analyses result.bitmap directly:
+
+          PhotoAnalysis outputAnalysis =
+              PhotoAnalysis.analyse(result.bitmap);
+
+          Shadow clipping and black-fraction checks use this measured
+          outputAnalysis.
+
+          Integrity thresholds are unchanged.
+
+          FAILED OPTICS BUILD
+          NOT included.
+
+          FROZEN v0.4.17 NEURAL BASELINE
+          - NAFNet-SIDD width32
+          - Classic LiteRT OpenCL GPU
+          - FP32
+          - NCHW FLOAT32 [1,3,256,256]
+          - no CPU neural fallback
+          - 8-second per-tile hard guard
+          - 90-second soft total warning
+          - 240-second hard total ceiling
+          - smooth 5% high-ring blend cap
+          - smooth ring allowance +0.025
+          - adaptive recovery
+          - authoritative-original checkpoint
+
+          v0.4.18 GUARD 1
+          Neural Local Integrity Guard.
+
+          It compares the original source against an accepted neural
+          result in 128x128 regions.
+
+          It looks for:
+          - abnormal local tone changes;
+          - localized shadow collapse;
+          - catastrophic blocks;
+          - neighbouring block/tile discontinuities.
+
+          v0.4.18 GUARD 2
+          Final Shadow Integrity Guard.
+
+          It compares final PhotoMaster output with the exact
+          pre-finishing checkpoint.
+
+          Severe increases in shadow clipping or black coverage
+          restore the checkpoint.
 
           WATERFALL REFERENCE
-          neural checkpoint shadow clip about 0.07%
-          final bad output shadow clip about 1.76%
-          black coverage about 2.4% -> 8.1%
-          This must trigger rollback.
+          neural checkpoint:
+          shadow clip approximately 0.07%
+          black approximately 2.4%
 
-          FIRST TESTS
+          bad final:
+          shadow clip approximately 1.76%
+          black approximately 8.1%
+
+          This condition must trigger rollback.
+
+          FIRST DEVICE TESTS
           1. Exact waterfall failure photo.
           2. Exact duck success photo.
           3. Clean person photo.
           4. Clean daylight landscape.
 
-          Optics work is postponed until this guard is stable.
+          Optics remains postponed until integrity testing passes.
           EOF
 
           echo "v0.4.18 APK and continuation notes prepared"
