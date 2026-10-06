@@ -400,15 +400,65 @@ jobs:
                   "Unsupported result.analysis accessor remains"
               )
 
+          # ==============================================
+          # FIX JAVA LAMBDA EFFECTIVELY-FINAL RESULT
+          #
+          # Old optics patch reassigns:
+          #
+          # result = applyOpticsIntelligence(...)
+          #
+          # Existing UI lambda later captures result.
+          # Java therefore rejects it.
+          #
+          # Use checkpointResult as intermediate and make
+          # final result immutable.
+          # ==============================================
+
+          old_result_flow = "\n".join([
+              "                PhotoMasterEngine.Result result =",
+              "                        enforceAuthoritativeOriginalCheckpoint(",
+              "                                rawResult,",
+              "                                originalBitmap,",
+              "                                originalAnalysis,",
+              "                                neuralResult);",
+              "",
+              "                result =",
+              "                        applyOpticsIntelligence(",
+              "                                result,",
+              "                                originalBitmap);",
+          ])
+
+          new_result_flow = "\n".join([
+              "                PhotoMasterEngine.Result checkpointResult =",
+              "                        enforceAuthoritativeOriginalCheckpoint(",
+              "                                rawResult,",
+              "                                originalBitmap,",
+              "                                originalAnalysis,",
+              "                                neuralResult);",
+              "",
+              "                final PhotoMasterEngine.Result result =",
+              "                        applyOpticsIntelligence(",
+              "                                checkpointResult,",
+              "                                originalBitmap);",
+          ])
+
+          if old_result_flow not in main:
+              raise RuntimeError(
+                  "Optics lambda-final result flow anchor not found"
+              )
+
+          main = main.replace(
+              old_result_flow,
+              new_result_flow,
+              1
+          )
+
           main_file.write_text(main)
 
           # ==============================================
           # OPTICS CORRECTION-DENSITY SAFETY GUARD
           #
           # Whitespace-independent insertion.
-          #
-          # Find candidate.getPixels( as a standalone Java
-          # statement regardless of spaces/tabs or indentation.
           # ==============================================
 
           repair_file = project / (
@@ -516,11 +566,27 @@ jobs:
             "PhotoAnalysis currentAnalysis" \
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
 
+          grep -q \
+            "PhotoMasterEngine.Result checkpointResult" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+
+          grep -q \
+            "final PhotoMasterEngine.Result result" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+
           if grep -q \
             "result.analysis" \
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
           then
             echo "::error::Unsupported result.analysis accessor remains"
+            exit 1
+          fi
+
+          if grep -q \
+            "^                result =" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+          then
+            echo "::error::Mutable result assignment remains"
             exit 1
           fi
 
@@ -868,26 +934,41 @@ jobs:
           If authoritative ORIGINAL RETAINED mode is active,
           optics is completely withheld.
 
-          PREVIOUS WORKFLOW FAILURES
+          WORKFLOW FIX HISTORY
 
           Run 37476511283:
           large whitespace-sensitive density anchor not found.
 
           Run 37478423290:
-          smaller indentation-sensitive candidate.getPixels anchor
-          also failed.
+          smaller indentation-sensitive density anchor not found.
+
+          Run 37479787241:
+          source patching succeeded,
+          all host checks passed,
+          APK reached Java compilation.
+
+          Java compile failure:
+          optics reassigned local variable "result",
+          making it non-effectively-final for existing UI lambda.
 
           CURRENT FIX
 
-          v0.4.19 now uses a whitespace-independent regular
-          expression to locate the unique candidate.getPixels(
-          re-analysis statement.
+          Authoritative checkpoint is stored as:
+          PhotoMasterEngine.Result checkpointResult
 
-          Image-processing logic is otherwise unchanged.
+          Final optics result is stored as:
+          final PhotoMasterEngine.Result result
+
+          Processing behaviour is unchanged.
+
+          DENSITY INSERTION
+
+          Uses whitespace-independent regex around:
+          candidate.getPixels(
 
           OLD OPTICS COMPILE BUG
 
-          Previous optics experiment referenced nonexistent:
+          Previous experiment referenced nonexistent:
           PhotoMasterEngine.Result.analysis
 
           v0.4.19 uses:
