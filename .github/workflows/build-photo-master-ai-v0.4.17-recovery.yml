@@ -1,0 +1,794 @@
+name: Build Photo Master AI v0.4.17 Recovery
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-photo-master-ai-v0.4.17-recovery.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Photo Master AI v0.4.17 Smooth Ring Calibration
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+
+    steps:
+      - name: Checkout repository with history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Recover exact successful v0.4.16 source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          V0416_COMMIT="ce53bdb2d4719db0a5aa2214f13e88a087481564"
+
+          git cat-file -e "${V0416_COMMIT}^{commit}" || {
+            echo "::error::Successful v0.4.16 commit unavailable"
+            exit 1
+          }
+
+          git show \
+            "${V0416_COMMIT}:.github/workflows/build-photo-master-ai-v0.4.16-recovery.yml" \
+            > /tmp/v0416-recovery.yml
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          lines = Path(
+              "/tmp/v0416-recovery.yml"
+          ).read_text().splitlines()
+
+          def extract_step(name, destination):
+              step = None
+
+              for i, line in enumerate(lines):
+                  if line.strip() == "- name: " + name:
+                      step = i
+                      break
+
+              if step is None:
+                  raise RuntimeError(
+                      "Workflow step not found: " + name
+                  )
+
+              run = None
+
+              for i in range(step, len(lines)):
+                  if lines[i].strip() == "run: |":
+                      run = i
+                      break
+
+                  if (
+                      i > step
+                      and lines[i].startswith("      - name:")
+                  ):
+                      break
+
+              if run is None:
+                  raise RuntimeError(
+                      "Run block not found: " + name
+                  )
+
+              body = []
+
+              for line in lines[run + 1:]:
+                  if line.startswith("      - name:"):
+                      break
+
+                  if not line.strip():
+                      body.append("")
+
+                  elif line.startswith("          "):
+                      body.append(line[10:])
+
+                  else:
+                      raise RuntimeError(
+                          "Unexpected indentation while extracting: "
+                          + name
+                      )
+
+              Path(destination).write_text(
+                  "\n".join(body) + "\n"
+              )
+
+          extract_step(
+              "Recover exact successful v0.4.15 source",
+              "/tmp/recover-v0415-source.sh"
+          )
+
+          extract_step(
+              "Apply v0.4.16 checkpoint fidelity guard",
+              "/tmp/apply-v0416-checkpoint.sh"
+          )
+
+          print(
+              "Extracted successful v0.4.16 source construction"
+          )
+          PY
+
+          bash /tmp/recover-v0415-source.sh
+
+          PROJECT="$(
+            find photomaster-v044-build \
+              -type f \
+              \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \) \
+              -printf '%h\n' \
+              | head -n 1
+          )"
+
+          test -n "$PROJECT" || {
+            echo "::error::Recovered project not found"
+            exit 1
+          }
+
+          export PROJECT
+
+          bash /tmp/apply-v0416-checkpoint.sh
+
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+
+          grep -q \
+            "versionCode 25" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "versionName '0.4.16'" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "SOFT_TOTAL_NEURAL_MS = 90_000L" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "MAX_TOTAL_NEURAL_MS = 240_000L" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "Authoritative-original checkpoint: VERIFIED" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+
+          grep -q \
+            "GpuBackend.OPENCL" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiserRuntime.kt"
+
+          echo "Exact successful v0.4.16 source recovered"
+
+      - name: Apply v0.4.17 smooth ring calibration
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+
+          project = Path(os.environ["PROJECT"])
+
+          # =====================================================
+          # VERSION
+          # =====================================================
+
+          build_file = project / "app/build.gradle"
+          build = build_file.read_text()
+
+          if "versionCode 25" not in build:
+              raise RuntimeError(
+                  "v0.4.16 versionCode not found"
+              )
+
+          if "versionName '0.4.16'" not in build:
+              raise RuntimeError(
+                  "v0.4.16 versionName not found"
+              )
+
+          build = build.replace(
+              "versionCode 25",
+              "versionCode 26",
+              1
+          )
+
+          build = build.replace(
+              "versionName '0.4.16'",
+              "versionName '0.4.17'",
+              1
+          )
+
+          build_file.write_text(build)
+
+          # =====================================================
+          # NEURAL QC
+          #
+          # Only calibration:
+          # Smooth scene ring allowance +0.015 -> +0.025.
+          #
+          # Normal scene allowance was already +0.025.
+          # 5% high-ring smooth blend cap remains unchanged.
+          # =====================================================
+
+          policy_file = project / (
+              "app/src/main/java/com/dennis/"
+              "photomasterai/NeuralDenoisePolicy.java"
+          )
+
+          policy = policy_file.read_text()
+
+          old_policy = "\n".join([
+              "        double ringingAllowance =",
+              "                isSmoothSurfaceDecision(decision)",
+              "                        ? 0.015",
+              "                        : 0.025;",
+          ])
+
+          new_policy = "\n".join([
+              "        double ringingAllowance =",
+              "                isSmoothSurfaceDecision(decision)",
+              "                        ? 0.025",
+              "                        : 0.025;",
+          ])
+
+          if old_policy not in policy:
+              raise RuntimeError(
+                  "Smooth neural ring allowance anchor not found"
+              )
+
+          policy = policy.replace(
+              old_policy,
+              new_policy,
+              1
+          )
+
+          policy_file.write_text(policy)
+
+          # =====================================================
+          # NEURAL REPORT
+          # =====================================================
+
+          neural_file = project / (
+              "app/src/main/java/com/dennis/"
+              "photomasterai/NeuralDenoiser.java"
+          )
+
+          neural = neural_file.read_text()
+
+          old_report = (
+              "Smooth-scene neural blend cap %.0f%% | "
+              "ring allowance +0.015"
+          )
+
+          new_report = (
+              "Smooth-scene neural blend cap %.0f%% | "
+              "ring allowance +0.025"
+          )
+
+          if old_report not in neural:
+              raise RuntimeError(
+                  "Smooth neural report allowance not found"
+              )
+
+          neural = neural.replace(
+              old_report,
+              new_report,
+              1
+          )
+
+          neural_file.write_text(neural)
+
+          # =====================================================
+          # POST-NEURAL CHECKPOINT
+          #
+          # Must match initial neural QC allowance.
+          # Otherwise an accepted +0.022 candidate could still
+          # be rejected after PhotoMaster finishing.
+          # =====================================================
+
+          engine_file = project / (
+              "app/src/main/java/com/dennis/"
+              "photomasterai/PhotoMasterEngine.java"
+          )
+
+          engine = engine_file.read_text()
+
+          old_engine = "\n".join([
+              "        p.postNeuralRingAllowance =",
+              "                p.smoothSurfaceProtection",
+              "                        ? 0.015",
+              "                        : 0.025;",
+          ])
+
+          new_engine = "\n".join([
+              "        p.postNeuralRingAllowance =",
+              "                p.smoothSurfaceProtection",
+              "                        ? 0.025",
+              "                        : 0.025;",
+          ])
+
+          if old_engine not in engine:
+              raise RuntimeError(
+                  "Post-neural smooth ring allowance anchor not found"
+              )
+
+          engine = engine.replace(
+              old_engine,
+              new_engine,
+              1
+          )
+
+          engine_file.write_text(engine)
+
+          # =====================================================
+          # HOST REGRESSION CHECK
+          #
+          # Explicitly prove:
+          # +0.022 is accepted.
+          # +0.027 is rejected.
+          # =====================================================
+
+          host_file = project / (
+              "tools/SmoothSurfaceGuardHostChecks.java"
+          )
+
+          host = host_file.read_text()
+
+          old_host = """        NeuralDenoisePolicy.Quality ringFail =
+                NeuralDenoisePolicy.evaluate(
+                        0.0145,
+                        0.0260,
+                        0.0142,
+                        0.731,
+                        0.68,
+                        0.57,
+                        0.06,
+                        0.0,
+                        0.0,
+                        0.0125,
+                        0.0220,
+                        0.0138,
+                        0.751,
+                        0.68,
+                        0.57,
+                        0.06,
+                        0.0,
+                        0.0,
+                        duck);
+
+        require(
+                !ringFail.accepted,
+                "smooth-surface ringing allowance was not tightened");
+
+        require(
+                ringFail.reason.contains("ringing"),
+                "smooth-surface ring rejection reason missing");
+"""
+
+          new_host = """        NeuralDenoisePolicy.Quality ringWithinBudget =
+                NeuralDenoisePolicy.evaluate(
+                        0.0145,
+                        0.0260,
+                        0.0142,
+                        0.731,
+                        0.68,
+                        0.57,
+                        0.06,
+                        0.0,
+                        0.0,
+                        0.0125,
+                        0.0220,
+                        0.0138,
+                        0.753,
+                        0.68,
+                        0.57,
+                        0.06,
+                        0.0,
+                        0.0,
+                        duck);
+
+        require(
+                ringWithinBudget.accepted,
+                "smooth-surface +0.025 allowance did not accept +0.022 calibration candidate");
+
+        NeuralDenoisePolicy.Quality ringFail =
+                NeuralDenoisePolicy.evaluate(
+                        0.0145,
+                        0.0260,
+                        0.0142,
+                        0.731,
+                        0.68,
+                        0.57,
+                        0.06,
+                        0.0,
+                        0.0,
+                        0.0125,
+                        0.0220,
+                        0.0138,
+                        0.758,
+                        0.68,
+                        0.57,
+                        0.06,
+                        0.0,
+                        0.0,
+                        duck);
+
+        require(
+                !ringFail.accepted,
+                "smooth-surface +0.025 ringing ceiling was not enforced");
+
+        require(
+                ringFail.reason.contains("ringing"),
+                "smooth-surface ring rejection reason missing");
+"""
+
+          if old_host not in host:
+              raise RuntimeError(
+                  "SmoothSurfaceGuardHostChecks ring block not found"
+              )
+
+          host = host.replace(
+              old_host,
+              new_host,
+              1
+          )
+
+          host_file.write_text(host)
+
+          print(
+              "v0.4.17 smooth ring calibration applied"
+          )
+
+          print(
+              "Smooth neural QC allowance: +0.025"
+          )
+
+          print(
+              "Post-neural smooth allowance: +0.025"
+          )
+
+          print(
+              "5% smooth high-ring blend cap unchanged"
+          )
+
+          print(
+              "All runtime/checkpoint architecture unchanged"
+          )
+          PY
+
+          grep -q \
+            "versionCode 26" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "versionName '0.4.17'" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "? 0.025" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java"
+
+          grep -q \
+            "ring allowance +0.025" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "p.postNeuralRingAllowance" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PhotoMasterEngine.java"
+
+          grep -q \
+            "0.753" \
+            "$PROJECT/tools/SmoothSurfaceGuardHostChecks.java"
+
+          grep -q \
+            "0.758" \
+            "$PROJECT/tools/SmoothSurfaceGuardHostChecks.java"
+
+          grep -q \
+            "SOFT_TOTAL_NEURAL_MS = 90_000L" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "MAX_TOTAL_NEURAL_MS = 240_000L" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "MAX_TILE_MS = 8_000L" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "high-ring-risk 5% blend cap" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java"
+
+          grep -q \
+            "Authoritative-original checkpoint: VERIFIED" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+
+          grep -q \
+            "GpuBackend.OPENCL" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiserRuntime.kt"
+
+          if grep -q \
+            "new NeuralDenoiserRuntime(context, true)" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+          then
+            echo "::error::CPU neural fallback detected"
+            exit 1
+          fi
+
+          echo "v0.4.17 source verification passed"
+
+      - name: Fetch pinned NAFNet-SIDD model
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+          ASSETS="$PROJECT/app/src/main/assets"
+          MODEL="$ASSETS/nafnet_sidd_width32_fp16.tflite"
+
+          mkdir -p "$ASSETS"
+
+          URL='https://huggingface.co/litert-community/NAFNet-SIDD-width32-LiteRT/resolve/main/nafnet_sidd_width32_fp16.tflite?download=true'
+
+          curl \
+            --fail \
+            --location \
+            --retry 5 \
+            --retry-all-errors \
+            --connect-timeout 30 \
+            --output "$MODEL.tmp" \
+            "$URL"
+
+          mv "$MODEL.tmp" "$MODEL"
+
+          test "$(stat -c%s "$MODEL")" -eq 62454048 || {
+            echo "::error::Unexpected NAFNet model size"
+            exit 1
+          }
+
+          echo \
+          'f8fbaa422411683c53e802cf7cc7cf9be0a0de00886ad4af057232e26b172a0c  '"$MODEL" \
+          | sha256sum -c -
+
+          echo "Pinned NAFNet-SIDD model verified"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Run all safety host checks
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf host-checks
+          mkdir host-checks
+
+          javac -d host-checks \
+            app/src/main/java/com/dennis/photomasterai/DeepPixelRepair.java \
+            app/src/main/java/com/dennis/photomasterai/RepairSafetyPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/SocialSourcePolicy.java \
+            tools/DeepPixelRepairHostChecks.java \
+            tools/RepairSafetyPolicyHostChecks.java \
+            tools/NeuralDenoisePolicyHostChecks.java \
+            tools/SocialSourcePolicyHostChecks.java \
+            tools/SmoothSurfaceGuardHostChecks.java
+
+          java -cp host-checks \
+            com.dennis.photomasterai.DeepPixelRepairHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.RepairSafetyPolicyHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.NeuralDenoisePolicyHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.SocialSourcePolicyHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.SmoothSurfaceGuardHostChecks
+
+      - name: Restore stable Photo Master debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: photo-master-ai-debug-keystore-v1
+
+      - name: Create signing key on first build
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$HOME/.android"
+
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Photo Master AI,O=Dennis Photo Master,C=AU" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -noprompt
+          fi
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Configure Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(
+              find "$SDK/cmdline-tools" \
+                -type f \
+                -name 'sdkmanager' \
+                | sort -V \
+                | tail -n 1
+            )"
+          fi
+
+          test -n "$SDKMANAGER" || {
+            echo "::error::sdkmanager not found"
+            exit 1
+          }
+
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Build v0.4.17 APK
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gradle \
+            :app:assembleDebug \
+            --stacktrace
+
+      - name: Verify package and prepare artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+          APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
+
+          test -f "$APK" || {
+            echo "::error::APK not found"
+            exit 1
+          }
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          AAPT="$SDK/build-tools/35.0.0/aapt"
+
+          BADGING="$(
+            "$AAPT" dump badging "$APK" \
+              | head -n 1
+          )"
+
+          echo "$BADGING"
+
+          echo "$BADGING" \
+            | grep -q "package: name='com.dennis.photomasterai'"
+
+          echo "$BADGING" \
+            | grep -q "versionCode='26'"
+
+          echo "$BADGING" \
+            | grep -q "versionName='0.4.17'"
+
+          unzip -l "$APK" \
+            | grep -q 'assets/nafnet_sidd_width32_fp16.tflite'
+
+          rm -rf artifact
+          mkdir artifact
+
+          OUT="artifact/PhotoMasterAI-v0.4.17-SMOOTH-RING-CALIBRATION.apk"
+
+          cp "$APK" "$OUT"
+
+          sha256sum "$OUT" \
+            > "artifact/PhotoMasterAI-v0.4.17-SMOOTH-RING-CALIBRATION-SHA256.txt"
+
+          cat > "artifact/PhotoMasterAI-v0.4.17-Notes.txt" <<EOF
+          Photo Master AI — v0.4.17 Continuation Notes
+
+          Version:
+          v0.4.17
+          versionCode 26
+
+          BASELINE
+          Exact successful v0.4.16 source.
+          Commit:
+          ce53bdb2d4719db0a5aa2214f13e88a087481564
+
+          PURPOSE
+          Final smooth-scene neural ringing calibration.
+
+          VERIFIED v0.4.16 DUCK RESULT
+          - NAFNet-SIDD width32
+          - OpenCL / FP32
+          - 252 tiles
+          - 68.1 seconds
+          - blend 5%
+          - noise 0.0145 -> 0.0124: 15.1% reduction
+          - chroma 0.0260 -> 0.0233: 10.4% reduction
+          - detail retention 95.6%
+          - ringing 0.731 -> 0.753: +0.022
+          - rejected only because smooth allowance was +0.015
+          - rollback/checkpoint verification worked correctly
+
+          v0.4.17 CALIBRATION
+          - Smooth neural ringing allowance +0.015 -> +0.025.
+          - Matching post-neural ringing allowance +0.015 -> +0.025.
+          - 5% high-ring smooth-scene neural blend cap unchanged.
+          - Normal scene ringing allowance unchanged at +0.025.
+          - Host check explicitly accepts +0.022.
+          - Host check explicitly rejects +0.027.
+
+          FROZEN
+          - NAFNet model
+          - OpenCL GPU path
+          - FP32
+          - NCHW tensors
+          - no CPU neural fallback
+          - 8-second per-tile guard
+          - 90-second soft total warning
+          - 240-second hard total ceiling
+          - adaptive blend logic
+          - smooth metric-floor early stop
+          - v0.4.16 authoritative-original checkpoint
+          - PhotoMaster finishing architecture
+
+          FIRST TESTS
+          1. Exact duck.
+          2. Exact pond photo.
+
+          EXPECTED DUCK
+          Neural 5% should now be eligible for acceptance when
+          ringing remains around +0.022 and all other QC remains safe.
+
+          If those two regression tests behave correctly,
+          treat this neural denoise path as the stable baseline.
+          EOF
+
+          echo "v0.4.17 APK and continuation notes prepared"
+
+      - name: Upload APK and continuation notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoMasterAI-v0.4.17-SMOOTH-RING-CALIBRATION
+          path: |
+            artifact/PhotoMasterAI-v0.4.17-SMOOTH-RING-CALIBRATION.apk
+            artifact/PhotoMasterAI-v0.4.17-SMOOTH-RING-CALIBRATION-SHA256.txt
+            artifact/PhotoMasterAI-v0.4.17-Notes.txt
+          if-no-files-found: error
+          retention-days: 30
