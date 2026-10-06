@@ -125,9 +125,9 @@ jobs:
 
           project = Path(os.environ["PROJECT"])
 
-          # ==============================================
+          # =====================================================
           # VERSION
-          # ==============================================
+          # =====================================================
 
           build_file = project / "app/build.gradle"
 
@@ -157,9 +157,9 @@ jobs:
 
           build_file.write_text(build)
 
-          # ==============================================
+          # =====================================================
           # GPU RUNTIME DIAGNOSTICS
-          # ==============================================
+          # =====================================================
 
           neural = project / (
               "app/src/main/java/com/dennis/"
@@ -236,9 +236,9 @@ jobs:
                   "Fatal self-test timing block not found"
               )
 
-          # ==============================================
+          # =====================================================
           # EXACT TILE STALL DIAGNOSTICS
-          # ==============================================
+          # =====================================================
 
           pattern = re.compile(
               r'\s*if '
@@ -324,10 +324,10 @@ jobs:
 
           neural.write_text(s)
 
-          # ==============================================
-          # PERSON-MASK TRUST
+          # =====================================================
+          # PERSON MASK TRUST
           # Segmentation alone no longer means person.
-          # ==============================================
+          # =====================================================
 
           ai_file = project / (
               "app/src/main/java/com/dennis/"
@@ -367,9 +367,9 @@ jobs:
 
           ai_file.write_text(ai)
 
-          # ==============================================
+          # =====================================================
           # PERSON FINISHING SAFETY
-          # ==============================================
+          # =====================================================
 
           engine = project / (
               "app/src/main/java/com/dennis/"
@@ -413,7 +413,7 @@ jobs:
             p.aiBackgroundDepthEv = max ? 0.035 : 0.015;
             p.sharpen = Math.min(p.sharpen, max ? 0.16 : 0.13);
             p.microContrast = Math.min(p.microContrast, max ? 0.14 : 0.09);
-        }'''
+          }'''
 
           new = '''        if (ai.personLike && ai.personCoverage > 0.012) {
             double personCoverage =
@@ -448,7 +448,7 @@ jobs:
                     Math.min(
                             p.microContrast,
                             max ? 0.14 : 0.09);
-        }'''
+          }'''
 
           if old not in e:
               raise RuntimeError(
