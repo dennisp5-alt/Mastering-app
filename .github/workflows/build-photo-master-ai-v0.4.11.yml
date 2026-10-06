@@ -1,0 +1,1202 @@
+name: Build Photo Master AI v0.4.11 Post-Neural Coordination Guard
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-photo-master-ai-v0.4.11.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Photo Master AI v0.4.11 Post-Neural Coordination Guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Rebuild exact v0.4.10 source baseline
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BASE=".github/workflows/build-photo-master-ai-v0.4.10.yml"
+
+          test -f "$BASE" || {
+            echo "::error::Known-good v0.4.10 workflow missing"
+            exit 1
+          }
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source = Path(
+              ".github/workflows/build-photo-master-ai-v0.4.10.yml"
+          )
+
+          lines = source.read_text().splitlines()
+
+          def extract_step(name, destination):
+              step = None
+
+              for i, line in enumerate(lines):
+                  if line.strip() == "- name: " + name:
+                      step = i
+                      break
+
+              if step is None:
+                  raise RuntimeError(
+                      "Workflow step not found: " + name
+                  )
+
+              run = None
+
+              for i in range(step, len(lines)):
+                  if lines[i].strip() == "run: |":
+                      run = i
+                      break
+
+                  if (
+                      i > step
+                      and lines[i].startswith("      - name:")
+                  ):
+                      break
+
+              if run is None:
+                  raise RuntimeError(
+                      "Run block not found: " + name
+                  )
+
+              body = []
+
+              for line in lines[run + 1:]:
+                  if line.startswith("      - name:"):
+                      break
+
+                  if not line.strip():
+                      body.append("")
+                  elif line.startswith("          "):
+                      body.append(line[10:])
+                  else:
+                      raise RuntimeError(
+                          "Unexpected indentation in: " + name
+                      )
+
+              Path(destination).write_text(
+                  "\n".join(body) + "\n"
+              )
+
+          extract_step(
+              "Rebuild exact v0.4.8 source baseline",
+              "/tmp/v048-baseline.sh"
+          )
+
+          extract_step(
+              "Apply v0.4.10 extended adaptive recovery",
+              "/tmp/v0410-patch.sh"
+          )
+
+          print(
+              "Extracted exact v0.4.10 construction steps"
+          )
+          PY
+
+          bash /tmp/v048-baseline.sh
+
+          SETTINGS="$(
+            find photomaster-v044-build \
+              -type f \
+              -name 'settings.gradle' \
+              | head -n 1
+          )"
+
+          if [ -z "$SETTINGS" ]; then
+            SETTINGS="$(
+              find photomaster-v044-build \
+                -type f \
+                -name 'settings.gradle.kts' \
+                | head -n 1
+            )"
+          fi
+
+          test -n "$SETTINGS" || {
+            echo "::error::Generated project not found"
+            exit 1
+          }
+
+          PROJECT="$(dirname "$SETTINGS")"
+
+          export PROJECT
+
+          bash /tmp/v0410-patch.sh
+
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+
+          grep -q \
+            "versionCode 19" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "versionName '0.4.10'" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "0.30, 0.24, 0.20, 0.16" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "appendAdaptiveDiagnostic" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "GpuBackend.OPENCL" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiserRuntime.kt"
+
+          echo "Exact v0.4.10 source baseline reconstructed"
+
+      - name: Apply v0.4.11 post-neural coordination guard
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+
+          project = Path(os.environ["PROJECT"])
+
+          # =====================================================
+          # VERSION
+          # =====================================================
+
+          build_file = project / "app/build.gradle"
+          build = build_file.read_text()
+
+          if "versionCode 19" not in build:
+              raise RuntimeError(
+                  "v0.4.10 versionCode 19 not found"
+              )
+
+          if "versionName '0.4.10'" not in build:
+              raise RuntimeError(
+                  "v0.4.10 versionName not found"
+              )
+
+          build = build.replace(
+              "versionCode 19",
+              "versionCode 20",
+              1
+          )
+
+          build = build.replace(
+              "versionName '0.4.10'",
+              "versionName '0.4.11'",
+              1
+          )
+
+          build_file.write_text(build)
+
+          # =====================================================
+          # PHOTO MASTER ENGINE
+          # =====================================================
+
+          engine_file = project / (
+              "app/src/main/java/com/dennis/"
+              "photomasterai/PhotoMasterEngine.java"
+          )
+
+          engine = engine_file.read_text()
+
+          # -----------------------------------------------------
+          # Add post-neural checkpoint state.
+          # -----------------------------------------------------
+
+          old = "\n".join([
+              "        double wbCap;",
+              "        AiVisionAnalyzer.Result ai;",
+              "        SocialSourceAnalyzer.Result social;",
+          ])
+
+          new = "\n".join([
+              "        double wbCap;",
+              "",
+              "        boolean neuralCheckpointActive;",
+              "        boolean postNeuralCoordination;",
+              "        boolean postNeuralReduction;",
+              "        boolean postNeuralCheckpointRollback;",
+              "",
+              "        double baselineRinging;",
+              "        double checkpointRinging;",
+              "        double neuralRingBudget;",
+              "",
+              "        double baselineNoise;",
+              "        double checkpointNoise;",
+              "        double baselineChromaNoise;",
+              "        double checkpointChromaNoise;",
+              "",
+              "        AiVisionAnalyzer.Result ai;",
+              "        SocialSourceAnalyzer.Result social;",
+          ])
+
+          if old not in engine:
+              raise RuntimeError(
+                  "Params checkpoint insertion anchor not found"
+              )
+
+          engine = engine.replace(
+              old,
+              new,
+              1
+          )
+
+          # -----------------------------------------------------
+          # Extend master() so it can receive the ORIGINAL
+          # analysis as well as the accepted neural checkpoint.
+          # Existing callers remain compatible.
+          # -----------------------------------------------------
+
+          old = "\n".join([
+              "    public static Result master(Bitmap source, PhotoAnalysis a, Mode mode,",
+              "                                AiVisionAnalyzer.Result ai,",
+              "                                SocialSourceAnalyzer.Result social) {",
+              "        Params p = buildParams(a, mode,",
+              "                ai == null ? AiVisionAnalyzer.Result.none() : ai,",
+              "                social == null ? SocialSourceAnalyzer.Result.none() : social);",
+          ])
+
+          new = "\n".join([
+              "    public static Result master(Bitmap source, PhotoAnalysis a, Mode mode,",
+              "                                AiVisionAnalyzer.Result ai,",
+              "                                SocialSourceAnalyzer.Result social) {",
+              "        return master(",
+              "                source,",
+              "                a,",
+              "                mode,",
+              "                ai,",
+              "                social,",
+              "                a,",
+              "                false);",
+              "    }",
+              "",
+              "    public static Result master(Bitmap source, PhotoAnalysis a, Mode mode,",
+              "                                AiVisionAnalyzer.Result ai,",
+              "                                SocialSourceAnalyzer.Result social,",
+              "                                PhotoAnalysis originalBaseline,",
+              "                                boolean neuralAccepted) {",
+              "        Params p = buildParams(a, mode,",
+              "                ai == null ? AiVisionAnalyzer.Result.none() : ai,",
+              "                social == null ? SocialSourceAnalyzer.Result.none() : social);",
+              "",
+              "        configurePostNeuralCoordination(",
+              "                p,",
+              "                a,",
+              "                originalBaseline,",
+              "                neuralAccepted);",
+          ])
+
+          if old not in engine:
+              raise RuntimeError(
+                  "master() overload anchor not found"
+              )
+
+          engine = engine.replace(
+              old,
+              new,
+              1
+          )
+
+          # -----------------------------------------------------
+          # Initial downstream guard flags.
+          # -----------------------------------------------------
+
+          old = "\n".join([
+              "        boolean benefitLossGuard = false;",
+              "        boolean repairFullRollback = false;",
+          ])
+
+          new = "\n".join([
+              "        boolean benefitLossGuard = false;",
+              "        boolean repairFullRollback = false;",
+              "",
+              "        boolean postNeuralRingingGuard = false;",
+              "        boolean postNeuralNoiseGuard = false;",
+              "",
+              "        if (p.postNeuralCoordination) {",
+              "            postNeuralRingingGuard =",
+              "                    postNeuralRingingRegression(check, p);",
+              "",
+              "            postNeuralNoiseGuard =",
+              "                    postNeuralNoiseRegression(check, p);",
+              "        }",
+          ])
+
+          if old not in engine:
+              raise RuntimeError(
+                  "Post-neural guard flag anchor not found"
+              )
+
+          engine = engine.replace(
+              old,
+              new,
+              1
+          )
+
+          # -----------------------------------------------------
+          # Make post-neural failure trigger a rerender.
+          # -----------------------------------------------------
+
+          old = "\n".join([
+              "        boolean rerender = highlightGuard || shadowGuard || saturationGuard || detailGuard",
+              "                || repairNoiseGuard || repairDetailRegressionGuard || repairAdaptiveReduction",
+              "                || haloRepairRejected || benefitLossGuard;",
+          ])
+
+          new = "\n".join([
+              "        boolean rerender = highlightGuard || shadowGuard || saturationGuard || detailGuard",
+              "                || repairNoiseGuard || repairDetailRegressionGuard || repairAdaptiveReduction",
+              "                || haloRepairRejected || benefitLossGuard",
+              "                || postNeuralRingingGuard || postNeuralNoiseGuard;",
+          ])
+
+          if old not in engine:
+              raise RuntimeError(
+                  "Rerender guard anchor not found"
+              )
+
+          engine = engine.replace(
+              old,
+              new,
+              1
+          )
+
+          # -----------------------------------------------------
+          # Reduce downstream sharpening when neural checkpoint
+          # safety or denoise benefit is being eroded.
+          # -----------------------------------------------------
+
+          anchor = "\n".join([
+              "            if (detailGuard) {",
+              "                p.denoise = 0.0;",
+          ])
+
+          insert = "\n".join([
+              "            if (postNeuralRingingGuard || postNeuralNoiseGuard) {",
+              "                p.postNeuralReduction = true;",
+              "",
+              "                p.repairDetail = 0.0;",
+              "",
+              "                if (p.neuralRingBudget <= 0.0035) {",
+              "                    p.sharpen = Math.min(",
+              "                            p.sharpen,",
+              "                            0.025);",
+              "",
+              "                    p.microContrast = Math.min(",
+              "                            p.microContrast,",
+              "                            0.010);",
+              "                } else {",
+              "                    p.sharpen = Math.min(",
+              "                            p.sharpen,",
+              "                            0.040);",
+              "",
+              "                    p.microContrast = Math.min(",
+              "                            p.microContrast,",
+              "                            0.020);",
+              "                }",
+              "",
+              "                p.aiSubjectSharpen = Math.min(",
+              "                        p.aiSubjectSharpen,",
+              "                        0.012);",
+              "",
+              "                p.sharpenActive =",
+              "                        p.sharpen > 0.035",
+              "                                || p.microContrast > 0.02",
+              "                                || p.aiSubjectSharpen > 0.01;",
+              "            }",
+              "",
+          ])
+
+          if anchor not in engine:
+              raise RuntimeError(
+                  "Post-neural rerender insertion anchor not found"
+              )
+
+          engine = engine.replace(
+              anchor,
+              insert + anchor,
+              1
+          )
+
+          # -----------------------------------------------------
+          # Final downstream checkpoint.
+          #
+          # If finishing STILL breaks the original ringing
+          # envelope or gives back too much accepted neural
+          # denoise benefit, retain the accepted neural pixels.
+          # -----------------------------------------------------
+
+          anchor = "\n".join([
+              "        String report = buildReport(a, check, p, mode,",
+          ])
+
+          final_guard = "\n".join([
+              "        if (p.postNeuralCoordination) {",
+              "            boolean finalRingingUnsafe =",
+              "                    postNeuralRingingRegression(check, p);",
+              "",
+              "            boolean finalNoiseUnsafe =",
+              "                    postNeuralNoiseRegression(check, p);",
+              "",
+              "            if (finalRingingUnsafe || finalNoiseUnsafe) {",
+              "                p.postNeuralCheckpointRollback = true;",
+              "",
+              "                p.repairLuma = 0.0;",
+              "                p.repairChroma = 0.0;",
+              "                p.repairDeblock = 0.0;",
+              "                p.repairDetail = 0.0;",
+              "",
+              "                p.denoise = 0.0;",
+              "                p.sharpen = 0.0;",
+              "                p.microContrast = 0.0;",
+              "                p.aiSubjectSharpen = 0.0;",
+              "",
+              "                p.exposureEv = 0.0;",
+              "                p.shadowLift = 0.0;",
+              "                p.highlightProtect = 0.0;",
+              "                p.contrast = 1.0;",
+              "                p.gamma = 1.0;",
+              "",
+              "                p.saturation = 1.0;",
+              "                p.vibrance = 0.0;",
+              "                p.greenControl = 1.0;",
+              "                p.blueControl = 1.0;",
+              "",
+              "                p.wbR = 1.0;",
+              "                p.wbG = 1.0;",
+              "                p.wbB = 1.0;",
+              "",
+              "                p.aiSubjectLiftEv = 0.0;",
+              "                p.aiBackgroundDepthEv = 0.0;",
+              "",
+              "                p.exposureActive = false;",
+              "                p.wbActive = false;",
+              "                p.toneActive = false;",
+              "                p.denoiseActive = false;",
+              "                p.sharpenActive = false;",
+              "                p.colourActive = false;",
+              "",
+              "                out.recycle();",
+              "",
+              "                Bitmap checkpoint = source.copy(",
+              "                        Bitmap.Config.ARGB_8888,",
+              "                        false);",
+              "",
+              "                if (checkpoint == null) {",
+              "                    throw new IllegalStateException(",
+              "                            \"Unable to preserve accepted neural checkpoint\");",
+              "                }",
+              "",
+              "                out = checkpoint;",
+              "                check = a;",
+              "            }",
+              "        }",
+              "",
+          ])
+
+          if anchor not in engine:
+              raise RuntimeError(
+                  "Final checkpoint insertion anchor not found"
+              )
+
+          engine = engine.replace(
+              anchor,
+              final_guard + anchor,
+              1
+          )
+
+          # -----------------------------------------------------
+          # Add helper functions before buildParams().
+          # -----------------------------------------------------
+
+          anchor = (
+              "    private static Params buildParams("
+          )
+
+          if anchor not in engine:
+              raise RuntimeError(
+                  "buildParams helper anchor not found"
+              )
+
+          helpers = "\n".join([
+              "    private static void configurePostNeuralCoordination(",
+              "            Params p,",
+              "            PhotoAnalysis checkpoint,",
+              "            PhotoAnalysis originalBaseline,",
+              "            boolean neuralAccepted) {",
+              "",
+              "        if (!neuralAccepted",
+              "                || !p.neuralMode",
+              "                || checkpoint == null",
+              "                || originalBaseline == null) {",
+              "            return;",
+              "        }",
+              "",
+              "        p.neuralCheckpointActive = true;",
+              "",
+              "        p.baselineRinging = originalBaseline.ringing;",
+              "        p.checkpointRinging = checkpoint.ringing;",
+              "",
+              "        p.baselineNoise = originalBaseline.noise;",
+              "        p.checkpointNoise = checkpoint.noise;",
+              "",
+              "        p.baselineChromaNoise =",
+              "                originalBaseline.flatChromaNoise;",
+              "",
+              "        p.checkpointChromaNoise =",
+              "                checkpoint.flatChromaNoise;",
+              "",
+              "        p.neuralRingBudget = Math.max(",
+              "                0.0,",
+              "                originalBaseline.ringing",
+              "                        + 0.025",
+              "                        - checkpoint.ringing);",
+              "",
+              "        boolean fragileLowDetail =",
+              "                checkpoint.detail <= 0.022;",
+              "",
+              "        boolean limitedRingingBudget =",
+              "                p.neuralRingBudget <= 0.008;",
+              "",
+              "        p.postNeuralCoordination =",
+              "                fragileLowDetail",
+              "                        && limitedRingingBudget;",
+              "",
+              "        if (!p.postNeuralCoordination) {",
+              "            return;",
+              "        }",
+              "",
+              "        p.postNeuralReduction = true;",
+              "",
+              "        // Accepted neural detail is authoritative here.",
+              "        // Do not immediately sharpen soft/noisy texture back in.",
+              "        p.repairDetail = 0.0;",
+              "",
+              "        if (p.neuralRingBudget <= 0.0035) {",
+              "            p.sharpen = Math.min(",
+              "                    p.sharpen,",
+              "                    0.045);",
+              "",
+              "            p.microContrast = Math.min(",
+              "                    p.microContrast,",
+              "                    0.022);",
+              "        } else {",
+              "            p.sharpen = Math.min(",
+              "                    p.sharpen,",
+              "                    0.060);",
+              "",
+              "            p.microContrast = Math.min(",
+              "                    p.microContrast,",
+              "                    0.035);",
+              "        }",
+              "",
+              "        p.aiSubjectSharpen = Math.min(",
+              "                p.aiSubjectSharpen,",
+              "                0.020);",
+              "",
+              "        p.sharpenActive =",
+              "                p.sharpen > 0.035",
+              "                        || p.microContrast > 0.02",
+              "                        || p.aiSubjectSharpen > 0.01;",
+              "    }",
+              "",
+              "    private static boolean postNeuralRingingRegression(",
+              "            PhotoAnalysis output,",
+              "            Params p) {",
+              "",
+              "        if (!p.postNeuralCoordination) {",
+              "            return false;",
+              "        }",
+              "",
+              "        return output.ringing",
+              "                > p.baselineRinging + 0.025;",
+              "    }",
+              "",
+              "    private static boolean postNeuralNoiseRegression(",
+              "            PhotoAnalysis output,",
+              "            Params p) {",
+              "",
+              "        if (!p.postNeuralCoordination) {",
+              "            return false;",
+              "        }",
+              "",
+              "        double lumaGain = Math.max(",
+              "                0.0,",
+              "                p.baselineNoise - p.checkpointNoise);",
+              "",
+              "        double chromaGain = Math.max(",
+              "                0.0,",
+              "                p.baselineChromaNoise",
+              "                        - p.checkpointChromaNoise);",
+              "",
+              "        double allowedLumaGiveback = Math.max(",
+              "                0.0006,",
+              "                lumaGain * 0.35);",
+              "",
+              "        double allowedChromaGiveback = Math.max(",
+              "                0.0008,",
+              "                chromaGain * 0.35);",
+              "",
+              "        boolean lumaRegression =",
+              "                lumaGain > 0.0006",
+              "                        && output.noise",
+              "                        > p.checkpointNoise",
+              "                        + allowedLumaGiveback;",
+              "",
+              "        boolean chromaRegression =",
+              "                chromaGain > 0.0008",
+              "                        && output.flatChromaNoise",
+              "                        > p.checkpointChromaNoise",
+              "                        + allowedChromaGiveback;",
+              "",
+              "        return lumaRegression || chromaRegression;",
+              "    }",
+              "",
+          ])
+
+          engine = engine.replace(
+              anchor,
+              helpers + anchor,
+              1
+          )
+
+          # -----------------------------------------------------
+          # Reporting: show checkpoint protection explicitly.
+          # -----------------------------------------------------
+
+          old = "\n".join([
+              "        sb.append(\"\\nDEEP PIXEL REPAIR\\n\");",
+          ])
+
+          new = "\n".join([
+              "        if (p.neuralCheckpointActive) {",
+              "            sb.append(String.format(",
+              "                    Locale.US,",
+              '                    "Post-neural checkpoint: %s | remaining ring budget %.3f\\n",',
+              "                    p.postNeuralCoordination",
+              '                            ? "PROTECTED"',
+              '                            : "normal",',
+              "                    p.neuralRingBudget));",
+              "        }",
+              "",
+              "        sb.append(\"\\nDEEP PIXEL REPAIR\\n\");",
+          ])
+
+          if old not in engine:
+              raise RuntimeError(
+                  "Checkpoint report insertion anchor not found"
+              )
+
+          engine = engine.replace(
+              old,
+              new,
+              1
+          )
+
+          # Add rollback explanation inside Deep Pixel Repair.
+          old = "\n".join([
+              '            if (repairFullRollback) sb.append("• Repair stage rolled back after output QC\\n");',
+          ])
+
+          new = "\n".join([
+              '            if (repairFullRollback) sb.append("• Repair stage rolled back after output QC\\n");',
+              "            if (p.postNeuralCheckpointRollback) {",
+              '                sb.append("• Downstream repair/finishing rolled back — accepted neural checkpoint retained\\n");',
+              "            }",
+          ])
+
+          if old not in engine:
+              raise RuntimeError(
+                  "Deep Pixel rollback report anchor not found"
+              )
+
+          engine = engine.replace(
+              old,
+              new,
+              1
+          )
+
+          # Change Guard must report post-neural coordination.
+          old = "\n".join([
+              "        if (hGuard || sGuard || satGuard || detailGuard || repairNoiseGuard",
+              "                || repairDetailRegressionGuard || repairAdaptiveReduction || haloRepairRejected",
+              "                || benefitLossGuard || repairFullRollback) {",
+          ])
+
+          new = "\n".join([
+              "        if (hGuard || sGuard || satGuard || detailGuard || repairNoiseGuard",
+              "                || repairDetailRegressionGuard || repairAdaptiveReduction || haloRepairRejected",
+              "                || benefitLossGuard || repairFullRollback",
+              "                || p.postNeuralReduction",
+              "                || p.postNeuralCheckpointRollback) {",
+          ])
+
+          if old not in engine:
+              raise RuntimeError(
+                  "Change Guard condition anchor not found"
+              )
+
+          engine = engine.replace(
+              old,
+              new,
+              1
+          )
+
+          old = "\n".join([
+              '            if (repairFullRollback) sb.append("• Full repair rollback applied — safety QC still failed after reduction\\n");',
+          ])
+
+          new = "\n".join([
+              '            if (repairFullRollback) sb.append("• Full repair rollback applied — safety QC still failed after reduction\\n");',
+              "            if (p.postNeuralReduction) {",
+              '                sb.append("• Post-neural coordination reduced detail finishing to protect accepted neural denoise\\n");',
+              "            }",
+              "            if (p.postNeuralCheckpointRollback) {",
+              '                sb.append("• Downstream finishing rejected — accepted neural checkpoint restored\\n");',
+              "            }",
+          ])
+
+          if old not in engine:
+              raise RuntimeError(
+                  "Change Guard report anchor not found"
+              )
+
+          engine = engine.replace(
+              old,
+              new,
+              1
+          )
+
+          engine_file.write_text(engine)
+
+          # =====================================================
+          # MAIN ACTIVITY
+          #
+          # Pass original analysis to PhotoMasterEngine so it can
+          # preserve the original neural QC ringing envelope.
+          # =====================================================
+
+          main_file = project / (
+              "app/src/main/java/com/dennis/"
+              "photomasterai/MainActivity.java"
+          )
+
+          main = main_file.read_text()
+
+          old = (
+              "                    result = "
+              "PhotoMasterEngine.master("
+              "processingBitmap, processingAnalysis, "
+              "mode, ai, social);"
+          )
+
+          new = "\n".join([
+              "                    result = PhotoMasterEngine.master(",
+              "                            processingBitmap,",
+              "                            processingAnalysis,",
+              "                            mode,",
+              "                            ai,",
+              "                            social,",
+              "                            originalAnalysis,",
+              "                            neuralResult != null",
+              "                                    && neuralResult.accepted);",
+          ])
+
+          if old not in main:
+              raise RuntimeError(
+                  "MainActivity master call anchor not found"
+              )
+
+          main = main.replace(
+              old,
+              new,
+              1
+          )
+
+          main_file.write_text(main)
+
+          print(
+              "Photo Master AI v0.4.11 post-neural guard applied"
+          )
+          print(
+              "Neural denoise runtime/QC/ladder unchanged"
+          )
+          print(
+              "Accepted neural checkpoint now protected downstream"
+          )
+          print(
+              "Ringing budget is measured against original source"
+          )
+          print(
+              "At least 65% of useful neural denoise gain is protected"
+          )
+          print(
+              "Unsafe downstream finishing restores neural checkpoint"
+          )
+          PY
+
+          grep -q \
+            "versionCode 20" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "versionName '0.4.11'" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "postNeuralCoordination" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PhotoMasterEngine.java"
+
+          grep -q \
+            "postNeuralCheckpointRollback" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PhotoMasterEngine.java"
+
+          grep -q \
+            "originalBaseline.ringing" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PhotoMasterEngine.java"
+
+          grep -q \
+            "accepted neural checkpoint restored" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PhotoMasterEngine.java"
+
+          grep -q \
+            "neuralResult.accepted" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+
+          grep -q \
+            "0.30, 0.24, 0.20, 0.16" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "appendAdaptiveDiagnostic" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "MAX_TOTAL_NEURAL_MS = 90_000L" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "GpuBackend.OPENCL" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiserRuntime.kt"
+
+          if grep -q \
+            "new NeuralDenoiserRuntime(context, true)" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+          then
+            echo "::error::CPU neural fallback detected"
+            exit 1
+          fi
+
+          echo "v0.4.11 source verification passed"
+
+      - name: Fetch pinned NAFNet-SIDD model
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+
+          ASSETS="$PROJECT/app/src/main/assets"
+
+          MODEL="$ASSETS/nafnet_sidd_width32_fp16.tflite"
+
+          mkdir -p "$ASSETS"
+
+          URL='https://huggingface.co/litert-community/NAFNet-SIDD-width32-LiteRT/resolve/main/nafnet_sidd_width32_fp16.tflite?download=true'
+
+          curl \
+            --fail \
+            --location \
+            --retry 5 \
+            --retry-all-errors \
+            --connect-timeout 30 \
+            --output "$MODEL.tmp" \
+            "$URL"
+
+          mv "$MODEL.tmp" "$MODEL"
+
+          test "$(stat -c%s "$MODEL")" -eq 62454048 || {
+            echo "::error::Unexpected NAFNet model size"
+            exit 1
+          }
+
+          echo \
+          'f8fbaa422411683c53e802cf7cc7cf9be0a0de00886ad4af057232e26b172a0c  '"$MODEL" \
+          | sha256sum -c -
+
+          echo "Pinned NAFNet-SIDD model verified"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Run restoration safety host checks
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf host-checks
+          mkdir host-checks
+
+          javac -d host-checks \
+            app/src/main/java/com/dennis/photomasterai/DeepPixelRepair.java \
+            app/src/main/java/com/dennis/photomasterai/RepairSafetyPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/SocialSourcePolicy.java \
+            tools/DeepPixelRepairHostChecks.java \
+            tools/RepairSafetyPolicyHostChecks.java \
+            tools/NeuralDenoisePolicyHostChecks.java \
+            tools/SocialSourcePolicyHostChecks.java
+
+          java -cp host-checks \
+            com.dennis.photomasterai.DeepPixelRepairHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.RepairSafetyPolicyHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.NeuralDenoisePolicyHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.SocialSourcePolicyHostChecks
+
+      - name: Restore stable Photo Master debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: photo-master-ai-debug-keystore-v1
+
+      - name: Create signing key on first build
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$HOME/.android"
+
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Photo Master AI,O=Dennis Photo Master,C=AU" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -noprompt
+          fi
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Configure Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(
+              find "$SDK/cmdline-tools" \
+                -type f \
+                -name 'sdkmanager' \
+                | sort -V \
+                | tail -n 1
+            )"
+          fi
+
+          test -n "$SDKMANAGER" || {
+            echo "::error::sdkmanager not found"
+            exit 1
+          }
+
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Build v0.4.11 APK
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gradle \
+            :app:assembleDebug \
+            --stacktrace
+
+      - name: Verify package and collect APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+
+          APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
+
+          test -f "$APK" || {
+            echo "::error::APK not found"
+            exit 1
+          }
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+
+          AAPT="$SDK/build-tools/35.0.0/aapt"
+
+          BADGING="$(
+            "$AAPT" dump badging "$APK" \
+              | head -n 1
+          )"
+
+          echo "$BADGING"
+
+          echo "$BADGING" \
+            | grep -q \
+            "package: name='com.dennis.photomasterai'"
+
+          echo "$BADGING" \
+            | grep -q \
+            "versionCode='20'"
+
+          echo "$BADGING" \
+            | grep -q \
+            "versionName='0.4.11'"
+
+          unzip -l "$APK" \
+            | grep -q \
+            'assets/nafnet_sidd_width32_fp16.tflite'
+
+          rm -rf artifact
+          mkdir artifact
+
+          OUT="artifact/PhotoMasterAI-v0.4.11-POST-NEURAL-COORDINATION-GUARD.apk"
+
+          cp "$APK" "$OUT"
+
+          sha256sum "$OUT" \
+            > "artifact/PhotoMasterAI-v0.4.11-POST-NEURAL-COORDINATION-GUARD-SHA256.txt"
+
+          cat > "artifact/PhotoMasterAI-v0.4.11-Notes.txt" <<EOF
+          Photo Master AI — v0.4.11 Continuation Notes
+
+          Version:
+          v0.4.11
+          versionCode 20
+
+          GitHub run:
+          ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+          BASELINE
+          Built from the known-good v0.4.10 source.
+
+          NEURAL ENGINE — FROZEN
+          - NAFNet-SIDD width32
+          - Classic LiteRT / TFLite Interpreter
+          - OpenCL GPU
+          - FP32 behaviour
+          - NCHW FLOAT32 [1,3,256,256]
+          - No CPU neural fallback
+          - 252-tile full pass on typical S23 Ultra images
+          - Existing adaptive ladder preserved:
+            80%, 65%, 50%, 38%, 30%, 24%, 20%, 16%
+          - For 64% initial blend:
+            about 51%, 42%, 32%, 24%, 19%, 15%, 13%, 10%
+          - Neural QC thresholds unchanged.
+
+          REFERENCE DUCK RESULT FROM v0.4.10
+          - 10% neural blend ACCEPTED
+          - Noise 0.0145 -> 0.0118: 18.7% reduction
+          - Flat chroma 0.0260 -> 0.0223: 14.2% reduction
+          - Detail 0.0142 -> 0.0135
+          - Detail retention 94.7%
+          - Ringing 0.731 -> 0.755, delta +0.024
+          - Tone/DR/saturation/clipping safe
+
+          WHY v0.4.11 EXISTS
+          After the safe 10% neural result, downstream AI MAX finishing
+          could add detail/micro-contrast and give back some of the
+          neural denoise improvement.
+
+          v0.4.11 adds a Post-Neural Coordination Guard.
+
+          BEHAVIOUR
+          - Accepted neural output becomes a protected checkpoint.
+          - Original pre-neural analysis is passed into PhotoMasterEngine.
+          - Remaining ringing budget is measured against the original:
+            original ringing + 0.025 maximum envelope.
+          - For very-low-detail neural checkpoints with little ringing
+            budget remaining, bounded detail recovery is withheld.
+          - Sharpening and micro-contrast are capped automatically.
+          - Downstream finishing may give back only a limited part of
+            the neural luma/chroma denoise gain.
+          - If first-pass finishing regresses, detail finishing is
+            reduced and rerendered.
+          - If the reduced render still violates the ringing envelope
+            or loses too much neural denoise benefit, all downstream
+            finishing is rejected and the accepted neural checkpoint
+            itself is retained.
+          - NAFNet is NOT rerun.
+          - Neural QC is NOT weakened.
+
+          REPORTING
+          Look for:
+          "Post-neural checkpoint: PROTECTED"
+          "Post-neural coordination reduced detail finishing..."
+          or, if needed:
+          "Downstream finishing rejected — accepted neural checkpoint restored"
+
+          IMPORTANT
+          Do not return to CompiledModel GPU.
+          Do not reintroduce CPU NAFNet fallback.
+          Do not change NCHW packing.
+          Treat v0.4.10 as the prior known-good neural baseline.
+          Treat v0.4.11 as the downstream-coordination experiment.
+
+          NEXT TESTS
+          1. Recovered duck first.
+          2. Portrait to ensure normal portrait finishing remains unchanged.
+          3. Flower to confirm no person treatment and no false animal tag.
+          4. Detailed landscape to ensure normal-strength accepted neural
+             images are not unnecessarily restricted.
+          EOF
+
+          echo "APK and continuation notes prepared"
+
+      - name: Upload APK and notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoMasterAI-v0.4.11-POST-NEURAL-COORDINATION-GUARD
+          path: |
+            artifact/PhotoMasterAI-v0.4.11-POST-NEURAL-COORDINATION-GUARD.apk
+            artifact/PhotoMasterAI-v0.4.11-POST-NEURAL-COORDINATION-GUARD-SHA256.txt
+            artifact/PhotoMasterAI-v0.4.11-Notes.txt
+          if-no-files-found: error
+          retention-days: 30
