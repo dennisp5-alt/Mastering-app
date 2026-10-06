@@ -219,10 +219,11 @@ jobs:
           # =====================================================
           # INITIAL NEURAL QC
           #
-          # Smooth-scene ringing allowance:
-          # +0.015 -> +0.025.
+          # Smooth scene ring allowance:
+          # +0.015 -> +0.025
           #
-          # 5% high-ring smooth-scene blend cap remains unchanged.
+          # Normal scenes remain +0.025.
+          # 5% high-ring smooth blend cap remains unchanged.
           # =====================================================
 
           policy_file = project / (
@@ -260,7 +261,7 @@ jobs:
           policy_file.write_text(policy)
 
           # =====================================================
-          # NEURAL REPORT
+          # NEURAL REPORT TEXT
           # =====================================================
 
           neural_file = project / (
@@ -296,8 +297,7 @@ jobs:
           # =====================================================
           # POST-NEURAL CHECKPOINT
           #
-          # Match initial QC so an accepted +0.022 candidate is
-          # not rejected later by the old +0.015 budget.
+          # Must use same +0.025 ring allowance as initial QC.
           # =====================================================
 
           engine_file = project / (
@@ -335,73 +335,28 @@ jobs:
           engine_file.write_text(engine)
 
           # =====================================================
-          # EXISTING SMOOTH-SURFACE HOST CHECK
+          # REPLACE COMPLETE SMOOTH-SURFACE HOST CHECK
           #
-          # Old failure candidate was:
-          # 0.731 -> 0.751 = +0.020
+          # Avoid fragile edits against reconstructed old source.
           #
-          # That is now deliberately inside +0.025.
-          #
-          # Move failure candidate to:
-          # 0.731 -> 0.758 = +0.027
+          # Tests:
+          # - Duck remains capped to 5%.
+          # - Very clean ultra-low-detail can still be withheld.
+          # - Person scenes remain uncapped.
+          # - Detailed landscapes remain uncapped.
+          # - Real duck-like +0.022 ring change ACCEPTED.
+          # - +0.027 ring change REJECTED.
           # =====================================================
 
           host_file = project / (
               "tools/SmoothSurfaceGuardHostChecks.java"
           )
 
-          host = host_file.read_text()
-
-          old_host_ring = "\n".join([
-              "                        0.0138,",
-              "                        0.751,",
-              "                        0.68,",
-          ])
-
-          new_host_ring = "\n".join([
-              "                        0.0138,",
-              "                        0.758,",
-              "                        0.68,",
-          ])
-
-          if host.count(old_host_ring) != 1:
-              raise RuntimeError(
-                  "Expected one smooth host ring-failure anchor"
-              )
-
-          host = host.replace(
-              old_host_ring,
-              new_host_ring,
-              1
-          )
-
-          host = host.replace(
-              "smooth-surface ringing allowance was not tightened",
-              "smooth-surface +0.025 ringing ceiling was not enforced",
-              1
-          )
-
-          host_file.write_text(host)
-
-          # =====================================================
-          # NEW CALIBRATION HOST CHECK
-          #
-          # Explicitly prove:
-          #
-          # +0.022 duck-like candidate = ACCEPT
-          # +0.027 candidate = REJECT
-          # 5% high-ring blend cap remains unchanged
-          # =====================================================
-
-          calibration_file = project / (
-              "tools/SmoothRingCalibrationHostChecks.java"
-          )
-
-          calibration_file.write_text(
+          host_file.write_text(
               "\n".join([
                   "package com.dennis.photomasterai;",
                   "",
-                  "public final class SmoothRingCalibrationHostChecks {",
+                  "public final class SmoothSurfaceGuardHostChecks {",
                   "",
                   "    public static void main(String[] args) {",
                   "",
@@ -432,11 +387,110 @@ jobs:
                   "",
                   "        require(",
                   "                duck.active,",
-                  "                \"duck smooth-scene guard disabled neural\");",
+                  "                \"duck guard unexpectedly disabled neural\");",
                   "",
                   "        require(",
                   "                duck.blend <= 0.0500001,",
-                  "                \"duck smooth-scene 5% blend cap changed\");",
+                  "                \"high-ring duck was not capped at 5%\");",
+                  "",
+                  "        require(",
+                  "                NeuralDenoisePolicy.isSmoothSurfaceDecision(duck),",
+                  "                \"duck smooth-surface decision not tagged\");",
+                  "",
+                  "        NeuralDenoisePolicy.Decision cleanBase =",
+                  "                NeuralDenoisePolicy.decide(",
+                  "                        0.0138,",
+                  "                        0.0218,",
+                  "                        0.0070,",
+                  "                        12_000_000L,",
+                  "                        true,",
+                  "                        false,",
+                  "                        false,",
+                  "                        false);",
+                  "",
+                  "        NeuralDenoisePolicy.Decision clean =",
+                  "                NeuralDenoisePolicy.applySmoothSurfaceGuard(",
+                  "                        cleanBase,",
+                  "                        0.0138,",
+                  "                        0.0218,",
+                  "                        0.0070,",
+                  "                        0.40,",
+                  "                        0.62,",
+                  "                        0.00,",
+                  "                        true,",
+                  "                        false,",
+                  "                        false,",
+                  "                        false);",
+                  "",
+                  "        if (cleanBase.active) {",
+                  "            require(",
+                  "                    !clean.active,",
+                  "                    \"already-clean extremely-low-detail scene should be withheld\");",
+                  "        }",
+                  "",
+                  "        NeuralDenoisePolicy.Decision portraitBase =",
+                  "                NeuralDenoisePolicy.decide(",
+                  "                        0.017,",
+                  "                        0.027,",
+                  "                        0.018,",
+                  "                        12_000_000L,",
+                  "                        true,",
+                  "                        true,",
+                  "                        false,",
+                  "                        false);",
+                  "",
+                  "        NeuralDenoisePolicy.Decision portrait =",
+                  "                NeuralDenoisePolicy.applySmoothSurfaceGuard(",
+                  "                        portraitBase,",
+                  "                        0.017,",
+                  "                        0.027,",
+                  "                        0.018,",
+                  "                        0.60,",
+                  "                        0.58,",
+                  "                        0.00,",
+                  "                        false,",
+                  "                        false,",
+                  "                        true,",
+                  "                        false);",
+                  "",
+                  "        require(",
+                  "                Math.abs(",
+                  "                        portrait.blend",
+                  "                                - portraitBase.blend)",
+                  "                        < 1.0e-9,",
+                  "                \"person scene was incorrectly smooth-surface capped\");",
+                  "",
+                  "        NeuralDenoisePolicy.Decision landscapeBase =",
+                  "                NeuralDenoisePolicy.decide(",
+                  "                        0.017,",
+                  "                        0.028,",
+                  "                        0.090,",
+                  "                        12_000_000L,",
+                  "                        true,",
+                  "                        false,",
+                  "                        false,",
+                  "                        false);",
+                  "",
+                  "        NeuralDenoisePolicy.Decision landscape =",
+                  "                NeuralDenoisePolicy.applySmoothSurfaceGuard(",
+                  "                        landscapeBase,",
+                  "                        0.017,",
+                  "                        0.028,",
+                  "                        0.090,",
+                  "                        0.30,",
+                  "                        0.55,",
+                  "                        0.00,",
+                  "                        false,",
+                  "                        true,",
+                  "                        false,",
+                  "                        false);",
+                  "",
+                  "        require(",
+                  "                Math.abs(",
+                  "                        landscape.blend",
+                  "                                - landscapeBase.blend)",
+                  "                        < 1.0e-9,",
+                  "                \"detailed landscape was incorrectly smooth-surface capped\");",
                   "",
                   "        NeuralDenoisePolicy.Quality withinBudget =",
                   "                NeuralDenoisePolicy.evaluate(",
@@ -462,7 +516,7 @@ jobs:
                   "",
                   "        require(",
                   "                withinBudget.accepted,",
-                  "                \"+0.022 calibration candidate was not accepted\");",
+                  "                \"+0.022 duck calibration candidate was not accepted\");",
                   "",
                   "        NeuralDenoisePolicy.Quality outsideBudget =",
                   "                NeuralDenoisePolicy.evaluate(",
@@ -488,14 +542,14 @@ jobs:
                   "",
                   "        require(",
                   "                !outsideBudget.accepted,",
-                  "                \"+0.027 calibration candidate was not rejected\");",
+                  "                \"+0.027 smooth ringing candidate was not rejected\");",
                   "",
                   "        require(",
                   "                outsideBudget.reason.contains(\"ringing\"),",
-                  "                \"ring rejection reason missing\");",
+                  "                \"smooth-surface ring rejection reason missing\");",
                   "",
                   "        System.out.println(",
-                  "                \"SmoothRingCalibrationHostChecks PASSED\");",
+                  "                \"SmoothSurfaceGuardHostChecks PASSED\");",
                   "    }",
                   "",
                   "    private static void require(",
@@ -516,7 +570,7 @@ jobs:
           )
 
           print(
-              "Smooth initial neural allowance: +0.025"
+              "Smooth neural QC allowance: +0.025"
           )
 
           print(
@@ -525,6 +579,10 @@ jobs:
 
           print(
               "5% high-ring blend cap unchanged"
+          )
+
+          print(
+              "Host test: +0.022 ACCEPT / +0.027 REJECT"
           )
 
           print(
@@ -553,12 +611,16 @@ jobs:
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/PhotoMasterEngine.java"
 
           grep -q \
+            "0.753" \
+            "$PROJECT/tools/SmoothSurfaceGuardHostChecks.java"
+
+          grep -q \
             "0.758" \
             "$PROJECT/tools/SmoothSurfaceGuardHostChecks.java"
 
           grep -q \
-            "SmoothRingCalibrationHostChecks" \
-            "$PROJECT/tools/SmoothRingCalibrationHostChecks.java"
+            "duck calibration candidate was not accepted" \
+            "$PROJECT/tools/SmoothSurfaceGuardHostChecks.java"
 
           grep -q \
             "SOFT_TOTAL_NEURAL_MS = 90_000L" \
@@ -653,8 +715,7 @@ jobs:
             tools/RepairSafetyPolicyHostChecks.java \
             tools/NeuralDenoisePolicyHostChecks.java \
             tools/SocialSourcePolicyHostChecks.java \
-            tools/SmoothSurfaceGuardHostChecks.java \
-            tools/SmoothRingCalibrationHostChecks.java
+            tools/SmoothSurfaceGuardHostChecks.java
 
           java -cp host-checks \
             com.dennis.photomasterai.DeepPixelRepairHostChecks
@@ -670,9 +731,6 @@ jobs:
 
           java -cp host-checks \
             com.dennis.photomasterai.SmoothSurfaceGuardHostChecks
-
-          java -cp host-checks \
-            com.dennis.photomasterai.SmoothRingCalibrationHostChecks
 
       - name: Restore stable Photo Master debug signing key
         uses: actions/cache@v4
@@ -821,15 +879,23 @@ jobs:
           - chroma 0.0260 -> 0.0233: 10.4% reduction
           - detail retention 95.6%
           - ringing 0.731 -> 0.753: +0.022
-          - rejected only because smooth allowance was +0.015
-          - authoritative rollback verification worked correctly
+          - rejected only because old smooth allowance was +0.015
+          - v0.4.16 rollback/checkpoint verification worked
 
           v0.4.17 CALIBRATION
           - Smooth initial neural ring allowance: +0.025
           - Smooth post-neural ring allowance: +0.025
           - 5% high-ring smooth-scene blend cap unchanged
-          - Duck-like +0.022 host calibration must pass
-          - +0.027 host calibration must fail
+          - Duck-like +0.022 candidate must pass
+          - +0.027 ringing candidate must fail
+
+          HOST REGRESSION COVERAGE
+          - Duck remains capped at 5%
+          - Clean ultra-low-detail protection retained
+          - Person scenes remain outside smooth cap
+          - Detailed landscapes remain outside smooth cap
+          - +0.022 calibration acceptance checked
+          - +0.027 rejection checked
 
           FROZEN
           - NAFNet-SIDD width32
@@ -845,16 +911,20 @@ jobs:
           - v0.4.16 authoritative-original checkpoint
           - PhotoMaster finishing architecture
 
-          FIRST TESTS
-          1. Exact duck.
-          2. Exact pond photo.
+          FIRST DEVICE TESTS
+          1. Exact duck
+          2. Exact pond photo
 
           EXPECTED DUCK
-          Neural 5% should now be eligible for acceptance when
-          ringing remains around +0.022 and all other QC remains safe.
+          The 5% neural candidate should be accepted if measurements
+          remain near the verified v0.4.16 result:
+          noise ~0.0124
+          chroma ~0.0233
+          detail ~0.0136
+          ring ~0.753
 
           If duck and pond both pass regression testing,
-          treat this neural denoise path as the stable baseline.
+          use this neural denoise path as the stable baseline.
           EOF
 
           echo "v0.4.17 APK and continuation notes prepared"
