@@ -1,0 +1,712 @@
+name: Build Photo Master AI v0.4.16 Recovery
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-photo-master-ai-v0.4.16-recovery.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Photo Master AI v0.4.16 Checkpoint Fidelity Guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+
+    steps:
+      - name: Checkout repository with history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Recover exact successful v0.4.15 source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          V0415_COMMIT="d45340b70b24dc60d67537f63af4736ee851a24e"
+
+          git cat-file -e "${V0415_COMMIT}^{commit}" || {
+            echo "::error::Successful v0.4.15 commit unavailable"
+            exit 1
+          }
+
+          git show \
+            "${V0415_COMMIT}:.github/workflows/build-photo-master-ai-v0.4.15-recovery.yml" \
+            > /tmp/v0415-recovery.yml
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          lines = Path(
+              "/tmp/v0415-recovery.yml"
+          ).read_text().splitlines()
+
+          def extract_step(name, destination):
+              step = None
+
+              for i, line in enumerate(lines):
+                  if line.strip() == "- name: " + name:
+                      step = i
+                      break
+
+              if step is None:
+                  raise RuntimeError(
+                      "Workflow step not found: " + name
+                  )
+
+              run = None
+
+              for i in range(step, len(lines)):
+                  if lines[i].strip() == "run: |":
+                      run = i
+                      break
+
+                  if (
+                      i > step
+                      and lines[i].startswith("      - name:")
+                  ):
+                      break
+
+              if run is None:
+                  raise RuntimeError(
+                      "Run block not found: " + name
+                  )
+
+              body = []
+
+              for line in lines[run + 1:]:
+                  if line.startswith("      - name:"):
+                      break
+
+                  if not line.strip():
+                      body.append("")
+
+                  elif line.startswith("          "):
+                      body.append(line[10:])
+
+                  else:
+                      raise RuntimeError(
+                          "Unexpected indentation while extracting: "
+                          + name
+                      )
+
+              Path(destination).write_text(
+                  "\n".join(body) + "\n"
+              )
+
+          extract_step(
+              "Recover exact successful v0.4.14 source",
+              "/tmp/recover-v0414-source.sh"
+          )
+
+          extract_step(
+              "Apply v0.4.15 runtime resilience guard",
+              "/tmp/apply-v0415-runtime.sh"
+          )
+
+          print(
+              "Extracted successful v0.4.15 source construction"
+          )
+          PY
+
+          bash /tmp/recover-v0414-source.sh
+
+          PROJECT="$(
+            find photomaster-v044-build \
+              -type f \
+              \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \) \
+              -printf '%h\n' \
+              | head -n 1
+          )"
+
+          test -n "$PROJECT" || {
+            echo "::error::Recovered project not found"
+            exit 1
+          }
+
+          export PROJECT
+
+          bash /tmp/apply-v0415-runtime.sh
+
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+
+          grep -q \
+            "versionCode 24" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "versionName '0.4.15'" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "SOFT_TOTAL_NEURAL_MS = 90_000L" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "MAX_TOTAL_NEURAL_MS = 240_000L" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "MAX_TILE_MS = 8_000L" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "enforceAuthoritativeOriginalCheckpoint" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+
+          grep -q \
+            "smoothSurfaceTerminalGuard" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PhotoMasterEngine.java"
+
+          grep -q \
+            "GpuBackend.OPENCL" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiserRuntime.kt"
+
+          if grep -q \
+            "new NeuralDenoiserRuntime(context, true)" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+          then
+            echo "::error::CPU neural fallback detected"
+            exit 1
+          fi
+
+          echo "Exact successful v0.4.15 source recovered"
+
+      - name: Apply v0.4.16 checkpoint fidelity guard
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+
+          project = Path(os.environ["PROJECT"])
+
+          # =====================================================
+          # VERSION
+          # =====================================================
+
+          build_file = project / "app/build.gradle"
+          build = build_file.read_text()
+
+          if "versionCode 24" not in build:
+              raise RuntimeError(
+                  "v0.4.15 versionCode not found"
+              )
+
+          if "versionName '0.4.15'" not in build:
+              raise RuntimeError(
+                  "v0.4.15 versionName not found"
+              )
+
+          build = build.replace(
+              "versionCode 24",
+              "versionCode 25",
+              1
+          )
+
+          build = build.replace(
+              "versionName '0.4.15'",
+              "versionName '0.4.16'",
+              1
+          )
+
+          build_file.write_text(build)
+
+          # =====================================================
+          # AUTHORITATIVE ORIGINAL CHECKPOINT FIDELITY
+          #
+          # v0.4.15 reached the checkpoint but verification failed.
+          #
+          # Do not force the authoritative bitmap through ARGB_8888.
+          # First re-analyse the untouched source itself.
+          # Then copy using its original Bitmap.Config.
+          # Then verify the copied output against the live source.
+          #
+          # No neural / QC / finishing changes here.
+          # =====================================================
+
+          main_file = project / (
+              "app/src/main/java/com/dennis/"
+              "photomasterai/MainActivity.java"
+          )
+
+          main = main_file.read_text()
+
+          old_block = "\n".join([
+              "        Bitmap exactOriginal = authoritativeOriginal.copy(",
+              "                Bitmap.Config.ARGB_8888,",
+              "                false);",
+              "",
+              "        if (exactOriginal == null) {",
+              "            throw new IllegalStateException(",
+              "                    \"Unable to copy authoritative original bitmap\");",
+              "        }",
+              "",
+              "        PhotoAnalysis authoritativeCheck =",
+              "                PhotoAnalysis.analyse(exactOriginal);",
+              "",
+              "        if (!authoritativeAnalysisMatches(",
+              "                originalAnalysis,",
+              "                authoritativeCheck)) {",
+              "",
+              "            exactOriginal.recycle();",
+              "",
+              "            throw new IllegalStateException(",
+              "                    \"Authoritative original checkpoint verification failed\");",
+              "        }",
+          ])
+
+          new_block = "\n".join([
+              "        PhotoAnalysis liveOriginalCheck =",
+              "                PhotoAnalysis.analyse(authoritativeOriginal);",
+              "",
+              "        if (!authoritativeAnalysisMatches(",
+              "                originalAnalysis,",
+              "                liveOriginalCheck)) {",
+              "",
+              "            throw new IllegalStateException(",
+              "                    \"Authoritative original source changed before checkpoint\");",
+              "        }",
+              "",
+              "        Bitmap.Config checkpointConfig =",
+              "                authoritativeOriginal.getConfig();",
+              "",
+              "        if (checkpointConfig == null",
+              "                || checkpointConfig == Bitmap.Config.HARDWARE) {",
+              "",
+              "            checkpointConfig = Bitmap.Config.ARGB_8888;",
+              "        }",
+              "",
+              "        Bitmap exactOriginal = authoritativeOriginal.copy(",
+              "                checkpointConfig,",
+              "                false);",
+              "",
+              "        if (exactOriginal == null) {",
+              "            throw new IllegalStateException(",
+              "                    \"Unable to copy authoritative original bitmap\");",
+              "        }",
+              "",
+              "        PhotoAnalysis authoritativeCheck =",
+              "                PhotoAnalysis.analyse(exactOriginal);",
+              "",
+              "        if (!authoritativeAnalysisMatches(",
+              "                liveOriginalCheck,",
+              "                authoritativeCheck)) {",
+              "",
+              "            exactOriginal.recycle();",
+              "",
+              "            throw new IllegalStateException(",
+              "                    \"Authoritative original copy fidelity verification failed\");",
+              "        }",
+          ])
+
+          if old_block not in main:
+              raise RuntimeError(
+                  "v0.4.15 authoritative checkpoint block not found"
+              )
+
+          main = main.replace(
+              old_block,
+              new_block,
+              1
+          )
+
+          old_verified = (
+              '                            + "\\nAuthoritative-original checkpoint: VERIFIED — final bitmap/QC restored from pre-neural source");'
+          )
+
+          new_verified = (
+              '                            + "\\nAuthoritative-original checkpoint: VERIFIED — source unchanged, original bitmap config preserved, final bitmap/QC restored from pre-neural source");'
+          )
+
+          if old_verified not in main:
+              raise RuntimeError(
+                  "Authoritative checkpoint report marker not found"
+              )
+
+          main = main.replace(
+              old_verified,
+              new_verified,
+              1
+          )
+
+          main_file.write_text(main)
+
+          print(
+              "v0.4.16 checkpoint fidelity guard applied"
+          )
+
+          print(
+              "Untouched source is re-verified before copy"
+          )
+
+          print(
+              "Original Bitmap.Config is preserved"
+          )
+
+          print(
+              "Copied checkpoint is verified against live source"
+          )
+
+          print(
+              "Neural and PhotoMaster processing unchanged"
+          )
+          PY
+
+          grep -q \
+            "versionCode 25" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "versionName '0.4.16'" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "PhotoAnalysis liveOriginalCheck" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+
+          grep -q \
+            "authoritativeOriginal.getConfig()" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+
+          grep -q \
+            "Authoritative original source changed before checkpoint" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+
+          grep -q \
+            "Authoritative original copy fidelity verification failed" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+
+          grep -q \
+            "original bitmap config preserved" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+
+          grep -q \
+            "SOFT_TOTAL_NEURAL_MS = 90_000L" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "MAX_TOTAL_NEURAL_MS = 240_000L" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "MAX_TILE_MS = 8_000L" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "smooth metric floor; lower blends skipped" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "smoothSurfaceTerminalGuard" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PhotoMasterEngine.java"
+
+          grep -q \
+            "GpuBackend.OPENCL" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiserRuntime.kt"
+
+          if grep -q \
+            "new NeuralDenoiserRuntime(context, true)" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+          then
+            echo "::error::CPU neural fallback detected"
+            exit 1
+          fi
+
+          echo "v0.4.16 source verification passed"
+
+      - name: Fetch pinned NAFNet-SIDD model
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+          ASSETS="$PROJECT/app/src/main/assets"
+          MODEL="$ASSETS/nafnet_sidd_width32_fp16.tflite"
+
+          mkdir -p "$ASSETS"
+
+          URL='https://huggingface.co/litert-community/NAFNet-SIDD-width32-LiteRT/resolve/main/nafnet_sidd_width32_fp16.tflite?download=true'
+
+          curl \
+            --fail \
+            --location \
+            --retry 5 \
+            --retry-all-errors \
+            --connect-timeout 30 \
+            --output "$MODEL.tmp" \
+            "$URL"
+
+          mv "$MODEL.tmp" "$MODEL"
+
+          test "$(stat -c%s "$MODEL")" -eq 62454048 || {
+            echo "::error::Unexpected NAFNet model size"
+            exit 1
+          }
+
+          echo \
+          'f8fbaa422411683c53e802cf7cc7cf9be0a0de00886ad4af057232e26b172a0c  '"$MODEL" \
+          | sha256sum -c -
+
+          echo "Pinned NAFNet-SIDD model verified"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Run all safety host checks
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf host-checks
+          mkdir host-checks
+
+          javac -d host-checks \
+            app/src/main/java/com/dennis/photomasterai/DeepPixelRepair.java \
+            app/src/main/java/com/dennis/photomasterai/RepairSafetyPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/SocialSourcePolicy.java \
+            tools/DeepPixelRepairHostChecks.java \
+            tools/RepairSafetyPolicyHostChecks.java \
+            tools/NeuralDenoisePolicyHostChecks.java \
+            tools/SocialSourcePolicyHostChecks.java \
+            tools/SmoothSurfaceGuardHostChecks.java
+
+          java -cp host-checks \
+            com.dennis.photomasterai.DeepPixelRepairHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.RepairSafetyPolicyHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.NeuralDenoisePolicyHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.SocialSourcePolicyHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.SmoothSurfaceGuardHostChecks
+
+      - name: Restore stable Photo Master debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: photo-master-ai-debug-keystore-v1
+
+      - name: Create signing key on first build
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$HOME/.android"
+
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Photo Master AI,O=Dennis Photo Master,C=AU" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -noprompt
+          fi
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Configure Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(
+              find "$SDK/cmdline-tools" \
+                -type f \
+                -name 'sdkmanager' \
+                | sort -V \
+                | tail -n 1
+            )"
+          fi
+
+          test -n "$SDKMANAGER" || {
+            echo "::error::sdkmanager not found"
+            exit 1
+          }
+
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Build v0.4.16 APK
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gradle \
+            :app:assembleDebug \
+            --stacktrace
+
+      - name: Verify package and prepare artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+          APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
+
+          test -f "$APK" || {
+            echo "::error::APK not found"
+            exit 1
+          }
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          AAPT="$SDK/build-tools/35.0.0/aapt"
+
+          BADGING="$(
+            "$AAPT" dump badging "$APK" \
+              | head -n 1
+          )"
+
+          echo "$BADGING"
+
+          echo "$BADGING" \
+            | grep -q "package: name='com.dennis.photomasterai'"
+
+          echo "$BADGING" \
+            | grep -q "versionCode='25'"
+
+          echo "$BADGING" \
+            | grep -q "versionName='0.4.16'"
+
+          unzip -l "$APK" \
+            | grep -q 'assets/nafnet_sidd_width32_fp16.tflite'
+
+          rm -rf artifact
+          mkdir artifact
+
+          OUT="artifact/PhotoMasterAI-v0.4.16-CHECKPOINT-FIDELITY-GUARD.apk"
+
+          cp "$APK" "$OUT"
+
+          sha256sum "$OUT" \
+            > "artifact/PhotoMasterAI-v0.4.16-CHECKPOINT-FIDELITY-GUARD-SHA256.txt"
+
+          cat > "artifact/PhotoMasterAI-v0.4.16-Notes.txt" <<EOF
+          Photo Master AI — v0.4.16 Continuation Notes
+
+          Version:
+          v0.4.16
+
+          versionCode:
+          25
+
+          BASELINE
+          Exact successful v0.4.15 source.
+          Commit:
+          d45340b70b24dc60d67537f63af4736ee851a24e
+
+          PURPOSE
+          Fix false authoritative-original checkpoint verification failure.
+
+          NO IMAGE QUALITY TUNING CHANGED.
+
+          FROZEN
+          - NAFNet-SIDD width32
+          - Classic LiteRT OpenCL GPU
+          - FP32 behaviour
+          - NCHW FLOAT32 [1,3,256,256]
+          - No CPU neural fallback
+          - 8-second per-tile guard
+          - 90-second soft total warning
+          - 240-second hard total guard
+          - Neural blend/QC/adaptive ladder
+          - Smooth-scene 5% cap
+          - Smooth +0.015 ringing allowance
+          - Smooth metric-floor early stop
+          - Post-neural coordination
+          - PhotoMasterEngine finishing logic
+
+          v0.4.16 CHECKPOINT CHANGE
+
+          Previously:
+          Authoritative original was always copied to ARGB_8888
+          before verification.
+
+          This could slightly change measured noise/chroma/ringing
+          and trigger:
+          Authoritative original checkpoint verification failed
+
+          Now:
+          1. Re-analyse untouched originalBitmap directly.
+          2. Verify it still matches originalAnalysis.
+          3. Preserve original Bitmap.Config when making final copy.
+          4. Analyse copied bitmap.
+          5. Verify copied bitmap against freshly re-analysed source.
+
+          SUCCESS REPORT
+          Authoritative-original checkpoint: VERIFIED —
+          source unchanged, original bitmap config preserved,
+          final bitmap/QC restored from pre-neural source
+
+          IF A FAILURE REMAINS IT WILL NOW IDENTIFY WHICH STAGE:
+
+          Authoritative original source changed before checkpoint
+
+          OR
+
+          Authoritative original copy fidelity verification failed
+
+          FIRST TEST
+          Exact duck photo.
+
+          Then:
+          Pond photo.
+          Portrait.
+          Flower.
+          Detailed landscape.
+
+          IMPORTANT
+          Do not retune denoise or neural QC based on this build.
+          This is checkpoint-fidelity only.
+          EOF
+
+          echo "v0.4.16 APK and continuation notes prepared"
+
+      - name: Upload APK and continuation notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoMasterAI-v0.4.16-CHECKPOINT-FIDELITY-GUARD
+          path: |
+            artifact/PhotoMasterAI-v0.4.16-CHECKPOINT-FIDELITY-GUARD.apk
+            artifact/PhotoMasterAI-v0.4.16-CHECKPOINT-FIDELITY-GUARD-SHA256.txt
+            artifact/PhotoMasterAI-v0.4.16-Notes.txt
+          if-no-files-found: error
+          retention-days: 30
