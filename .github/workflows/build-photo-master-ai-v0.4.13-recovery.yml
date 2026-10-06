@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    name: Photo Master AI v0.4.13 Terminal Guard Recovery
+    name: Photo Master AI v0.4.13 Smooth-Surface Terminal Guard
     runs-on: ubuntu-latest
     timeout-minutes: 55
 
@@ -27,31 +27,55 @@ jobs:
         run: |
           set -euo pipefail
 
-          BASE=".github/workflows/build-photo-master-ai-v0.4.12-recovery.yml"
+          V0412_RECOVERY_COMMIT="785d5ed5e056faf53a5682ccdea539a0fae7f003"
 
-          test -f "$BASE" || {
-            echo "::error::v0.4.12 recovery workflow missing"
+          git cat-file -e "${V0412_RECOVERY_COMMIT}^{commit}" || {
+            echo "::error::Known-good v0.4.12 recovery commit unavailable"
             exit 1
           }
+
+          git show \
+            "${V0412_RECOVERY_COMMIT}:.github/workflows/build-photo-master-ai-v0.4.12-recovery.yml" \
+            > /tmp/v0412-recovery.yml
 
           python3 - <<'PY'
           from pathlib import Path
 
           lines = Path(
-              ".github/workflows/build-photo-master-ai-v0.4.12-recovery.yml"
+              "/tmp/v0412-recovery.yml"
           ).read_text().splitlines()
 
           target = "Recover and build exact v0.4.12 source"
 
-          start = next(
-              i for i, line in enumerate(lines)
-              if line.strip() == "- name: " + target
-          )
+          step = None
 
-          run = next(
-              i for i in range(start, len(lines))
-              if lines[i].strip() == "run: |"
-          )
+          for i, line in enumerate(lines):
+              if line.strip() == "- name: " + target:
+                  step = i
+                  break
+
+          if step is None:
+              raise RuntimeError(
+                  "Known-good v0.4.12 recovery source step not found"
+              )
+
+          run = None
+
+          for i in range(step, len(lines)):
+              if lines[i].strip() == "run: |":
+                  run = i
+                  break
+
+              if (
+                  i > step
+                  and lines[i].startswith("      - name:")
+              ):
+                  break
+
+          if run is None:
+              raise RuntimeError(
+                  "Known-good v0.4.12 recovery run block not found"
+              )
 
           body = []
 
@@ -61,11 +85,13 @@ jobs:
 
               if not line.strip():
                   body.append("")
+
               elif line.startswith("          "):
                   body.append(line[10:])
+
               else:
                   raise RuntimeError(
-                      "Unexpected indentation while extracting v0.4.12"
+                      "Unexpected indentation while recovering v0.4.12"
                   )
 
           Path("/tmp/recover-v0412.sh").write_text(
@@ -84,7 +110,7 @@ jobs:
           )"
 
           test -n "$PROJECT" || {
-            echo "::error::Recovered project not found"
+            echo "::error::Recovered v0.4.12 project not found"
             exit 1
           }
 
@@ -102,40 +128,80 @@ jobs:
             "smoothSurfaceProtection" \
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/PhotoMasterEngine.java"
 
-          echo "v0.4.12 source recovered successfully"
+          grep -q \
+            "applySmoothSurfaceGuard" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java"
 
-      - name: Apply existing v0.4.13 terminal patch
+          grep -q \
+            "GpuBackend.OPENCL" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiserRuntime.kt"
+
+          if grep -q \
+            "new NeuralDenoiserRuntime(context, true)" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+          then
+            echo "::error::CPU neural fallback detected in recovered v0.4.12"
+            exit 1
+          fi
+
+          echo "Exact known-good v0.4.12 source recovered"
+
+      - name: Apply known-good v0.4.13 patch
         shell: bash
         env:
           PROJECT: ${{ steps.source.outputs.project }}
         run: |
           set -euo pipefail
 
-          PATCH_FILE=".github/workflows/build-photo-master-ai-v0.4.13.yml"
+          V0413_PATCH_COMMIT="e8e11d4b5f9ba23c102061808fb2a6c12ed0cb55"
 
-          test -f "$PATCH_FILE" || {
-            echo "::error::Existing v0.4.13 patch file missing"
+          git cat-file -e "${V0413_PATCH_COMMIT}^{commit}" || {
+            echo "::error::Known-good v0.4.13 patch commit unavailable"
             exit 1
           }
+
+          git show \
+            "${V0413_PATCH_COMMIT}:.github/workflows/build-photo-master-ai-v0.4.13.yml" \
+            > /tmp/v0413-patch-source.yml
 
           python3 - <<'PY'
           from pathlib import Path
 
           lines = Path(
-              ".github/workflows/build-photo-master-ai-v0.4.13.yml"
+              "/tmp/v0413-patch-source.yml"
           ).read_text().splitlines()
 
           target = "Apply v0.4.13 terminal guard"
 
-          start = next(
-              i for i, line in enumerate(lines)
-              if line.strip() == "- name: " + target
-          )
+          step = None
 
-          run = next(
-              i for i in range(start, len(lines))
-              if lines[i].strip() == "run: |"
-          )
+          for i, line in enumerate(lines):
+              if line.strip() == "- name: " + target:
+                  step = i
+                  break
+
+          if step is None:
+              raise RuntimeError(
+                  "Known-good v0.4.13 patch step not found"
+              )
+
+          run = None
+
+          for i in range(step, len(lines)):
+              if lines[i].strip() == "run: |":
+                  run = i
+                  break
+
+              if (
+                  i > step
+                  and lines[i].startswith("      - name:")
+              ):
+                  break
+
+          if run is None:
+              raise RuntimeError(
+                  "Known-good v0.4.13 patch run block not found"
+              )
 
           body = []
 
@@ -145,11 +211,13 @@ jobs:
 
               if not line.strip():
                   body.append("")
+
               elif line.startswith("          "):
                   body.append(line[10:])
+
               else:
                   raise RuntimeError(
-                      "Unexpected indentation in v0.4.13 patch"
+                      "Unexpected indentation in known-good v0.4.13 patch"
                   )
 
           Path("/tmp/apply-v0413.sh").write_text(
@@ -175,7 +243,11 @@ jobs:
             "smooth metric floor; lower blends skipped" \
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
 
-          echo "Existing v0.4.13 patch applied"
+          grep -q \
+            'report.contains("Neural rollback:")' \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+
+          echo "Known-good v0.4.13 terminal patch applied"
 
       - name: Enforce exact original-pixel terminal output
         shell: bash
@@ -227,7 +299,7 @@ jobs:
 
           if old not in s:
               raise RuntimeError(
-                  "Master render anchor not found"
+                  "Correct one-line master render anchor not found"
               )
 
           s = s.replace(
@@ -239,7 +311,7 @@ jobs:
           engine_file.write_text(s)
 
           print(
-              "Terminal smooth scenes now bypass rendering and copy original pixels exactly"
+              "Terminal smooth scenes now copy authoritative original pixels exactly"
           )
           PY
 
@@ -249,6 +321,10 @@ jobs:
 
           grep -q \
             "Unable to retain terminal original pixels" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PhotoMasterEngine.java"
+
+          grep -q \
+            "Smooth-scene terminal protection: ORIGINAL RETAINED" \
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/PhotoMasterEngine.java"
 
           grep -q \
@@ -263,7 +339,7 @@ jobs:
             exit 1
           fi
 
-          echo "v0.4.13 terminal path verification passed"
+          echo "v0.4.13 exact terminal path verification passed"
 
       - name: Fetch pinned NAFNet-SIDD model
         shell: bash
@@ -271,6 +347,7 @@ jobs:
           set -euo pipefail
 
           PROJECT="${{ steps.source.outputs.project }}"
+
           ASSETS="$PROJECT/app/src/main/assets"
           MODEL="$ASSETS/nafnet_sidd_width32_fp16.tflite"
 
@@ -341,7 +418,7 @@ jobs:
           java -cp host-checks \
             com.dennis.photomasterai.SmoothSurfaceGuardHostChecks
 
-      - name: Restore stable signing key
+      - name: Restore stable Photo Master debug signing key
         uses: actions/cache@v4
         with:
           path: ~/.android/debug.keystore
@@ -416,12 +493,13 @@ jobs:
             :app:assembleDebug \
             --stacktrace
 
-      - name: Verify and collect v0.4.13
+      - name: Verify package and prepare artifact
         shell: bash
         run: |
           set -euo pipefail
 
           PROJECT="${{ steps.source.outputs.project }}"
+
           APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
 
           test -f "$APK" || {
@@ -440,16 +518,20 @@ jobs:
           echo "$BADGING"
 
           echo "$BADGING" \
-            | grep -q "package: name='com.dennis.photomasterai'"
+            | grep -q \
+            "package: name='com.dennis.photomasterai'"
 
           echo "$BADGING" \
-            | grep -q "versionCode='22'"
+            | grep -q \
+            "versionCode='22'"
 
           echo "$BADGING" \
-            | grep -q "versionName='0.4.13'"
+            | grep -q \
+            "versionName='0.4.13'"
 
           unzip -l "$APK" \
-            | grep -q 'assets/nafnet_sidd_width32_fp16.tflite'
+            | grep -q \
+            'assets/nafnet_sidd_width32_fp16.tflite'
 
           rm -rf artifact
           mkdir artifact
@@ -462,55 +544,64 @@ jobs:
             > "artifact/PhotoMasterAI-v0.4.13-SMOOTH-SURFACE-TERMINAL-GUARD-SHA256.txt"
 
           cat > "artifact/PhotoMasterAI-v0.4.13-Notes.txt" <<EOF
-          Photo Master AI v0.4.13
-          versionCode 22
+          Photo Master AI — v0.4.13 Continuation Notes
 
-          BASE
-          Exact successful v0.4.12 recovery build.
+          Version: v0.4.13
+          versionCode: 22
 
-          DUCK FIX
-          - Smooth/water low-detail detection retained.
-          - 5% high-ring neural cap retained.
-          - +0.015 smooth-scene ringing limit retained.
-          - Adaptive lower blends stop when measured metrics hit the same floor.
-          - Neural QC rollback is passed into PhotoMasterEngine.
-          - Smooth-scene QC rejection becomes terminal.
-          - Deep Pixel Repair, tone, highlight roll-off, WB, colour,
-            vibrance, sharpening and micro-contrast are bypassed.
-          - Terminal output copies the original working bitmap pixels
-            directly instead of re-rendering them.
+          BASELINE
+          Exact successful v0.4.12 recovery source.
+
+          FROZEN NEURAL CORE
+          - NAFNet-SIDD width32
+          - Classic LiteRT / TFLite Interpreter
+          - OpenCL GPU
+          - FP32 behaviour
+          - NCHW [1,3,256,256]
+          - No CPU neural fallback
+          - Normal-scene neural QC unchanged
+          - Smooth-scene +0.015 ringing allowance unchanged
+
+          v0.4.13 SMOOTH-SURFACE TERMINAL GUARD
+          - High-ring smooth scenes retain the v0.4.12 5% neural cap.
+          - Lower adaptive blends stop when measurements hit the same floor.
+          - Neural QC rejection is passed into PhotoMasterEngine.
+          - Protected smooth-scene QC rejection becomes terminal.
+          - Deep Pixel Repair is bypassed.
+          - Denoise, sharpening and micro-contrast are bypassed.
+          - Exposure/tone/highlight finishing are bypassed.
+          - WB, saturation and vibrance finishing are bypassed.
+          - AI relighting is bypassed.
+          - Original working pixels are copied directly to output.
 
           EXPECTED DUCK
-          - 5% rejected for excess ringing.
-          - Around 4% checked once.
-          - Metric floor detected; remaining lower trials skipped.
-          - Original pixels restored.
-          - Final OUTPUT QC approximately:
-            noise 0.015
-            flat chroma 0.026
-            detail 0.014
-            ring 0.73
-          - Report:
+          - Initial neural blend approximately 5%.
+          - +0.015 ring limit remains authoritative.
+          - Around 4% may be tested once.
+          - If metrics are effectively unchanged:
+            smooth metric floor; lower blends skipped
+          - Neural rollback restores original pixels.
+          - Final report:
             Smooth-scene terminal protection: ORIGINAL RETAINED —
             no safe measurable improvement
+          - Final OUTPUT QC should be essentially the original source.
 
-          NEXT TESTS
+          NEXT REGRESSION TESTS
           1. Duck
           2. Portrait
           3. Flower
           4. Detailed landscape
 
-          FROZEN
-          - NAFNet-SIDD width32
-          - Classic LiteRT / OpenCL GPU / FP32
-          - NCHW FLOAT32 [1,3,256,256]
-          - No CPU neural fallback
-          - Smooth-scene +0.015 ring limit unchanged
+          IMPORTANT
+          Do not return to CompiledModel GPU.
+          Do not add CPU NAFNet fallback.
+          Do not change NCHW packing.
+          Do not loosen general neural QC.
           EOF
 
-          echo "v0.4.13 APK and continuation notes prepared"
+          echo "v0.4.13 artifact and continuation notes prepared"
 
-      - name: Upload v0.4.13 APK and notes
+      - name: Upload APK and continuation notes
         uses: actions/upload-artifact@v4
         with:
           name: PhotoMasterAI-v0.4.13-SMOOTH-SURFACE-TERMINAL-GUARD
