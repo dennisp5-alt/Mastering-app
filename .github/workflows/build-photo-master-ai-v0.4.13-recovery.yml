@@ -1,0 +1,506 @@
+name: Build Photo Master AI v0.4.13 Recovery
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-photo-master-ai-v0.4.13-recovery.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Photo Master AI v0.4.13 Terminal Guard Recovery
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+
+    steps:
+      - name: Checkout repository with history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Recover exact v0.4.12 source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BASE=".github/workflows/build-photo-master-ai-v0.4.12-recovery.yml"
+
+          test -f "$BASE" || {
+            echo "::error::v0.4.12 recovery workflow missing"
+            exit 1
+          }
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          lines = Path(
+              ".github/workflows/build-photo-master-ai-v0.4.12-recovery.yml"
+          ).read_text().splitlines()
+
+          target = "Recover and build exact v0.4.12 source"
+
+          start = next(
+              i for i, line in enumerate(lines)
+              if line.strip() == "- name: " + target
+          )
+
+          run = next(
+              i for i in range(start, len(lines))
+              if lines[i].strip() == "run: |"
+          )
+
+          body = []
+
+          for line in lines[run + 1:]:
+              if line.startswith("      - name:"):
+                  break
+
+              if not line.strip():
+                  body.append("")
+              elif line.startswith("          "):
+                  body.append(line[10:])
+              else:
+                  raise RuntimeError(
+                      "Unexpected indentation while extracting v0.4.12"
+                  )
+
+          Path("/tmp/recover-v0412.sh").write_text(
+              "\n".join(body) + "\n"
+          )
+          PY
+
+          bash /tmp/recover-v0412.sh
+
+          PROJECT="$(
+            find photomaster-v044-build \
+              -type f \
+              \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \) \
+              -printf '%h\n' \
+              | head -n 1
+          )"
+
+          test -n "$PROJECT" || {
+            echo "::error::Recovered project not found"
+            exit 1
+          }
+
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+
+          grep -q \
+            "versionCode 21" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "versionName '0.4.12'" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "smoothSurfaceProtection" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PhotoMasterEngine.java"
+
+          echo "v0.4.12 source recovered successfully"
+
+      - name: Apply existing v0.4.13 terminal patch
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+
+          PATCH_FILE=".github/workflows/build-photo-master-ai-v0.4.13.yml"
+
+          test -f "$PATCH_FILE" || {
+            echo "::error::Existing v0.4.13 patch file missing"
+            exit 1
+          }
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          lines = Path(
+              ".github/workflows/build-photo-master-ai-v0.4.13.yml"
+          ).read_text().splitlines()
+
+          target = "Apply v0.4.13 terminal guard"
+
+          start = next(
+              i for i, line in enumerate(lines)
+              if line.strip() == "- name: " + target
+          )
+
+          run = next(
+              i for i in range(start, len(lines))
+              if lines[i].strip() == "run: |"
+          )
+
+          body = []
+
+          for line in lines[run + 1:]:
+              if line.startswith("      - name:"):
+                  break
+
+              if not line.strip():
+                  body.append("")
+              elif line.startswith("          "):
+                  body.append(line[10:])
+              else:
+                  raise RuntimeError(
+                      "Unexpected indentation in v0.4.13 patch"
+                  )
+
+          Path("/tmp/apply-v0413.sh").write_text(
+              "\n".join(body) + "\n"
+          )
+          PY
+
+          bash /tmp/apply-v0413.sh
+
+          grep -q \
+            "versionCode 22" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "versionName '0.4.13'" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "smoothSurfaceTerminalGuard" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PhotoMasterEngine.java"
+
+          grep -q \
+            "smooth metric floor; lower blends skipped" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          echo "Existing v0.4.13 patch applied"
+
+      - name: Enforce exact original-pixel terminal output
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+
+          project = Path(os.environ["PROJECT"])
+
+          engine_file = project / (
+              "app/src/main/java/com/dennis/"
+              "photomasterai/PhotoMasterEngine.java"
+          )
+
+          s = engine_file.read_text()
+
+          old = "\n".join([
+              "        Bitmap out = Bitmap.createBitmap(",
+              "                source.getWidth(),",
+              "                source.getHeight(),",
+              "                Bitmap.Config.ARGB_8888);",
+              "        renderChunked(source, out, p);",
+          ])
+
+          new = "\n".join([
+              "        Bitmap out;",
+              "",
+              "        if (p.smoothSurfaceTerminalGuard) {",
+              "            out = source.copy(",
+              "                    Bitmap.Config.ARGB_8888,",
+              "                    false);",
+              "",
+              "            if (out == null) {",
+              "                throw new IllegalStateException(",
+              "                        \"Unable to retain terminal original pixels\");",
+              "            }",
+              "",
+              "        } else {",
+              "            out = Bitmap.createBitmap(",
+              "                    source.getWidth(),",
+              "                    source.getHeight(),",
+              "                    Bitmap.Config.ARGB_8888);",
+              "",
+              "            renderChunked(source, out, p);",
+              "        }",
+          ])
+
+          if old not in s:
+              raise RuntimeError(
+                  "Master render anchor not found"
+              )
+
+          s = s.replace(old, new, 1)
+
+          engine_file.write_text(s)
+
+          print(
+              "Terminal smooth scenes now bypass rendering and copy original pixels exactly"
+          )
+          PY
+
+          grep -q \
+            "if (p.smoothSurfaceTerminalGuard)" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PhotoMasterEngine.java"
+
+          grep -q \
+            "Unable to retain terminal original pixels" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PhotoMasterEngine.java"
+
+          grep -q \
+            "GpuBackend.OPENCL" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiserRuntime.kt"
+
+          if grep -q \
+            "new NeuralDenoiserRuntime(context, true)" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+          then
+            echo "::error::CPU neural fallback detected"
+            exit 1
+          fi
+
+          echo "v0.4.13 terminal path verification passed"
+
+      - name: Fetch pinned NAFNet-SIDD model
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+          ASSETS="$PROJECT/app/src/main/assets"
+          MODEL="$ASSETS/nafnet_sidd_width32_fp16.tflite"
+
+          mkdir -p "$ASSETS"
+
+          URL='https://huggingface.co/litert-community/NAFNet-SIDD-width32-LiteRT/resolve/main/nafnet_sidd_width32_fp16.tflite?download=true'
+
+          curl \
+            --fail \
+            --location \
+            --retry 5 \
+            --retry-all-errors \
+            --connect-timeout 30 \
+            --output "$MODEL.tmp" \
+            "$URL"
+
+          mv "$MODEL.tmp" "$MODEL"
+
+          test "$(stat -c%s "$MODEL")" -eq 62454048 || {
+            echo "::error::Unexpected NAFNet model size"
+            exit 1
+          }
+
+          echo \
+          'f8fbaa422411683c53e802cf7cc7cf9be0a0de00886ad4af057232e26b172a0c  '"$MODEL" \
+          | sha256sum -c -
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Run all safety host checks
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf host-checks
+          mkdir host-checks
+
+          javac -d host-checks \
+            app/src/main/java/com/dennis/photomasterai/DeepPixelRepair.java \
+            app/src/main/java/com/dennis/photomasterai/RepairSafetyPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/SocialSourcePolicy.java \
+            tools/DeepPixelRepairHostChecks.java \
+            tools/RepairSafetyPolicyHostChecks.java \
+            tools/NeuralDenoisePolicyHostChecks.java \
+            tools/SocialSourcePolicyHostChecks.java \
+            tools/SmoothSurfaceGuardHostChecks.java
+
+          java -cp host-checks \
+            com.dennis.photomasterai.DeepPixelRepairHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.RepairSafetyPolicyHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.NeuralDenoisePolicyHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.SocialSourcePolicyHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.SmoothSurfaceGuardHostChecks
+
+      - name: Restore stable signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: photo-master-ai-debug-keystore-v1
+
+      - name: Create signing key on first build
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$HOME/.android"
+
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Photo Master AI,O=Dennis Photo Master,C=AU" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -noprompt
+          fi
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Configure Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(
+              find "$SDK/cmdline-tools" \
+                -type f \
+                -name 'sdkmanager' \
+                | sort -V \
+                | tail -n 1
+            )"
+          fi
+
+          test -n "$SDKMANAGER" || {
+            echo "::error::sdkmanager not found"
+            exit 1
+          }
+
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Build v0.4.13 APK
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gradle \
+            :app:assembleDebug \
+            --stacktrace
+
+      - name: Verify and collect v0.4.13
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+          APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
+
+          test -f "$APK"
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          AAPT="$SDK/build-tools/35.0.0/aapt"
+
+          BADGING="$(
+            "$AAPT" dump badging "$APK" \
+              | head -n 1
+          )"
+
+          echo "$BADGING"
+
+          echo "$BADGING" \
+            | grep -q "package: name='com.dennis.photomasterai'"
+
+          echo "$BADGING" \
+            | grep -q "versionCode='22'"
+
+          echo "$BADGING" \
+            | grep -q "versionName='0.4.13'"
+
+          unzip -l "$APK" \
+            | grep -q 'assets/nafnet_sidd_width32_fp16.tflite'
+
+          mkdir -p artifact
+
+          OUT="artifact/PhotoMasterAI-v0.4.13-SMOOTH-SURFACE-TERMINAL-GUARD.apk"
+
+          cp "$APK" "$OUT"
+
+          sha256sum "$OUT" \
+            > "artifact/PhotoMasterAI-v0.4.13-SMOOTH-SURFACE-TERMINAL-GUARD-SHA256.txt"
+
+          cat > "artifact/PhotoMasterAI-v0.4.13-Notes.txt" <<EOF
+          Photo Master AI v0.4.13
+          versionCode 22
+
+          BASE: exact successful v0.4.12 recovery build.
+
+          DUCK FIX:
+          - Smooth/water low-detail detection retained.
+          - 5% high-ring neural cap retained.
+          - +0.015 smooth-scene ringing limit retained.
+          - Adaptive lower blends stop when measured metrics hit the same floor.
+          - Neural QC rollback is passed into PhotoMasterEngine.
+          - Smooth-scene QC rejection becomes terminal.
+          - Deep Pixel Repair, tone, highlight roll-off, WB, colour,
+            vibrance, sharpening and micro-contrast are bypassed.
+          - Terminal output copies the original working bitmap pixels
+            directly instead of re-rendering them.
+
+          EXPECTED DUCK:
+          - 5% rejected for excess ringing.
+          - Around 4% checked once.
+          - Metric floor detected; remaining lower trials skipped.
+          - Original pixels restored.
+          - Final OUTPUT QC approximately:
+            noise 0.015
+            flat chroma 0.026
+            detail 0.014
+            ring 0.73
+          - Report:
+            Smooth-scene terminal protection: ORIGINAL RETAINED —
+            no safe measurable improvement
+
+          NEXT:
+          Test duck, portrait, flower, detailed landscape.
+
+          FROZEN:
+          NAFNet-SIDD width32 / Classic LiteRT OpenCL / FP32 / NCHW.
+          No CPU NAFNet fallback.
+          EOF
+
+      - name: Upload v0.4.13 APK and notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoMasterAI-v0.4.13-SMOOTH-SURFACE-TERMINAL-GUARD
+          path: |
+            artifact/PhotoMasterAI-v0.4.13-SMOOTH-SURFACE-TERMINAL-GUARD.apk
+            artifact/PhotoMasterAI-v0.4.13-SMOOTH-SURFACE-TERMINAL-GUARD-SHA256.txt
+            artifact/PhotoMasterAI-v0.4.13-Notes.txt
+          if-no-files-found: error
+          retention-days: 30
