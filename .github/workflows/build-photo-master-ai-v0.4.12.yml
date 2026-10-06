@@ -1,0 +1,1498 @@
+name: Build Photo Master AI v0.4.12 Low-Detail Smooth-Surface Guard
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-photo-master-ai-v0.4.12.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Photo Master AI v0.4.12 Low-Detail Smooth-Surface Guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Rebuild exact v0.4.11 source baseline
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BASE=".github/workflows/build-photo-master-ai-v0.4.11.yml"
+
+          test -f "$BASE" || {
+            echo "::error::Known-good v0.4.11 workflow missing"
+            exit 1
+          }
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source = Path(
+              ".github/workflows/build-photo-master-ai-v0.4.11.yml"
+          )
+
+          lines = source.read_text().splitlines()
+
+          def extract_step(name, destination):
+              step = None
+
+              for i, line in enumerate(lines):
+                  if line.strip() == "- name: " + name:
+                      step = i
+                      break
+
+              if step is None:
+                  raise RuntimeError(
+                      "Workflow step not found: " + name
+                  )
+
+              run = None
+
+              for i in range(step, len(lines)):
+                  if lines[i].strip() == "run: |":
+                      run = i
+                      break
+
+                  if (
+                      i > step
+                      and lines[i].startswith("      - name:")
+                  ):
+                      break
+
+              if run is None:
+                  raise RuntimeError(
+                      "Run block not found: " + name
+                  )
+
+              body = []
+
+              for line in lines[run + 1:]:
+                  if line.startswith("      - name:"):
+                      break
+
+                  if not line.strip():
+                      body.append("")
+                  elif line.startswith("          "):
+                      body.append(line[10:])
+                  else:
+                      raise RuntimeError(
+                          "Unexpected indentation in: " + name
+                      )
+
+              Path(destination).write_text(
+                  "\n".join(body) + "\n"
+              )
+
+          extract_step(
+              "Rebuild exact v0.4.10 source baseline",
+              "/tmp/v0410-source.sh"
+          )
+
+          extract_step(
+              "Apply v0.4.11 post-neural coordination guard",
+              "/tmp/v0411-patch.sh"
+          )
+
+          print(
+              "Extracted exact v0.4.11 construction steps"
+          )
+          PY
+
+          bash /tmp/v0410-source.sh
+
+          SETTINGS="$(
+            find photomaster-v044-build \
+              -type f \
+              -name 'settings.gradle' \
+              | head -n 1
+          )"
+
+          if [ -z "$SETTINGS" ]; then
+            SETTINGS="$(
+              find photomaster-v044-build \
+                -type f \
+                -name 'settings.gradle.kts' \
+                | head -n 1
+            )"
+          fi
+
+          test -n "$SETTINGS" || {
+            echo "::error::Generated project not found"
+            exit 1
+          }
+
+          PROJECT="$(dirname "$SETTINGS")"
+          export PROJECT
+
+          bash /tmp/v0411-patch.sh
+
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+
+          grep -q \
+            "versionCode 20" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "versionName '0.4.11'" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "postNeuralCoordination" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PhotoMasterEngine.java"
+
+          grep -q \
+            "0.30, 0.24, 0.20, 0.16" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "GpuBackend.OPENCL" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiserRuntime.kt"
+
+          echo "Exact v0.4.11 source baseline reconstructed"
+
+      - name: Apply v0.4.12 low-detail smooth-surface guard
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+
+          project = Path(os.environ["PROJECT"])
+
+          # =====================================================
+          # VERSION
+          # =====================================================
+
+          build_file = project / "app/build.gradle"
+          build = build_file.read_text()
+
+          if "versionCode 20" not in build:
+              raise RuntimeError(
+                  "v0.4.11 versionCode 20 not found"
+              )
+
+          if "versionName '0.4.11'" not in build:
+              raise RuntimeError(
+                  "v0.4.11 versionName not found"
+              )
+
+          build = build.replace(
+              "versionCode 20",
+              "versionCode 21",
+              1
+          )
+
+          build = build.replace(
+              "versionName '0.4.11'",
+              "versionName '0.4.12'",
+              1
+          )
+
+          build_file.write_text(build)
+
+          # =====================================================
+          # NEURAL POLICY
+          #
+          # Smooth / very-low-detail protection:
+          #
+          # - Water / sky semantic evidence OR conservative
+          #   image-metric evidence.
+          # - Person scenes excluded.
+          # - Dark-field scenes remain under their existing guard.
+          # - High-ring-risk smooth scenes cap neural at 5%.
+          # - Other smooth scenes cap neural at 10%.
+          # - Extremely-low-detail already-clean scenes skip neural.
+          # - Smooth-scene ring allowance = +0.015.
+          # - Normal neural ring allowance remains +0.025.
+          # =====================================================
+
+          policy_file = project / (
+              "app/src/main/java/com/dennis/"
+              "photomasterai/NeuralDenoisePolicy.java"
+          )
+
+          policy = policy_file.read_text()
+
+          anchor = (
+              "    public static Quality evaluate("
+          )
+
+          if anchor not in policy:
+              raise RuntimeError(
+                  "Neural policy evaluate anchor not found"
+              )
+
+          helper = "\n".join([
+              "    public static Decision applySmoothSurfaceGuard(",
+              "            Decision base,",
+              "            double noise,",
+              "            double flatChromaNoise,",
+              "            double detail,",
+              "            double ringing,",
+              "            double medianLum,",
+              "            double blockiness,",
+              "            boolean waterLike,",
+              "            boolean skyLike,",
+              "            boolean personLike,",
+              "            boolean darkField) {",
+              "",
+              "        if (base == null",
+              "                || !base.active",
+              "                || personLike",
+              "                || darkField) {",
+              "            return base;",
+              "        }",
+              "",
+              "        boolean lowDetail = detail <= 0.020;",
+              "",
+              "        boolean semanticSmooth =",
+              "                waterLike || skyLike;",
+              "",
+              "        boolean metricSmooth =",
+              "                detail <= 0.016",
+              "                        && medianLum >= 0.45",
+              "                        && blockiness <= 0.10;",
+              "",
+              "        boolean smoothSurface =",
+              "                lowDetail",
+              "                        && (semanticSmooth",
+              "                        || metricSmooth);",
+              "",
+              "        if (!smoothSurface) {",
+              "            return base;",
+              "        }",
+              "",
+              "        boolean extremelyLowDetail =",
+              "                detail <= 0.008;",
+              "",
+              "        boolean alreadyClean =",
+              "                noise <= 0.014",
+              "                        && flatChromaNoise <= 0.022;",
+              "",
+              "        if (extremelyLowDetail && alreadyClean) {",
+              "            return new Decision(",
+              "                    false,",
+              "                    base.noiseScore,",
+              "                    0.0,",
+              "                    base.confidence,",
+              "                    base.personLike,",
+              "                    \"low-detail smooth-surface protection: \"",
+              "                            + \"source already clean; neural withheld\");",
+              "        }",
+              "",
+              "        double cap =",
+              "                ringing >= 0.55",
+              "                        ? 0.05",
+              "                        : 0.10;",
+              "",
+              "        return new Decision(",
+              "                true,",
+              "                base.noiseScore,",
+              "                Math.min(base.blend, cap),",
+              "                base.confidence,",
+              "                base.personLike,",
+              "                base.reason",
+              "                        + \"; low-detail smooth-surface protection active\"",
+              "                        + (cap <= 0.05",
+              "                                ? \"; high-ring-risk 5% blend cap\"",
+              "                                : \"; 10% blend cap\"));",
+              "    }",
+              "",
+              "    public static boolean isSmoothSurfaceDecision(",
+              "            Decision decision) {",
+              "",
+              "        return decision != null",
+              "                && decision.reason != null",
+              "                && decision.reason.contains(",
+              "                        \"smooth-surface protection\");",
+              "    }",
+              "",
+          ])
+
+          policy = policy.replace(
+              anchor,
+              helper + anchor,
+              1
+          )
+
+          old = (
+              "        boolean ringingSafe = "
+              "afterRinging <= beforeRinging + 0.025;"
+          )
+
+          new = "\n".join([
+              "        double ringingAllowance =",
+              "                isSmoothSurfaceDecision(decision)",
+              "                        ? 0.015",
+              "                        : 0.025;",
+              "",
+              "        boolean ringingSafe =",
+              "                afterRinging",
+              "                        <= beforeRinging",
+              "                        + ringingAllowance;",
+          ])
+
+          if old not in policy:
+              raise RuntimeError(
+                  "Neural ringing QC anchor not found"
+              )
+
+          policy = policy.replace(
+              old,
+              new,
+              1
+          )
+
+          policy_file.write_text(policy)
+
+          # =====================================================
+          # NEURAL DENOISER
+          #
+          # Refine the normal neural decision before NAFNet output
+          # is blended back into the photograph.
+          #
+          # The model, OpenCL runtime and tensor path are unchanged.
+          # =====================================================
+
+          neural_file = project / (
+              "app/src/main/java/com/dennis/"
+              "photomasterai/NeuralDenoiser.java"
+          )
+
+          neural = neural_file.read_text()
+
+          old = "\n".join([
+              "        NeuralDenoisePolicy.Decision decision = NeuralDenoisePolicy.decide(",
+              "                before.noise, before.flatChromaNoise, before.detail, pixels,",
+              "                aiMax, personLike, darkField, processed);",
+          ])
+
+          new = "\n".join([
+              "        boolean waterLike =",
+              "                ai != null",
+              "                        && ai.available",
+              "                        && ai.waterLike;",
+              "",
+              "        boolean skyLike =",
+              "                ai != null",
+              "                        && ai.available",
+              "                        && ai.skyLike;",
+              "",
+              "        NeuralDenoisePolicy.Decision decision =",
+              "                NeuralDenoisePolicy.decide(",
+              "                        before.noise,",
+              "                        before.flatChromaNoise,",
+              "                        before.detail,",
+              "                        pixels,",
+              "                        aiMax,",
+              "                        personLike,",
+              "                        darkField,",
+              "                        processed);",
+              "",
+              "        decision =",
+              "                NeuralDenoisePolicy.applySmoothSurfaceGuard(",
+              "                        decision,",
+              "                        before.noise,",
+              "                        before.flatChromaNoise,",
+              "                        before.detail,",
+              "                        before.ringing,",
+              "                        before.medianLum,",
+              "                        before.blockiness,",
+              "                        waterLike,",
+              "                        skyLike,",
+              "                        personLike,",
+              "                        darkField);",
+          ])
+
+          if old not in neural:
+              raise RuntimeError(
+                  "Neural decision anchor not found"
+              )
+
+          neural = neural.replace(
+              old,
+              new,
+              1
+          )
+
+          anchor = (
+              "        String adaptiveLine;"
+          )
+
+          if anchor not in neural:
+              raise RuntimeError(
+                  "Neural metrics/report anchor not found"
+              )
+
+          report_insert = "\n".join([
+              "        if (NeuralDenoisePolicy.isSmoothSurfaceDecision(decision)) {",
+              "            metrics += ",
+              "                    \"\\n• Low-detail scene protection active\";",
+              "",
+              "            metrics += waterLike || skyLike",
+              "                    ? \"\\n• Smooth-surface preservation: water/sky safe mode\"",
+              "                    : \"\\n• Smooth-surface preservation: low-texture safe mode\";",
+              "",
+              "            metrics += String.format(",
+              "                    Locale.US,",
+              "                    \"\\n• Smooth-scene neural blend cap %.0f%% | ring allowance +0.015\",",
+              "                    decision.blend * 100.0);",
+              "        }",
+              "",
+          ])
+
+          neural = neural.replace(
+              anchor,
+              report_insert + anchor,
+              1
+          )
+
+          neural_file.write_text(neural)
+
+          # =====================================================
+          # PHOTO MASTER ENGINE
+          #
+          # This protection is also active when neural is skipped
+          # or rejected. AI MAX is therefore not allowed to add
+          # strong sharpening/micro-contrast back onto a genuine
+          # smooth low-detail scene.
+          # =====================================================
+
+          engine_file = project / (
+              "app/src/main/java/com/dennis/"
+              "photomasterai/PhotoMasterEngine.java"
+          )
+
+          engine = engine_file.read_text()
+
+          old = "\n".join([
+              "        boolean postNeuralCheckpointRollback;",
+              "",
+              "        double baselineRinging;",
+          ])
+
+          new = "\n".join([
+              "        boolean postNeuralCheckpointRollback;",
+              "        boolean lowDetailSceneProtection;",
+              "        boolean smoothSurfaceProtection;",
+              "        boolean conservativeOutputRetained;",
+              "",
+              "        double postNeuralRingAllowance;",
+              "        double baselineRinging;",
+          ])
+
+          if old not in engine:
+              raise RuntimeError(
+                  "PhotoMaster Params guard anchor not found"
+              )
+
+          engine = engine.replace(
+              old,
+              new,
+              1
+          )
+
+          # Replace the v0.4.11 coordination setup.
+          start = engine.find(
+              "    private static void configurePostNeuralCoordination("
+          )
+
+          end = engine.find(
+              "    private static boolean postNeuralRingingRegression(",
+              start
+          )
+
+          if start < 0 or end < 0:
+              raise RuntimeError(
+                  "Post-neural configure function boundaries not found"
+              )
+
+          configure = "\n".join([
+              "    private static void configurePostNeuralCoordination(",
+              "            Params p,",
+              "            PhotoAnalysis checkpoint,",
+              "            PhotoAnalysis originalBaseline,",
+              "            boolean neuralAccepted) {",
+              "",
+              "        if (!p.neuralMode",
+              "                || checkpoint == null",
+              "                || originalBaseline == null) {",
+              "            return;",
+              "        }",
+              "",
+              "        boolean personLike =",
+              "                p.ai != null",
+              "                        && p.ai.available",
+              "                        && p.ai.personLike;",
+              "",
+              "        boolean semanticSmooth =",
+              "                p.ai != null",
+              "                        && p.ai.available",
+              "                        && (p.ai.waterLike",
+              "                        || p.ai.skyLike);",
+              "",
+              "        boolean metricSmooth =",
+              "                originalBaseline.detail <= 0.016",
+              "                        && originalBaseline.medianLum >= 0.45",
+              "                        && originalBaseline.blockiness <= 0.10;",
+              "",
+              "        p.lowDetailSceneProtection =",
+              "                !personLike",
+              "                        && !p.darkFieldProtected",
+              "                        && !p.processedSourceGuard",
+              "                        && originalBaseline.detail <= 0.020;",
+              "",
+              "        p.smoothSurfaceProtection =",
+              "                p.lowDetailSceneProtection",
+              "                        && (semanticSmooth",
+              "                        || metricSmooth);",
+              "",
+              "        if (p.smoothSurfaceProtection) {",
+              "            // Smooth areas must stay smooth.",
+              "            p.repairLuma = 0.0;",
+              "            p.repairChroma = 0.0;",
+              "            p.repairDeblock = 0.0;",
+              "            p.repairDetail = 0.0;",
+              "",
+              "            p.denoise =",
+              "                    Math.min(p.denoise, 0.020);",
+              "",
+              "            p.sharpen =",
+              "                    Math.min(p.sharpen, 0.020);",
+              "",
+              "            p.microContrast = 0.0;",
+              "            p.aiSubjectSharpen = 0.0;",
+              "            p.denoiseActive = false;",
+              "            p.sharpenActive = false;",
+              "        }",
+              "",
+              "        if (!neuralAccepted) {",
+              "            return;",
+              "        }",
+              "",
+              "        p.neuralCheckpointActive = true;",
+              "",
+              "        p.baselineRinging =",
+              "                originalBaseline.ringing;",
+              "",
+              "        p.checkpointRinging =",
+              "                checkpoint.ringing;",
+              "",
+              "        p.baselineNoise =",
+              "                originalBaseline.noise;",
+              "",
+              "        p.checkpointNoise =",
+              "                checkpoint.noise;",
+              "",
+              "        p.baselineChromaNoise =",
+              "                originalBaseline.flatChromaNoise;",
+              "",
+              "        p.checkpointChromaNoise =",
+              "                checkpoint.flatChromaNoise;",
+              "",
+              "        p.postNeuralRingAllowance =",
+              "                p.smoothSurfaceProtection",
+              "                        ? 0.015",
+              "                        : 0.025;",
+              "",
+              "        p.neuralRingBudget = Math.max(",
+              "                0.0,",
+              "                originalBaseline.ringing",
+              "                        + p.postNeuralRingAllowance",
+              "                        - checkpoint.ringing);",
+              "",
+              "        boolean fragileLowDetail =",
+              "                checkpoint.detail <= 0.022;",
+              "",
+              "        boolean limitedRingingBudget =",
+              "                p.neuralRingBudget <= 0.008;",
+              "",
+              "        p.postNeuralCoordination =",
+              "                p.smoothSurfaceProtection",
+              "                        || (fragileLowDetail",
+              "                        && limitedRingingBudget);",
+              "",
+              "        if (!p.postNeuralCoordination) {",
+              "            return;",
+              "        }",
+              "",
+              "        p.postNeuralReduction = true;",
+              "        p.repairDetail = 0.0;",
+              "",
+              "        if (p.smoothSurfaceProtection) {",
+              "            p.repairLuma = 0.0;",
+              "            p.repairChroma = 0.0;",
+              "            p.repairDeblock = 0.0;",
+              "            p.denoise = 0.0;",
+              "            p.sharpen =",
+              "                    Math.min(p.sharpen, 0.020);",
+              "            p.microContrast = 0.0;",
+              "            p.aiSubjectSharpen = 0.0;",
+              "            p.denoiseActive = false;",
+              "            p.sharpenActive = false;",
+              "",
+              "        } else if (p.neuralRingBudget <= 0.0035) {",
+              "            p.sharpen =",
+              "                    Math.min(p.sharpen, 0.045);",
+              "            p.microContrast =",
+              "                    Math.min(p.microContrast, 0.022);",
+              "            p.aiSubjectSharpen =",
+              "                    Math.min(p.aiSubjectSharpen, 0.020);",
+              "",
+              "        } else {",
+              "            p.sharpen =",
+              "                    Math.min(p.sharpen, 0.060);",
+              "            p.microContrast =",
+              "                    Math.min(p.microContrast, 0.035);",
+              "            p.aiSubjectSharpen =",
+              "                    Math.min(p.aiSubjectSharpen, 0.020);",
+              "        }",
+              "",
+              "        double lumaBenefit =",
+              "                p.baselineNoise > 0.0001",
+              "                        ? (p.baselineNoise",
+              "                        - p.checkpointNoise)",
+              "                        / p.baselineNoise",
+              "                        : 0.0;",
+              "",
+              "        double chromaBenefit =",
+              "                p.baselineChromaNoise > 0.0001",
+              "                        ? (p.baselineChromaNoise",
+              "                        - p.checkpointChromaNoise)",
+              "                        / p.baselineChromaNoise",
+              "                        : 0.0;",
+              "",
+              "        if (p.smoothSurfaceProtection",
+              "                && Math.max(",
+              "                        lumaBenefit,",
+              "                        chromaBenefit) < 0.10) {",
+              "",
+              "            // Marginal benefit: retain only the tiny",
+              "            // accepted neural change and make all",
+              "            // downstream finishing transparent.",
+              "            p.conservativeOutputRetained = true;",
+              "",
+              "            p.repairLuma = 0.0;",
+              "            p.repairChroma = 0.0;",
+              "            p.repairDeblock = 0.0;",
+              "            p.repairDetail = 0.0;",
+              "            p.denoise = 0.0;",
+              "            p.sharpen = 0.0;",
+              "            p.microContrast = 0.0;",
+              "            p.aiSubjectSharpen = 0.0;",
+              "",
+              "            p.exposureEv = 0.0;",
+              "            p.shadowLift = 0.0;",
+              "            p.highlightProtect = 0.0;",
+              "            p.contrast = 1.0;",
+              "            p.gamma = 1.0;",
+              "",
+              "            p.saturation = 1.0;",
+              "            p.vibrance = 0.0;",
+              "            p.greenControl = 1.0;",
+              "            p.blueControl = 1.0;",
+              "",
+              "            p.wbR = 1.0;",
+              "            p.wbG = 1.0;",
+              "            p.wbB = 1.0;",
+              "",
+              "            p.aiSubjectLiftEv = 0.0;",
+              "            p.aiBackgroundDepthEv = 0.0;",
+              "",
+              "            p.exposureActive = false;",
+              "            p.wbActive = false;",
+              "            p.toneActive = false;",
+              "            p.denoiseActive = false;",
+              "            p.sharpenActive = false;",
+              "            p.colourActive = false;",
+              "        }",
+              "    }",
+              "",
+          ])
+
+          engine = (
+              engine[:start]
+              + configure
+              + engine[end:]
+          )
+
+          # Replace both post-neural QC helpers.
+          start = engine.find(
+              "    private static boolean postNeuralRingingRegression("
+          )
+
+          end = engine.find(
+              "    private static Params buildParams(",
+              start
+          )
+
+          if start < 0 or end < 0:
+              raise RuntimeError(
+                  "Post-neural QC helper boundaries not found"
+              )
+
+          qc_helpers = "\n".join([
+              "    private static boolean postNeuralRingingRegression(",
+              "            PhotoAnalysis output,",
+              "            Params p) {",
+              "",
+              "        if (!p.postNeuralCoordination) {",
+              "            return false;",
+              "        }",
+              "",
+              "        return output.ringing",
+              "                > p.baselineRinging",
+              "                + p.postNeuralRingAllowance;",
+              "    }",
+              "",
+              "    private static boolean postNeuralNoiseRegression(",
+              "            PhotoAnalysis output,",
+              "            Params p) {",
+              "",
+              "        if (!p.postNeuralCoordination) {",
+              "            return false;",
+              "        }",
+              "",
+              "        double lumaGain = Math.max(",
+              "                0.0,",
+              "                p.baselineNoise",
+              "                        - p.checkpointNoise);",
+              "",
+              "        double chromaGain = Math.max(",
+              "                0.0,",
+              "                p.baselineChromaNoise",
+              "                        - p.checkpointChromaNoise);",
+              "",
+              "        double givebackFraction =",
+              "                p.smoothSurfaceProtection",
+              "                        ? 0.20",
+              "                        : 0.35;",
+              "",
+              "        double allowedLumaGiveback = Math.max(",
+              "                p.smoothSurfaceProtection",
+              "                        ? 0.0004",
+              "                        : 0.0006,",
+              "                lumaGain * givebackFraction);",
+              "",
+              "        double allowedChromaGiveback = Math.max(",
+              "                p.smoothSurfaceProtection",
+              "                        ? 0.0006",
+              "                        : 0.0008,",
+              "                chromaGain * givebackFraction);",
+              "",
+              "        boolean lumaRegression =",
+              "                lumaGain > 0.0006",
+              "                        && output.noise",
+              "                        > p.checkpointNoise",
+              "                        + allowedLumaGiveback;",
+              "",
+              "        boolean chromaRegression =",
+              "                chromaGain > 0.0008",
+              "                        && output.flatChromaNoise",
+              "                        > p.checkpointChromaNoise",
+              "                        + allowedChromaGiveback;",
+              "",
+              "        return lumaRegression",
+              "                || chromaRegression;",
+              "    }",
+              "",
+          ])
+
+          engine = (
+              engine[:start]
+              + qc_helpers
+              + engine[end:]
+          )
+
+          # =====================================================
+          # REPORTING
+          # =====================================================
+
+          old = (
+              '        if (p.brightExposureProtected) '
+              'sb.append("Bright-scene exposure guard: '
+              'global darkening withheld\\n");'
+          )
+
+          new = "\n".join([
+              '        if (p.brightExposureProtected) sb.append("Bright-scene exposure guard: global darkening withheld\\n");',
+              "",
+              "        if (p.lowDetailSceneProtection) {",
+              '            sb.append("Low-detail scene protection: ACTIVE\\n");',
+              "        }",
+              "",
+              "        if (p.smoothSurfaceProtection) {",
+              '            sb.append("Smooth-surface preservation: ACTIVE — water/sky/low-texture safe mode\\n");',
+              "        }",
+              "",
+              "        if (p.conservativeOutputRetained) {",
+              '            sb.append("Neural improvement marginal; conservative checkpoint retained\\n");',
+              "        }",
+          ])
+
+          if old not in engine:
+              raise RuntimeError(
+                  "Scene report anchor not found"
+              )
+
+          engine = engine.replace(
+              old,
+              new,
+              1
+          )
+
+          summary_line = (
+              '        sb.append("• ").append('
+              'p.repairPlan.summary()).append("\\n");'
+          )
+
+          if summary_line not in engine:
+              raise RuntimeError(
+                  "Deep Pixel summary report anchor not found"
+              )
+
+          engine = engine.replace(
+              summary_line,
+              summary_line
+              + "\n"
+              + "\n".join([
+                  "        if (p.smoothSurfaceProtection) {",
+                  '            sb.append("• Smooth-surface guard withheld deterministic repair/detail recovery\\n");',
+                  "        }",
+              ]),
+              1
+          )
+
+          old = "\n".join([
+              "                || p.postNeuralReduction",
+              "                || p.postNeuralCheckpointRollback) {",
+          ])
+
+          new = "\n".join([
+              "                || p.postNeuralReduction",
+              "                || p.postNeuralCheckpointRollback",
+              "                || p.smoothSurfaceProtection",
+              "                || p.conservativeOutputRetained) {",
+          ])
+
+          if old not in engine:
+              raise RuntimeError(
+                  "Change Guard condition anchor not found"
+              )
+
+          engine = engine.replace(
+              old,
+              new,
+              1
+          )
+
+          old = "\n".join([
+              "            if (p.postNeuralCheckpointRollback) {",
+              '                sb.append("• Downstream finishing rejected — accepted neural checkpoint restored\\n");',
+              "            }",
+          ])
+
+          new = "\n".join([
+              "            if (p.postNeuralCheckpointRollback) {",
+              '                sb.append("• Downstream finishing rejected — accepted neural checkpoint restored\\n");',
+              "            }",
+              "",
+              "            if (p.smoothSurfaceProtection) {",
+              '                sb.append("• Smooth-surface finishing limited to preserve natural low-texture areas\\n");',
+              "            }",
+              "",
+              "            if (p.conservativeOutputRetained) {",
+              '                sb.append("• Marginal-benefit guard retained near-original neural checkpoint\\n");',
+              "            }",
+          ])
+
+          if old not in engine:
+              raise RuntimeError(
+                  "Change Guard detail anchor not found"
+              )
+
+          engine = engine.replace(
+              old,
+              new,
+              1
+          )
+
+          engine_file.write_text(engine)
+
+          # =====================================================
+          # HOST CHECK FOR NEW SMOOTH-SURFACE POLICY
+          # =====================================================
+
+          host_file = project / (
+              "tools/SmoothSurfaceGuardHostChecks.java"
+          )
+
+          host_file.write_text("""package com.dennis.photomasterai;
+
+public final class SmoothSurfaceGuardHostChecks {
+
+    public static void main(String[] args) {
+
+        NeuralDenoisePolicy.Decision duckBase =
+                NeuralDenoisePolicy.decide(
+                        0.0145,
+                        0.0260,
+                        0.0142,
+                        12_000_000L,
+                        true,
+                        false,
+                        false,
+                        false);
+
+        NeuralDenoisePolicy.Decision duck =
+                NeuralDenoisePolicy.applySmoothSurfaceGuard(
+                        duckBase,
+                        0.0145,
+                        0.0260,
+                        0.0142,
+                        0.731,
+                        0.68,
+                        0.00,
+                        true,
+                        false,
+                        false,
+                        false);
+
+        require(
+                duck.active,
+                "duck guard unexpectedly disabled neural");
+
+        require(
+                duck.blend <= 0.0500001,
+                "high-ring duck was not capped at 5%");
+
+        require(
+                NeuralDenoisePolicy.isSmoothSurfaceDecision(duck),
+                "duck smooth-surface decision not tagged");
+
+        NeuralDenoisePolicy.Decision cleanBase =
+                NeuralDenoisePolicy.decide(
+                        0.0138,
+                        0.0218,
+                        0.0070,
+                        12_000_000L,
+                        true,
+                        false,
+                        false,
+                        false);
+
+        NeuralDenoisePolicy.Decision clean =
+                NeuralDenoisePolicy.applySmoothSurfaceGuard(
+                        cleanBase,
+                        0.0138,
+                        0.0218,
+                        0.0070,
+                        0.40,
+                        0.62,
+                        0.00,
+                        true,
+                        false,
+                        false,
+                        false);
+
+        if (cleanBase.active) {
+            require(
+                    !clean.active,
+                    "already-clean extremely-low-detail scene should be withheld");
+        }
+
+        NeuralDenoisePolicy.Decision portraitBase =
+                NeuralDenoisePolicy.decide(
+                        0.017,
+                        0.027,
+                        0.018,
+                        12_000_000L,
+                        true,
+                        true,
+                        false,
+                        false);
+
+        NeuralDenoisePolicy.Decision portrait =
+                NeuralDenoisePolicy.applySmoothSurfaceGuard(
+                        portraitBase,
+                        0.017,
+                        0.027,
+                        0.018,
+                        0.60,
+                        0.58,
+                        0.00,
+                        false,
+                        false,
+                        true,
+                        false);
+
+        require(
+                Math.abs(
+                        portrait.blend
+                                - portraitBase.blend)
+                        < 1.0e-9,
+                "person scene was incorrectly smooth-surface capped");
+
+        NeuralDenoisePolicy.Decision landscapeBase =
+                NeuralDenoisePolicy.decide(
+                        0.017,
+                        0.028,
+                        0.090,
+                        12_000_000L,
+                        true,
+                        false,
+                        false,
+                        false);
+
+        NeuralDenoisePolicy.Decision landscape =
+                NeuralDenoisePolicy.applySmoothSurfaceGuard(
+                        landscapeBase,
+                        0.017,
+                        0.028,
+                        0.090,
+                        0.30,
+                        0.55,
+                        0.00,
+                        false,
+                        true,
+                        false,
+                        false);
+
+        require(
+                Math.abs(
+                        landscape.blend
+                                - landscapeBase.blend)
+                        < 1.0e-9,
+                "detailed landscape was incorrectly smooth-surface capped");
+
+        NeuralDenoisePolicy.Quality ringFail =
+                NeuralDenoisePolicy.evaluate(
+                        0.0145,
+                        0.0260,
+                        0.0142,
+                        0.731,
+                        0.68,
+                        0.57,
+                        0.06,
+                        0.0,
+                        0.0,
+                        0.0125,
+                        0.0220,
+                        0.0138,
+                        0.751,
+                        0.68,
+                        0.57,
+                        0.06,
+                        0.0,
+                        0.0,
+                        duck);
+
+        require(
+                !ringFail.accepted,
+                "smooth-surface ringing allowance was not tightened");
+
+        require(
+                ringFail.reason.contains("ringing"),
+                "smooth-surface ring rejection reason missing");
+
+        System.out.println(
+                "SmoothSurfaceGuardHostChecks PASSED");
+    }
+
+    private static void require(
+            boolean condition,
+            String message) {
+
+        if (!condition) {
+            throw new AssertionError(message);
+        }
+    }
+}
+""")
+
+          print(
+              "v0.4.12 low-detail/smooth-surface guard applied"
+          )
+
+          print(
+              "High-ring smooth scenes capped to 5% neural blend"
+          )
+
+          print(
+              "Other smooth scenes capped to 10%"
+          )
+
+          print(
+              "Extremely-low-detail already-clean scenes can skip neural"
+          )
+
+          print(
+              "Smooth-scene ring allowance tightened to +0.015"
+          )
+
+          print(
+              "Downstream repair/detail finishing suppressed"
+          )
+
+          print(
+              "Marginal-benefit output becomes near-original/checkpoint only"
+          )
+
+          print(
+              "Portrait and detailed-scene behaviour remains unchanged"
+          )
+          PY
+
+          grep -q \
+            "versionCode 21" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "versionName '0.4.12'" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q \
+            "applySmoothSurfaceGuard" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java"
+
+          grep -q \
+            "high-ring-risk 5% blend cap" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java"
+
+          grep -q \
+            "ringingAllowance" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java"
+
+          grep -q \
+            "Smooth-surface preservation" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "smoothSurfaceProtection" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PhotoMasterEngine.java"
+
+          grep -q \
+            "Marginal-benefit guard" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PhotoMasterEngine.java"
+
+          grep -q \
+            "0.30, 0.24, 0.20, 0.16" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "MAX_TOTAL_NEURAL_MS = 90_000L" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+
+          grep -q \
+            "GpuBackend.OPENCL" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiserRuntime.kt"
+
+          if grep -q \
+            "new NeuralDenoiserRuntime(context, true)" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoiser.java"
+          then
+            echo "::error::CPU neural fallback detected"
+            exit 1
+          fi
+
+          echo "v0.4.12 source verification passed"
+
+      - name: Fetch pinned NAFNet-SIDD model
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+
+          ASSETS="$PROJECT/app/src/main/assets"
+
+          MODEL="$ASSETS/nafnet_sidd_width32_fp16.tflite"
+
+          mkdir -p "$ASSETS"
+
+          URL='https://huggingface.co/litert-community/NAFNet-SIDD-width32-LiteRT/resolve/main/nafnet_sidd_width32_fp16.tflite?download=true'
+
+          curl \
+            --fail \
+            --location \
+            --retry 5 \
+            --retry-all-errors \
+            --connect-timeout 30 \
+            --output "$MODEL.tmp" \
+            "$URL"
+
+          mv "$MODEL.tmp" "$MODEL"
+
+          test "$(stat -c%s "$MODEL")" -eq 62454048 || {
+            echo "::error::Unexpected NAFNet model size"
+            exit 1
+          }
+
+          echo \
+          'f8fbaa422411683c53e802cf7cc7cf9be0a0de00886ad4af057232e26b172a0c  '"$MODEL" \
+          | sha256sum -c -
+
+          echo "Pinned NAFNet-SIDD model verified"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Run restoration safety host checks
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf host-checks
+          mkdir host-checks
+
+          javac -d host-checks \
+            app/src/main/java/com/dennis/photomasterai/DeepPixelRepair.java \
+            app/src/main/java/com/dennis/photomasterai/RepairSafetyPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/SocialSourcePolicy.java \
+            tools/DeepPixelRepairHostChecks.java \
+            tools/RepairSafetyPolicyHostChecks.java \
+            tools/NeuralDenoisePolicyHostChecks.java \
+            tools/SocialSourcePolicyHostChecks.java \
+            tools/SmoothSurfaceGuardHostChecks.java
+
+          java -cp host-checks \
+            com.dennis.photomasterai.DeepPixelRepairHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.RepairSafetyPolicyHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.NeuralDenoisePolicyHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.SocialSourcePolicyHostChecks
+
+          java -cp host-checks \
+            com.dennis.photomasterai.SmoothSurfaceGuardHostChecks
+
+      - name: Restore stable Photo Master debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: photo-master-ai-debug-keystore-v1
+
+      - name: Create signing key on first build
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$HOME/.android"
+
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Photo Master AI,O=Dennis Photo Master,C=AU" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -noprompt
+          fi
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Configure Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(
+              find "$SDK/cmdline-tools" \
+                -type f \
+                -name 'sdkmanager' \
+                | sort -V \
+                | tail -n 1
+            )"
+          fi
+
+          test -n "$SDKMANAGER" || {
+            echo "::error::sdkmanager not found"
+            exit 1
+          }
+
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Build v0.4.12 APK
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gradle \
+            :app:assembleDebug \
+            --stacktrace
+
+      - name: Verify package and collect APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+
+          APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
+
+          test -f "$APK" || {
+            echo "::error::APK not found"
+            exit 1
+          }
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+
+          AAPT="$SDK/build-tools/35.0.0/aapt"
+
+          BADGING="$(
+            "$AAPT" dump badging "$APK" \
+              | head -n 1
+          )"
+
+          echo "$BADGING"
+
+          echo "$BADGING" \
+            | grep -q \
+            "package: name='com.dennis.photomasterai'"
+
+          echo "$BADGING" \
+            | grep -q \
+            "versionCode='21'"
+
+          echo "$BADGING" \
+            | grep -q \
+            "versionName='0.4.12'"
+
+          unzip -l "$APK" \
+            | grep -q \
+            'assets/nafnet_sidd_width32_fp16.tflite'
+
+          rm -rf artifact
+          mkdir artifact
+
+          OUT="artifact/PhotoMasterAI-v0.4.12-LOW-DETAIL-SMOOTH-SURFACE-GUARD.apk"
+
+          cp "$APK" "$OUT"
+
+          sha256sum "$OUT" \
+            > "artifact/PhotoMasterAI-v0.4.12-LOW-DETAIL-SMOOTH-SURFACE-GUARD-SHA256.txt"
+
+          cat > "artifact/PhotoMasterAI-v0.4.12-Notes.txt" <<EOF
+          Photo Master AI — v0.4.12 Continuation Notes
+
+          VERSION
+          v0.4.12 / versionCode 21
+
+          GitHub run:
+          ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+          BASELINE
+          Built from exact known-good v0.4.11.
+
+          FROZEN NEURAL CORE
+          - NAFNet-SIDD width32
+          - Classic LiteRT / TFLite Interpreter
+          - OpenCL GPU
+          - FP32 behaviour
+          - NCHW FLOAT32 [1,3,256,256]
+          - No CPU neural fallback
+          - Existing adaptive ladder retained
+          - Existing normal-scene QC retained
+
+          v0.4.11 DUCK RESULT
+          - Neural 10% ACCEPTED
+          - Noise 0.0145 -> 0.0118: 18.7% reduction
+          - Flat chroma 0.0260 -> 0.0223: 14.2% reduction
+          - Detail retention 94.7%
+          - Ring 0.731 -> 0.755: +0.024
+          - Post-neural checkpoint protection worked
+          - Downstream finishing was rolled back
+
+          v0.4.12 CHANGES
+          1. Low-detail / smooth-surface scene detector.
+          2. Water/sky or metric-smooth scenes with detail <=0.020 enter safe mode.
+          3. High-ring-risk smooth scenes cap neural blend at 5%.
+          4. Other protected smooth scenes cap neural blend at 10%.
+          5. Extremely-low-detail already-clean smooth scenes can skip neural.
+          6. Smooth-scene neural ring allowance tightened to +0.015.
+          7. Deep Pixel Repair/detail recovery is suppressed on smooth scenes.
+          8. Sharpening and local micro-contrast are suppressed on smooth scenes.
+          9. Smooth scenes preserve more of accepted neural denoise benefit.
+          10. Marginal neural gains cause transparent downstream finishing.
+          11. New explicit QC/report messages identify the guard.
+
+          EXPECTED DUCK TEST
+          - Low-detail scene protection active.
+          - Smooth-surface preservation: water/sky safe mode.
+          - Because original ring is about 0.73, neural cap should be 5%.
+          - Neural ring allowance should show +0.015.
+          - Stronger 64/51/etc path should no longer be the starting blend.
+          - Deep Pixel Repair should be withheld.
+          - Detail finishing/micro-contrast should be absent or near zero.
+          - If even the tiny neural change is not worthwhile, conservative
+            near-original output is a valid result.
+
+          REGRESSION TESTS
+          - Portrait must NOT receive the smooth-surface cap.
+          - Detailed landscape must NOT receive the smooth-surface cap.
+          - Flower should retain prior no-false-person behaviour.
+          - Social/screenshot guard remains authoritative.
+
+          IMPORTANT
+          Do not return to CompiledModel GPU.
+          Do not add CPU NAFNet fallback.
+          Do not change NCHW packing.
+          Do not loosen general neural QC.
+
+          v0.4.11 remains the known-good post-neural checkpoint baseline.
+          v0.4.12 is the low-detail/smooth-surface protection experiment.
+          EOF
+
+          echo "APK and v0.4.12 continuation notes prepared"
+
+      - name: Upload APK and notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoMasterAI-v0.4.12-LOW-DETAIL-SMOOTH-SURFACE-GUARD
+          path: |
+            artifact/PhotoMasterAI-v0.4.12-LOW-DETAIL-SMOOTH-SURFACE-GUARD.apk
+            artifact/PhotoMasterAI-v0.4.12-LOW-DETAIL-SMOOTH-SURFACE-GUARD-SHA256.txt
+            artifact/PhotoMasterAI-v0.4.12-Notes.txt
+          if-no-files-found: error
+          retention-days: 30
