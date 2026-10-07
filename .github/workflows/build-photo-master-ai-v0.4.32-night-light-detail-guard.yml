@@ -461,23 +461,26 @@ jobs:
               )
 
           # Always sample the original unmodified chunk.
+          #
+          # Use whitespace-independent matching because the generated
+          # Java formatting can vary between reconstruction steps.
 
-          pixel_anchor = (
-              'int pixel =\n'
-              '                        pixels[index];'
+          pixel_pattern = re.compile(
+              r'int[ \t]+pixel[ \t]*=[ \t\r\n]*'
+              r'pixels\[index\];'
           )
 
-          if pixel_anchor not in engine:
+          engine, count = pixel_pattern.subn(
+              'int pixel =\n'
+              '                                      sourcePixels[index];',
+              engine,
+              count=1
+          )
+
+          if count != 1:
               raise RuntimeError(
-                  'Night Light source-pixel anchor not found'
+                  'Night Light source-pixel replacement failed'
               )
-
-          engine = engine.replace(
-              pixel_anchor,
-              'int pixel =\n'
-              '                        sourcePixels[index];',
-              1
-          )
 
           # -------------------------------------------------------
           # NARROW FLASH-SPILL TARGET
@@ -850,6 +853,9 @@ jobs:
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
 
           grep -q "protectedEdgePixels" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
+
+          grep -q "sourcePixels\[index\]" \
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
 
           grep -q "lum > 0.68" \
