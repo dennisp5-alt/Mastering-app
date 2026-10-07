@@ -1,0 +1,2501 @@
+name: Build Photo Master AI v0.4.31 Night Light Control
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-photo-master-ai-v0.4.31-night-light-control.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Photo Master AI v0.4.31 Night Light Control
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository with history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Recover exact successful v0.4.30 source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          V0430_COMMIT="92ca5f176916d0b150166734050b1cc717cb52b4"
+
+          git cat-file -e "${V0430_COMMIT}^{commit}" || {
+            echo "::error::Successful v0.4.30 commit unavailable"
+            exit 1
+          }
+
+          git show \
+            "${V0430_COMMIT}:.github/workflows/build-photo-master-ai-v0.4.30-perceptual-improvement.yml" \
+            > /tmp/v0430.yml
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          lines = Path('/tmp/v0430.yml').read_text().splitlines()
+
+          def extract_step(name, destination):
+              start = None
+
+              for i, line in enumerate(lines):
+                  if line.strip() == '- name: ' + name:
+                      start = i
+                      break
+
+              if start is None:
+                  raise RuntimeError(
+                      'Workflow step not found: ' + name
+                  )
+
+              run = None
+
+              for i in range(start, len(lines)):
+                  if lines[i].strip() == 'run: |':
+                      run = i
+                      break
+
+                  if (
+                      i > start
+                      and lines[i].startswith('      - name:')
+                  ):
+                      break
+
+              if run is None:
+                  raise RuntimeError(
+                      'Run block not found: ' + name
+                  )
+
+              body = []
+
+              for line in lines[run + 1:]:
+                  if line.startswith('      - name:'):
+                      break
+
+                  if not line.strip():
+                      body.append('')
+
+                  elif line.startswith('          '):
+                      body.append(line[10:])
+
+                  else:
+                      raise RuntimeError(
+                          'Unexpected indentation while extracting: '
+                          + name
+                      )
+
+              Path(destination).write_text(
+                  '\n'.join(body) + '\n'
+              )
+
+          extract_step(
+              'Recover exact successful v0.4.29 source',
+              '/tmp/recover-v0429.sh'
+          )
+
+          extract_step(
+              'Apply v0.4.30 Perceptual Improvement Controller',
+              '/tmp/apply-v0430.sh'
+          )
+          PY
+
+          bash /tmp/recover-v0429.sh
+
+          PROJECT="$(
+            find photomaster-v044-build \
+              -type f \
+              \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \) \
+              -printf '%h\n' \
+              | head -n 1
+          )"
+
+          test -n "$PROJECT" || {
+            echo "::error::Recovered project not found"
+            exit 1
+          }
+
+          export PROJECT
+
+          bash /tmp/apply-v0430.sh
+
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+
+          grep -q "versionCode 39" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q "versionName '0.4.30'" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q "class PerceptualImprovementPolicy" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PerceptualImprovementPolicy.java"
+
+          grep -q "applyPerceptualImprovementController" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+
+          grep -q "MAX_ADJACENT_GAIN_STEP = 0.045" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourIntelligence.java"
+
+          grep -q "MAX_FINAL_CHANNEL_CODE_DELTA = 9" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourIntelligence.java"
+
+          echo "Exact successful v0.4.30 source recovered"
+
+      - name: Apply v0.4.31 Night Light Control
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+
+          cat > "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java" <<'JAVA_POLICY'
+          package com.dennis.photomasterai;
+
+          import java.util.Locale;
+
+          public final class NightLightControlPolicy {
+
+              public static final double
+                      MAX_MEAN_CHANNEL_DELTA = 0.0080;
+
+              public static final double
+                      MAX_CHANNEL_DELTA = 0.0320;
+
+              public static final double
+                      MAX_ACTIVE_FRACTION = 0.45;
+
+              private NightLightControlPolicy() {}
+
+              public static final class Plan {
+
+                  public final boolean apply;
+                  public final double strength;
+                  public final double confidence;
+                  public final String reason;
+
+                  Plan(
+                          boolean apply,
+                          double strength,
+                          double confidence,
+                          String reason) {
+
+                      this.apply = apply;
+                      this.strength = strength;
+                      this.confidence = confidence;
+                      this.reason = reason;
+                  }
+              }
+
+              public static final class QcResult {
+
+                  public final boolean accepted;
+                  public final String reason;
+
+                  QcResult(
+                          boolean accepted,
+                          String reason) {
+
+                      this.accepted = accepted;
+                      this.reason = reason;
+                  }
+              }
+
+              public static Plan plan(
+                      boolean semanticExcluded,
+                      double upperDarkFraction,
+                      double lowerBrightFraction,
+                      int veryDarkZones,
+                      int brightZones,
+                      int hotspotZones,
+                      double luminanceSpread,
+                      double hotspotPixelFraction) {
+
+                  if (semanticExcluded) {
+
+                      return new Plan(
+                              false,
+                              0.0,
+                              0.0,
+                              "scene content not appropriate for night-light control");
+                  }
+
+                  if (upperDarkFraction < 0.42) {
+
+                      return new Plan(
+                              false,
+                              0.0,
+                              0.0,
+                              "insufficient dark-upper-frame evidence");
+                  }
+
+                  if (lowerBrightFraction < 0.12) {
+
+                      return new Plan(
+                              false,
+                              0.0,
+                              0.0,
+                              "insufficient bright-lower-frame evidence");
+                  }
+
+                  if (veryDarkZones < 6) {
+
+                      return new Plan(
+                              false,
+                              0.0,
+                              0.0,
+                              "insufficient dark regional evidence");
+                  }
+
+                  if (brightZones < 5) {
+
+                      return new Plan(
+                              false,
+                              0.0,
+                              0.0,
+                              "insufficient bright regional evidence");
+                  }
+
+                  if (hotspotZones < 2) {
+
+                      return new Plan(
+                              false,
+                              0.0,
+                              0.0,
+                              "insufficient hotspot evidence");
+                  }
+
+                  if (luminanceSpread < 0.48) {
+
+                      return new Plan(
+                              false,
+                              0.0,
+                              0.0,
+                              "regional luminance spread below night-light threshold");
+                  }
+
+                  if (hotspotPixelFraction < 0.003) {
+
+                      return new Plan(
+                              false,
+                              0.0,
+                              0.0,
+                              "insufficient highlight-source evidence");
+                  }
+
+                  double darkEvidence =
+                          clamp01(
+                                  (upperDarkFraction - 0.42)
+                                          / 0.38);
+
+                  double brightEvidence =
+                          clamp01(
+                                  (lowerBrightFraction - 0.12)
+                                          / 0.32);
+
+                  double spreadEvidence =
+                          clamp01(
+                                  (luminanceSpread - 0.48)
+                                          / 0.42);
+
+                  double hotspotEvidence =
+                          clamp01(
+                                  hotspotPixelFraction
+                                          / 0.08);
+
+                  double confidence =
+                          0.34 * darkEvidence
+                                  + 0.24 * brightEvidence
+                                  + 0.24 * spreadEvidence
+                                  + 0.18 * hotspotEvidence;
+
+                  confidence =
+                          clamp01(confidence);
+
+                  double strength =
+                          0.20
+                                  + 0.12 * confidence;
+
+                  strength =
+                          clamp(
+                                  strength,
+                                  0.20,
+                                  0.32);
+
+                  return new Plan(
+                          true,
+                          strength,
+                          confidence,
+                          String.format(
+                                  Locale.US,
+                                  "night-light structure confidence %.1f%%",
+                                  confidence * 100.0));
+              }
+
+              public static QcResult evaluateCandidate(
+                      double beforeDetail,
+                      double afterDetail,
+                      double beforeNoise,
+                      double afterNoise,
+                      double beforeChromaNoise,
+                      double afterChromaNoise,
+                      double beforeRinging,
+                      double afterRinging,
+                      double beforeSaturation,
+                      double afterSaturation,
+                      double beforeShadowClip,
+                      double afterShadowClip,
+                      double beforeHighlightClip,
+                      double afterHighlightClip,
+                      double hotspotReduction,
+                      double darkSkyMeanDelta,
+                      double activeFraction,
+                      double meanChannelDelta,
+                      double maxChannelDelta) {
+
+                  StringBuilder fail =
+                          new StringBuilder();
+
+                  if (
+                      hotspotReduction
+                              < 0.0020) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "hotspot/spill reduction %.4f < 0.0020",
+                                      hotspotReduction));
+                  }
+
+                  if (
+                      hotspotReduction
+                              > 0.0500) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "hotspot/spill reduction %.4f > 0.0500",
+                                      hotspotReduction));
+                  }
+
+                  if (
+                      darkSkyMeanDelta
+                              > 0.0020) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "dark-sky movement %.4f > 0.0020",
+                                      darkSkyMeanDelta));
+                  }
+
+                  if (
+                      activeFraction
+                              < 0.005) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "active pixels %.2f%% < 0.50%%",
+                                      activeFraction * 100.0));
+                  }
+
+                  if (
+                      activeFraction
+                              > MAX_ACTIVE_FRACTION) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "active pixels %.2f%% > %.1f%%",
+                                      activeFraction * 100.0,
+                                      MAX_ACTIVE_FRACTION * 100.0));
+                  }
+
+                  if (
+                      afterDetail
+                              < beforeDetail * 0.985) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "detail %.4f -> %.4f below 98.5%% retention",
+                                      beforeDetail,
+                                      afterDetail));
+                  }
+
+                  if (
+                      afterNoise
+                              > beforeNoise + 0.0010) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "noise %.4f -> %.4f exceeds +0.0010",
+                                      beforeNoise,
+                                      afterNoise));
+                  }
+
+                  if (
+                      afterChromaNoise
+                              > beforeChromaNoise + 0.0010) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "chroma noise %.4f -> %.4f exceeds +0.0010",
+                                      beforeChromaNoise,
+                                      afterChromaNoise));
+                  }
+
+                  if (
+                      afterRinging
+                              > Math.min(
+                                      1.0,
+                                      beforeRinging + 0.0060)) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "ringing %.4f -> %.4f exceeds allowance",
+                                      beforeRinging,
+                                      afterRinging));
+                  }
+
+                  if (
+                      Math.abs(
+                              afterSaturation
+                                      - beforeSaturation)
+                              > 0.0080) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "saturation delta %.4f > 0.0080",
+                                      Math.abs(
+                                              afterSaturation
+                                                      - beforeSaturation)));
+                  }
+
+                  if (
+                      afterShadowClip
+                              > beforeShadowClip + 0.0010) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "shadow clip %.4f -> %.4f exceeds +0.0010",
+                                      beforeShadowClip,
+                                      afterShadowClip));
+                  }
+
+                  if (
+                      afterHighlightClip
+                              > beforeHighlightClip + 0.0010) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "highlight clip %.4f -> %.4f exceeds +0.0010",
+                                      beforeHighlightClip,
+                                      afterHighlightClip));
+                  }
+
+                  if (
+                      meanChannelDelta
+                              > MAX_MEAN_CHANNEL_DELTA) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "mean channel delta %.4f > %.4f",
+                                      meanChannelDelta,
+                                      MAX_MEAN_CHANNEL_DELTA));
+                  }
+
+                  if (
+                      maxChannelDelta
+                              > MAX_CHANNEL_DELTA) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "max channel delta %.4f > %.4f",
+                                      maxChannelDelta,
+                                      MAX_CHANNEL_DELTA));
+                  }
+
+                  return fail.length() == 0
+                          ? new QcResult(
+                                  true,
+                                  "night-light control QC passed")
+                          : new QcResult(
+                                  false,
+                                  fail.toString());
+              }
+
+              private static void add(
+                      StringBuilder out,
+                      String value) {
+
+                  if (out.length() > 0)
+                      out.append("; ");
+
+                  out.append(value);
+              }
+
+              private static double clamp01(
+                      double value) {
+
+                  return clamp(
+                          value,
+                          0.0,
+                          1.0);
+              }
+
+              private static double clamp(
+                      double value,
+                      double low,
+                      double high) {
+
+                  return Math.max(
+                          low,
+                          Math.min(
+                                  high,
+                                  value));
+              }
+          }
+          JAVA_POLICY
+
+          cat > "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java" <<'JAVA_ENGINE'
+          package com.dennis.photomasterai;
+
+          import android.graphics.Bitmap;
+
+          import java.util.Locale;
+
+          public final class NightLightControlIntelligence {
+
+              private static final int GX = 8;
+              private static final int GY = 8;
+              private static final int MAX_EDGE = 640;
+              private static final int CHUNK = 128;
+
+              /*
+               * 8/255 = 0.03137.
+               * Remains below policy ceiling 0.032.
+               */
+
+              private static final int
+                      MAX_CHANNEL_CODE_DELTA = 8;
+
+              private NightLightControlIntelligence() {}
+
+              public static final class Outcome {
+
+                  public final Bitmap bitmap;
+                  public final PhotoAnalysis analysis;
+                  public final boolean changed;
+                  public final String report;
+
+                  Outcome(
+                          Bitmap bitmap,
+                          PhotoAnalysis analysis,
+                          boolean changed,
+                          String report) {
+
+                      this.bitmap = bitmap;
+                      this.analysis = analysis;
+                      this.changed = changed;
+                      this.report = report;
+                  }
+              }
+
+              private static final class Cell {
+
+                  double meanLuma;
+                  double darkFraction;
+                  double brightFraction;
+                  double nearClipFraction;
+                  double meanSaturation;
+              }
+
+              private static final class Evidence {
+
+                  final Cell[][] cells =
+                          new Cell[GY][GX];
+
+                  double upperDarkFraction;
+                  double lowerBrightFraction;
+                  double hotspotPixelFraction;
+                  double luminanceSpread;
+
+                  int veryDarkZones;
+                  int brightZones;
+                  int hotspotZones;
+
+                  boolean semanticExcluded;
+              }
+
+              private static final class RenderSummary {
+
+                  double hotspotBeforeSum;
+                  double hotspotAfterSum;
+
+                  double darkSkyDeltaSum;
+
+                  double channelDeltaSum;
+                  double maxChannelDelta;
+
+                  long hotspotCount;
+                  long darkSkyCount;
+
+                  long channelDeltaCount;
+
+                  long activePixels;
+                  long totalPixels;
+
+                  long protectedDarkPixels;
+                  long protectedSaturatedPixels;
+              }
+
+              public static Outcome process(
+                      Bitmap mastered,
+                      Bitmap authoritativeOriginal,
+                      String sourceReport) {
+
+                  if (
+                      mastered == null
+                              || mastered.isRecycled()
+                              || authoritativeOriginal == null
+                              || authoritativeOriginal.isRecycled()) {
+
+                      return new Outcome(
+                              mastered,
+                              mastered == null
+                                      || mastered.isRecycled()
+                                      ? null
+                                      : PhotoAnalysis.analyse(
+                                              mastered),
+                              false,
+                              "• Night-light control skipped — invalid input");
+                  }
+
+                  if (
+                      mastered.getWidth()
+                              != authoritativeOriginal.getWidth()
+                              || mastered.getHeight()
+                              != authoritativeOriginal.getHeight()) {
+
+                      return new Outcome(
+                              mastered,
+                              PhotoAnalysis.analyse(
+                                      mastered),
+                              false,
+                              "• Night-light control withheld — source/master dimensions differ");
+                  }
+
+                  PhotoAnalysis before =
+                          PhotoAnalysis.analyse(
+                                  mastered);
+
+                  Evidence evidence =
+                          analyse(
+                                  mastered,
+                                  sourceReport);
+
+                  NightLightControlPolicy.Plan plan =
+                          NightLightControlPolicy.plan(
+                                  evidence.semanticExcluded,
+                                  evidence.upperDarkFraction,
+                                  evidence.lowerBrightFraction,
+                                  evidence.veryDarkZones,
+                                  evidence.brightZones,
+                                  evidence.hotspotZones,
+                                  evidence.luminanceSpread,
+                                  evidence.hotspotPixelFraction);
+
+                  StringBuilder report =
+                          new StringBuilder();
+
+                  report.append(
+                          String.format(
+                                  Locale.US,
+                                  "• Evidence upper-dark %.1f%% | lower-bright %.1f%% | dark zones %d | bright zones %d | hotspot zones %d%n",
+                                  evidence.upperDarkFraction * 100.0,
+                                  evidence.lowerBrightFraction * 100.0,
+                                  evidence.veryDarkZones,
+                                  evidence.brightZones,
+                                  evidence.hotspotZones));
+
+                  report.append(
+                          String.format(
+                                  Locale.US,
+                                  "• Luminance spread %.4f | hotspot pixels %.2f%% | confidence %.1f%% | compression strength %.3f%n",
+                                  evidence.luminanceSpread,
+                                  evidence.hotspotPixelFraction * 100.0,
+                                  plan.confidence * 100.0,
+                                  plan.strength));
+
+                  report.append(
+                          "• Night classification requires dark-upper + bright-lower + hotspot structure; darkness alone is insufficient\n");
+
+                  report.append(
+                          "• Protections: dark sky | saturated light sources | colour density | channel-delta cap\n");
+
+                  if (!plan.apply) {
+
+                      report.append(
+                              "• Night-light control WITHHELD — ")
+                              .append(
+                                      plan.reason)
+                              .append(
+                                      "\n");
+
+                      return new Outcome(
+                              mastered,
+                              before,
+                              false,
+                              report.toString());
+                  }
+
+                  RenderSummary summary =
+                          new RenderSummary();
+
+                  Bitmap candidate =
+                          render(
+                                  mastered,
+                                  evidence,
+                                  plan,
+                                  summary);
+
+                  if (candidate == null) {
+
+                      report.append(
+                              "• Night-light control WITHHELD — candidate render unavailable\n");
+
+                      return new Outcome(
+                              mastered,
+                              before,
+                              false,
+                              report.toString());
+                  }
+
+                  PhotoAnalysis after =
+                          PhotoAnalysis.analyse(
+                                  candidate);
+
+                  double hotspotBefore =
+                          summary.hotspotCount > 0
+                                  ? summary.hotspotBeforeSum
+                                  / summary.hotspotCount
+                                  : 0.0;
+
+                  double hotspotAfter =
+                          summary.hotspotCount > 0
+                                  ? summary.hotspotAfterSum
+                                  / summary.hotspotCount
+                                  : 0.0;
+
+                  double hotspotReduction =
+                          hotspotBefore
+                                  - hotspotAfter;
+
+                  double darkSkyMeanDelta =
+                          summary.darkSkyCount > 0
+                                  ? summary.darkSkyDeltaSum
+                                  / summary.darkSkyCount
+                                  : 0.0;
+
+                  double activeFraction =
+                          summary.totalPixels > 0
+                                  ? summary.activePixels
+                                  / (double)
+                                  summary.totalPixels
+                                  : 0.0;
+
+                  double meanChannelDelta =
+                          summary.channelDeltaCount > 0
+                                  ? summary.channelDeltaSum
+                                  / summary.channelDeltaCount
+                                  : 0.0;
+
+                  NightLightControlPolicy.QcResult qc =
+                          NightLightControlPolicy
+                                  .evaluateCandidate(
+                                          before.detail,
+                                          after.detail,
+
+                                          before.noise,
+                                          after.noise,
+
+                                          before.flatChromaNoise,
+                                          after.flatChromaNoise,
+
+                                          before.ringing,
+                                          after.ringing,
+
+                                          before.avgSat,
+                                          after.avgSat,
+
+                                          before.shadowClip,
+                                          after.shadowClip,
+
+                                          before.highlightClip,
+                                          after.highlightClip,
+
+                                          hotspotReduction,
+                                          darkSkyMeanDelta,
+                                          activeFraction,
+                                          meanChannelDelta,
+                                          summary.maxChannelDelta);
+
+                  report.append(
+                          String.format(
+                                  Locale.US,
+                                  "• Hotspot/spill luma %.4f -> %.4f | reduction %.4f%n",
+                                  hotspotBefore,
+                                  hotspotAfter,
+                                  hotspotReduction));
+
+                  report.append(
+                          String.format(
+                                  Locale.US,
+                                  "• Active pixels %.1f%% | dark-sky movement %.5f | mean channel delta %.4f | max channel delta %.4f%n",
+                                  activeFraction * 100.0,
+                                  darkSkyMeanDelta,
+                                  meanChannelDelta,
+                                  summary.maxChannelDelta));
+
+                  report.append(
+                          String.format(
+                                  Locale.US,
+                                  "• Protected dark pixels %d | protected saturated pixels %d%n",
+                                  summary.protectedDarkPixels,
+                                  summary.protectedSaturatedPixels));
+
+                  report.append(
+                          String.format(
+                                  Locale.US,
+                                  "• Detail %.4f -> %.4f | noise %.4f -> %.4f | ring %.4f -> %.4f | highlight clip %.4f -> %.4f%n",
+                                  before.detail,
+                                  after.detail,
+                                  before.noise,
+                                  after.noise,
+                                  before.ringing,
+                                  after.ringing,
+                                  before.highlightClip,
+                                  after.highlightClip));
+
+                  if (!qc.accepted) {
+
+                      if (!candidate.isRecycled())
+                          candidate.recycle();
+
+                      report.append(
+                              "• Night-light control ROLLED BACK — ")
+                              .append(
+                                      qc.reason)
+                              .append(
+                                      "\n");
+
+                      return new Outcome(
+                              mastered,
+                              before,
+                              false,
+                              report.toString());
+                  }
+
+                  report.append(
+                          "• Night-light control ACCEPTED — hotspot/spill/dark-sky/detail/clipping QC passed\n");
+
+                  return new Outcome(
+                          candidate,
+                          after,
+                          true,
+                          report.toString());
+              }
+
+              private static Evidence analyse(
+                      Bitmap source,
+                      String sourceReport) {
+
+                  Evidence evidence =
+                          new Evidence();
+
+                  String text =
+                          sourceReport == null
+                                  ? ""
+                                  : sourceReport.toLowerCase(
+                                          Locale.US);
+
+                  evidence.semanticExcluded =
+                          text.contains(
+                                  "ai scene tags: insect,plant")
+
+                                  || text.contains(
+                                          "ai scene tags: insect, plant")
+
+                                  || text.contains(
+                                          "flower 95%")
+
+                                  || text.contains(
+                                          "petal 95%");
+
+                  Bitmap work =
+                          analysisBitmap(
+                                  source);
+
+                  boolean recycle =
+                          work != source;
+
+                  int width =
+                          work.getWidth();
+
+                  int height =
+                          work.getHeight();
+
+                  int[] pixels =
+                          new int[
+                                  width
+                                          * height];
+
+                  work.getPixels(
+                          pixels,
+                          0,
+                          width,
+                          0,
+                          0,
+                          width,
+                          height);
+
+                  double[][] lumaSum =
+                          new double[GY][GX];
+
+                  double[][] satSum =
+                          new double[GY][GX];
+
+                  int[][] counts =
+                          new int[GY][GX];
+
+                  int[][] darkCounts =
+                          new int[GY][GX];
+
+                  int[][] brightCounts =
+                          new int[GY][GX];
+
+                  int[][] nearClipCounts =
+                          new int[GY][GX];
+
+                  long upperCount = 0;
+                  long upperDark = 0;
+
+                  long lowerCount = 0;
+                  long lowerBright = 0;
+
+                  long hotspotPixels = 0;
+
+                  for (int y = 0; y < height; y++) {
+
+                      int gy =
+                              Math.min(
+                                      GY - 1,
+                                      y * GY
+                                              / height);
+
+                      for (int x = 0; x < width; x++) {
+
+                          int gx =
+                                  Math.min(
+                                          GX - 1,
+                                          x * GX
+                                                  / width);
+
+                          int pixel =
+                                  pixels[
+                                          y * width
+                                                  + x];
+
+                          int r =
+                                  (pixel >>> 16)
+                                          & 255;
+
+                          int g =
+                                  (pixel >>> 8)
+                                          & 255;
+
+                          int b =
+                                  pixel
+                                          & 255;
+
+                          double lum =
+                                  luma(
+                                          r,
+                                          g,
+                                          b);
+
+                          double sat =
+                                  saturation(
+                                          r,
+                                          g,
+                                          b);
+
+                          lumaSum[gy][gx]
+                                  += lum;
+
+                          satSum[gy][gx]
+                                  += sat;
+
+                          counts[gy][gx]++;
+
+                          if (lum < 0.12)
+                              darkCounts[gy][gx]++;
+
+                          if (lum > 0.65)
+                              brightCounts[gy][gx]++;
+
+                          if (lum > 0.93)
+                              nearClipCounts[gy][gx]++;
+
+                          if (y < height / 2) {
+
+                              upperCount++;
+
+                              if (lum < 0.12)
+                                  upperDark++;
+
+                          } else {
+
+                              lowerCount++;
+
+                              if (lum > 0.65)
+                                  lowerBright++;
+                          }
+
+                          if (lum > 0.93)
+                              hotspotPixels++;
+                      }
+                  }
+
+                  evidence.upperDarkFraction =
+                          upperCount > 0
+                                  ? upperDark
+                                  / (double)
+                                  upperCount
+                                  : 0.0;
+
+                  evidence.lowerBrightFraction =
+                          lowerCount > 0
+                                  ? lowerBright
+                                  / (double)
+                                  lowerCount
+                                  : 0.0;
+
+                  evidence.hotspotPixelFraction =
+                          pixels.length > 0
+                                  ? hotspotPixels
+                                  / (double)
+                                  pixels.length
+                                  : 0.0;
+
+                  double minMean =
+                          1.0;
+
+                  double maxMean =
+                          0.0;
+
+                  for (int gy = 0; gy < GY; gy++) {
+
+                      for (int gx = 0; gx < GX; gx++) {
+
+                          Cell cell =
+                                  new Cell();
+
+                          evidence.cells[gy][gx] =
+                                  cell;
+
+                          int count =
+                                  counts[gy][gx];
+
+                          if (count <= 0)
+                              continue;
+
+                          cell.meanLuma =
+                                  lumaSum[gy][gx]
+                                          / count;
+
+                          cell.meanSaturation =
+                                  satSum[gy][gx]
+                                          / count;
+
+                          cell.darkFraction =
+                                  darkCounts[gy][gx]
+                                          / (double)
+                                          count;
+
+                          cell.brightFraction =
+                                  brightCounts[gy][gx]
+                                          / (double)
+                                          count;
+
+                          cell.nearClipFraction =
+                                  nearClipCounts[gy][gx]
+                                          / (double)
+                                          count;
+
+                          minMean =
+                                  Math.min(
+                                          minMean,
+                                          cell.meanLuma);
+
+                          maxMean =
+                                  Math.max(
+                                          maxMean,
+                                          cell.meanLuma);
+
+                          if (
+                              cell.meanLuma < 0.16
+                                      && cell.darkFraction
+                                      > 0.55) {
+
+                              evidence.veryDarkZones++;
+                          }
+
+                          if (
+                              cell.meanLuma > 0.48
+                                      && cell.brightFraction
+                                      > 0.20) {
+
+                              evidence.brightZones++;
+                          }
+
+                          if (
+                              cell.nearClipFraction > 0.05
+
+                                      || (
+                                          cell.meanLuma > 0.68
+                                                  && cell.meanSaturation
+                                                  < 0.35
+                                      )) {
+
+                              evidence.hotspotZones++;
+                          }
+                      }
+                  }
+
+                  evidence.luminanceSpread =
+                          Math.max(
+                                  0.0,
+                                  maxMean - minMean);
+
+                  if (recycle)
+                      work.recycle();
+
+                  return evidence;
+              }
+
+              private static Bitmap render(
+                      Bitmap source,
+                      Evidence evidence,
+                      NightLightControlPolicy.Plan plan,
+                      RenderSummary summary) {
+
+                  int width =
+                          source.getWidth();
+
+                  int height =
+                          source.getHeight();
+
+                  Bitmap output =
+                          Bitmap.createBitmap(
+                                  width,
+                                  height,
+                                  Bitmap.Config.ARGB_8888);
+
+                  for (
+                      int y0 = 0;
+                      y0 < height;
+                      y0 += CHUNK) {
+
+                      int rows =
+                              Math.min(
+                                      CHUNK,
+                                      height - y0);
+
+                      int[] pixels =
+                              new int[
+                                      width
+                                              * rows];
+
+                      source.getPixels(
+                              pixels,
+                              0,
+                              width,
+                              0,
+                              y0,
+                              width,
+                              rows);
+
+                      for (
+                          int localY = 0;
+                          localY < rows;
+                          localY++) {
+
+                          int y =
+                                  y0
+                                          + localY;
+
+                          int gy =
+                                  Math.min(
+                                          GY - 1,
+                                          y * GY
+                                                  / height);
+
+                          for (
+                              int x = 0;
+                              x < width;
+                              x++) {
+
+                              int index =
+                                      localY * width
+                                              + x;
+
+                              int pixel =
+                                      pixels[index];
+
+                              int alpha =
+                                      (pixel >>> 24)
+                                              & 255;
+
+                              int r =
+                                      (pixel >>> 16)
+                                              & 255;
+
+                              int g =
+                                      (pixel >>> 8)
+                                              & 255;
+
+                              int b =
+                                      pixel
+                                              & 255;
+
+                              double lum =
+                                      luma(
+                                              r,
+                                              g,
+                                              b);
+
+                              double sat =
+                                      saturation(
+                                              r,
+                                              g,
+                                              b);
+
+                              int gx =
+                                      Math.min(
+                                              GX - 1,
+                                              x * GX
+                                                      / width);
+
+                              Cell cell =
+                                      evidence.cells[gy][gx];
+
+                              boolean darkSky =
+                                      y < height * 0.72
+
+                                              && cell != null
+
+                                              && cell.meanLuma
+                                              < 0.16
+
+                                              && cell.darkFraction
+                                              > 0.55;
+
+                              boolean hotspotCell =
+                                      cell != null
+
+                                              && (
+                                                  cell.nearClipFraction
+                                                  > 0.025
+
+                                                  || (
+                                                      cell.meanLuma
+                                                      > 0.66
+
+                                                      && cell.meanSaturation
+                                                      < 0.40
+                                                  )
+                                              );
+
+                              boolean spillCell =
+                                      cell != null
+
+                                              && y
+                                              > height * 0.32
+
+                                              && cell.meanLuma
+                                              > 0.42
+
+                                              && cell.brightFraction
+                                              > 0.16;
+
+                              summary.totalPixels++;
+
+                              if (darkSky) {
+
+                                  summary.protectedDarkPixels++;
+
+                                  summary.darkSkyCount++;
+
+                                  /*
+                                   * Explicitly unchanged.
+                                   */
+
+                                  pixels[index] =
+                                          pixel;
+
+                                  continue;
+                              }
+
+                              if (sat > 0.68) {
+
+                                  summary.protectedSaturatedPixels++;
+
+                                  pixels[index] =
+                                          pixel;
+
+                                  continue;
+                              }
+
+                              double weight =
+                                      0.0;
+
+                              if (
+                                  hotspotCell
+                                          && lum > 0.92
+                                          && sat < 0.42) {
+
+                                  weight =
+                                          1.0;
+
+                              } else if (
+                                  hotspotCell
+                                          && lum > 0.76
+                                          && sat < 0.45) {
+
+                                  weight =
+                                          0.70;
+
+                              } else if (
+                                  spillCell
+                                          && lum > 0.62
+                                          && sat < 0.38) {
+
+                                  weight =
+                                          0.38;
+                              }
+
+                              if (weight <= 0.0) {
+
+                                  pixels[index] =
+                                          pixel;
+
+                                  continue;
+                              }
+
+                              double compression =
+                                      plan.strength
+                                              * weight;
+
+                              double targetLum =
+                                      lum
+                                              - compression
+                                              * Math.max(
+                                                      0.0,
+                                                      lum - 0.55);
+
+                              /*
+                               * Never exceed a 4% luminance scale
+                               * change before final code-value cap.
+                               */
+
+                              double scale =
+                                      lum > 1e-9
+                                              ? clamp(
+                                                      targetLum
+                                                              / lum,
+                                                      0.96,
+                                                      1.0)
+                                              : 1.0;
+
+                              double newR =
+                                      r * scale;
+
+                              double newG =
+                                      g * scale;
+
+                              double newB =
+                                      b * scale;
+
+                              newR =
+                                      clamp(
+                                              newR,
+                                              r
+                                                      - MAX_CHANNEL_CODE_DELTA,
+                                              r
+                                                      + MAX_CHANNEL_CODE_DELTA);
+
+                              newG =
+                                      clamp(
+                                              newG,
+                                              g
+                                                      - MAX_CHANNEL_CODE_DELTA,
+                                              g
+                                                      + MAX_CHANNEL_CODE_DELTA);
+
+                              newB =
+                                      clamp(
+                                              newB,
+                                              b
+                                                      - MAX_CHANNEL_CODE_DELTA,
+                                              b
+                                                      + MAX_CHANNEL_CODE_DELTA);
+
+                              int outR =
+                                      c255(
+                                              (int)
+                                              Math.round(
+                                                      newR));
+
+                              int outG =
+                                      c255(
+                                              (int)
+                                              Math.round(
+                                                      newG));
+
+                              int outB =
+                                      c255(
+                                              (int)
+                                              Math.round(
+                                                      newB));
+
+                              double outLum =
+                                      luma(
+                                              outR,
+                                              outG,
+                                              outB);
+
+                              if (
+                                  lum > 0.72
+                                          && sat < 0.45) {
+
+                                  summary.hotspotBeforeSum
+                                          += lum;
+
+                                  summary.hotspotAfterSum
+                                          += outLum;
+
+                                  summary.hotspotCount++;
+                              }
+
+                              double deltaR =
+                                      Math.abs(
+                                              outR - r)
+                                              / 255.0;
+
+                              double deltaG =
+                                      Math.abs(
+                                              outG - g)
+                                              / 255.0;
+
+                              double deltaB =
+                                      Math.abs(
+                                              outB - b)
+                                              / 255.0;
+
+                              double meanDelta =
+                                      (
+                                          deltaR
+                                                  + deltaG
+                                                  + deltaB
+                                      )
+                                              / 3.0;
+
+                              summary.channelDeltaSum
+                                      += meanDelta;
+
+                              summary.channelDeltaCount++;
+
+                              summary.maxChannelDelta =
+                                      Math.max(
+                                              summary.maxChannelDelta,
+                                              Math.max(
+                                                      deltaR,
+                                                      Math.max(
+                                                              deltaG,
+                                                              deltaB)));
+
+                              if (
+                                  outR != r
+                                          || outG != g
+                                          || outB != b) {
+
+                                  summary.activePixels++;
+                              }
+
+                              pixels[index] =
+                                      (alpha << 24)
+                                              | (outR << 16)
+                                              | (outG << 8)
+                                              | outB;
+                          }
+                      }
+
+                      output.setPixels(
+                              pixels,
+                              0,
+                              width,
+                              0,
+                              y0,
+                              width,
+                              rows);
+                  }
+
+                  return output;
+              }
+
+              private static Bitmap analysisBitmap(
+                      Bitmap source) {
+
+                  int width =
+                          source.getWidth();
+
+                  int height =
+                          source.getHeight();
+
+                  int longest =
+                          Math.max(
+                                  width,
+                                  height);
+
+                  if (longest <= MAX_EDGE)
+                      return source;
+
+                  double scale =
+                          MAX_EDGE
+                                  / (double)
+                                  longest;
+
+                  int newWidth =
+                          Math.max(
+                                  1,
+                                  (int)
+                                  Math.round(
+                                          width
+                                                  * scale));
+
+                  int newHeight =
+                          Math.max(
+                                  1,
+                                  (int)
+                                  Math.round(
+                                          height
+                                                  * scale));
+
+                  return Bitmap.createScaledBitmap(
+                          source,
+                          newWidth,
+                          newHeight,
+                          true);
+              }
+
+              private static double saturation(
+                      int r,
+                      int g,
+                      int b) {
+
+                  int max =
+                          Math.max(
+                                  r,
+                                  Math.max(
+                                          g,
+                                          b));
+
+                  int min =
+                          Math.min(
+                                  r,
+                                  Math.min(
+                                          g,
+                                          b));
+
+                  return max <= 0
+                          ? 0.0
+                          : (
+                              max - min
+                          )
+                          / (double)
+                          max;
+              }
+
+              private static double luma(
+                      int r,
+                      int g,
+                      int b) {
+
+                  return (
+                      0.2126 * r
+                              + 0.7152 * g
+                              + 0.0722 * b
+                  )
+                          / 255.0;
+              }
+
+              private static double clamp(
+                      double value,
+                      double low,
+                      double high) {
+
+                  return Math.max(
+                          low,
+                          Math.min(
+                                  high,
+                                  value));
+              }
+
+              private static int c255(
+                      int value) {
+
+                  return Math.max(
+                          0,
+                          Math.min(
+                                  255,
+                                  value));
+              }
+          }
+          JAVA_ENGINE
+
+          cat > "$PROJECT/tools/NightLightControlPolicyHostChecks.java" <<'JAVA_HOST'
+          package com.dennis.photomasterai;
+
+          public final class NightLightControlPolicyHostChecks {
+
+              public static void main(
+                      String[] args) {
+
+                  NightLightControlPolicy.Plan scooter =
+                          NightLightControlPolicy.plan(
+                                  false,
+                                  0.68,
+                                  0.31,
+                                  22,
+                                  18,
+                                  7,
+                                  0.82,
+                                  0.045);
+
+                  require(
+                          scooter.apply,
+                          "scooter-like night structure should activate");
+
+                  require(
+                          scooter.strength >= 0.20
+                                  && scooter.strength <= 0.32,
+                          "night strength outside safe range");
+
+                  NightLightControlPolicy.Plan shaded =
+                          NightLightControlPolicy.plan(
+                                  false,
+                                  0.28,
+                                  0.08,
+                                  5,
+                                  4,
+                                  1,
+                                  0.41,
+                                  0.002);
+
+                  require(
+                          !shaded.apply,
+                          "ordinary shaded scene must not be classified as night");
+
+                  NightLightControlPolicy.Plan flower =
+                          NightLightControlPolicy.plan(
+                                  true,
+                                  0.60,
+                                  0.24,
+                                  18,
+                                  10,
+                                  6,
+                                  0.76,
+                                  0.030);
+
+                  require(
+                          !flower.apply,
+                          "flower/plant exclusion must withhold night stage");
+
+                  NightLightControlPolicy.QcResult safe =
+                          NightLightControlPolicy.evaluateCandidate(
+                                  0.040,
+                                  0.040,
+
+                                  0.008,
+                                  0.008,
+
+                                  0.017,
+                                  0.017,
+
+                                  0.85,
+                                  0.851,
+
+                                  0.19,
+                                  0.190,
+
+                                  0.000,
+                                  0.000,
+
+                                  0.000,
+                                  0.000,
+
+                                  0.014,
+                                  0.000,
+                                  0.21,
+                                  0.003,
+                                  0.0314);
+
+                  require(
+                          safe.accepted,
+                          "safe night-light candidate should pass");
+
+                  NightLightControlPolicy.QcResult skyFail =
+                          NightLightControlPolicy.evaluateCandidate(
+                                  0.040,
+                                  0.040,
+
+                                  0.008,
+                                  0.008,
+
+                                  0.017,
+                                  0.017,
+
+                                  0.85,
+                                  0.851,
+
+                                  0.19,
+                                  0.190,
+
+                                  0.000,
+                                  0.000,
+
+                                  0.000,
+                                  0.000,
+
+                                  0.014,
+                                  0.004,
+                                  0.21,
+                                  0.003,
+                                  0.0314);
+
+                  require(
+                          !skyFail.accepted,
+                          "dark-sky movement above limit must fail");
+
+                  require(
+                          skyFail.reason.contains(
+                                  "dark-sky"),
+                          "dark-sky rejection reason missing");
+
+                  NightLightControlPolicy.QcResult broadFail =
+                          NightLightControlPolicy.evaluateCandidate(
+                                  0.040,
+                                  0.040,
+
+                                  0.008,
+                                  0.008,
+
+                                  0.017,
+                                  0.017,
+
+                                  0.85,
+                                  0.851,
+
+                                  0.19,
+                                  0.190,
+
+                                  0.000,
+                                  0.000,
+
+                                  0.000,
+                                  0.000,
+
+                                  0.014,
+                                  0.000,
+                                  0.60,
+                                  0.003,
+                                  0.0314);
+
+                  require(
+                          !broadFail.accepted,
+                          "overly broad edit must fail");
+
+                  System.out.println(
+                          "NightLightControlPolicyHostChecks passed");
+              }
+
+              private static void require(
+                      boolean condition,
+                      String message) {
+
+                  if (!condition) {
+
+                      throw new AssertionError(
+                              message);
+                  }
+              }
+          }
+          JAVA_HOST
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          project = Path(
+              os.environ['PROJECT']
+          )
+
+          build_file = project / 'app/build.gradle'
+          build = build_file.read_text()
+
+          if 'versionCode 39' not in build:
+              raise RuntimeError(
+                  'v0.4.30 versionCode not found'
+              )
+
+          if "versionName '0.4.30'" not in build:
+              raise RuntimeError(
+                  'v0.4.30 versionName not found'
+              )
+
+          build = build.replace(
+              'versionCode 39',
+              'versionCode 40',
+              1
+          )
+
+          build = build.replace(
+              "versionName '0.4.30'",
+              "versionName '0.4.31'",
+              1
+          )
+
+          build_file.write_text(
+              build
+          )
+
+          main_file = project / (
+              'app/src/main/java/com/dennis/'
+              'photomasterai/MainActivity.java'
+          )
+
+          main = main_file.read_text()
+
+          pattern = re.compile(
+              r'(?ms)^'
+              r'(?P<i>[ \t]*)'
+              r'PhotoMasterEngine\.Result[ \t]+'
+              r'v0430PerceptualResult[ \t]*=[ \t\r\n]*'
+              r'applyPerceptualImprovementController'
+              r'\([ \t\r\n]*'
+              r'v0428MixedLightResult[ \t]*,[ \t\r\n]*'
+              r'originalBitmap[ \t\r\n]*\);'
+          )
+
+          match = pattern.search(
+              main
+          )
+
+          if match is None:
+
+              at = main.find(
+                  'v0430PerceptualResult'
+              )
+
+              if at >= 0:
+
+                  print(
+                      main[
+                          max(
+                              0,
+                              at - 1200
+                          ):
+                          at + 2400
+                      ]
+                  )
+
+              raise RuntimeError(
+                  'v0.4.30 Mixed-Light -> '
+                  'Perceptual flow not found'
+              )
+
+          indentation =
+                  match.group('i')
+
+          replacement = (
+              indentation
+              + 'PhotoMasterEngine.Result '
+              + 'v0431NightLightResult =\n'
+
+              + indentation
+              + '        '
+              + 'applyNightLightControl(\n'
+
+              + indentation
+              + '                '
+              + 'v0428MixedLightResult,\n'
+
+              + indentation
+              + '                '
+              + 'originalBitmap);\n\n'
+
+              + indentation
+              + 'PhotoMasterEngine.Result '
+              + 'v0430PerceptualResult =\n'
+
+              + indentation
+              + '        '
+              + 'applyPerceptualImprovementController(\n'
+
+              + indentation
+              + '                '
+              + 'v0431NightLightResult,\n'
+
+              + indentation
+              + '                '
+              + 'originalBitmap);'
+          )
+
+          main, count =
+                  pattern.subn(
+                          lambda _: replacement,
+                          main,
+                          count=1)
+
+          if count != 1:
+
+              raise RuntimeError(
+                  'Unexpected Night Light pipeline '
+                  'replacement count'
+              )
+
+          anchor = (
+              '    private PhotoMasterEngine.Result '
+              'applyPerceptualImprovementController('
+          )
+
+          if anchor not in main:
+
+              raise RuntimeError(
+                  'Perceptual helper anchor not found'
+              )
+
+          helper_lines = [
+              '    private PhotoMasterEngine.Result '
+              'applyNightLightControl(',
+
+              '            PhotoMasterEngine.Result result,',
+
+              '            Bitmap authoritativeOriginal) {',
+
+              '        if (result == null '
+              '|| result.bitmap == null '
+              '|| result.bitmap.isRecycled()',
+
+              '                || authoritativeOriginal == null '
+              '|| authoritativeOriginal.isRecycled()) '
+              'return result;',
+
+              '        NightLightControlIntelligence.Outcome controlled =',
+
+              '                NightLightControlIntelligence.process(',
+
+              '                        result.bitmap,',
+
+              '                        authoritativeOriginal,',
+
+              '                        result.report);',
+
+              '        String report = insertNightLightControlReport(',
+
+              '                result.report,',
+
+              '                controlled.report);',
+
+              '        if (controlled.analysis != null)',
+
+              '            report = replaceOutputQcMetrics(',
+
+              '                    report,',
+
+              '                    controlled.analysis);',
+
+              '        if (controlled.bitmap != result.bitmap) {',
+
+              '            Bitmap previous = result.bitmap;',
+
+              '            if (previous != authoritativeOriginal '
+              '&& !previous.isRecycled())',
+
+              '                previous.recycle();',
+
+              '        }',
+
+              '        return new PhotoMasterEngine.Result(',
+
+              '                controlled.bitmap,',
+
+              '                report,',
+
+              '                controlled.analysis != null',
+
+              '                        ? controlled.analysis',
+
+              '                        : PhotoAnalysis.analyse('
+              'controlled.bitmap));',
+
+              '    }',
+
+              '',
+
+              '    private String insertNightLightControlReport(',
+
+              '            String sourceReport,',
+
+              '            String nightReport) {',
+
+              '        String section = '
+              '"\\nNIGHT LIGHT CONTROL\\n"',
+
+              '                + nightReport + "\\n";',
+
+              '        if (sourceReport == null)',
+
+              '            return section.trim();',
+
+              '        String marker = "\\nOUTPUT QC\\n";',
+
+              '        int at = sourceReport.indexOf(marker);',
+
+              '        if (at < 0)',
+
+              '            return sourceReport + section;',
+
+              '        return sourceReport.substring(0, at)',
+
+              '                + section',
+
+              '                + sourceReport.substring(at);',
+
+              '    }',
+
+              '',
+          ]
+
+          helper =
+                  '\n'.join(
+                          helper_lines)
+
+          main = main.replace(
+              anchor,
+              helper + anchor,
+              1
+          )
+
+          /*
+           * Allow the Perceptual Controller to recognise
+           * an accepted Night Light correction as a valid
+           * already-approved correction direction.
+           */
+
+          old_signal = (
+              'return report.contains(\n'
+              '                          '
+              '"Local tone ACCEPTED")'
+          )
+
+          if old_signal in main:
+
+              new_signal = (
+                  'return report.contains(\n'
+                  '                          '
+                  '"Night-light control ACCEPTED")\n'
+                  '\n'
+                  '                          '
+                  '|| report.contains(\n'
+                  '                          '
+                  '"Local tone ACCEPTED")'
+              )
+
+              main = main.replace(
+                  old_signal,
+                  new_signal,
+                  1
+              )
+
+          main_file.write_text(
+              main
+          )
+
+          print(
+              'v0.4.31 pipeline applied: '
+              'Local Tone -> Mixed-Light -> '
+              'Night Light Control -> '
+              'Perceptual Improvement -> '
+              'Colour Management -> Geometry'
+          )
+          PY
+
+          grep -q "versionCode 40" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q "versionName '0.4.31'" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q "class NightLightControlPolicy" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+          grep -q "class NightLightControlIntelligence" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
+
+          grep -q "MAX_CHANNEL_CODE_DELTA = 8" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
+
+          grep -q "applyNightLightControl" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+
+          grep -q "NIGHT LIGHT CONTROL" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+
+          grep -q "applyPerceptualImprovementController" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+
+          grep -q "MAX_ADJACENT_GAIN_STEP = 0.045" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourIntelligence.java"
+
+          grep -q "MAX_FINAL_CHANNEL_CODE_DELTA = 9" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourIntelligence.java"
+
+      - name: Fetch pinned NAFNet-SIDD model
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+
+          ASSETS="$PROJECT/app/src/main/assets"
+          MODEL="$ASSETS/nafnet_sidd_width32_fp16.tflite"
+
+          mkdir -p "$ASSETS"
+
+          URL='https://huggingface.co/litert-community/NAFNet-SIDD-width32-LiteRT/resolve/main/nafnet_sidd_width32_fp16.tflite?download=true'
+
+          curl \
+            --fail \
+            --location \
+            --retry 5 \
+            --retry-all-errors \
+            --connect-timeout 30 \
+            --output "$MODEL.tmp" \
+            "$URL"
+
+          mv "$MODEL.tmp" "$MODEL"
+
+          test "$(stat -c%s "$MODEL")" -eq 62454048 || {
+            echo "::error::Unexpected NAFNet model size"
+            exit 1
+          }
+
+          echo \
+            'f8fbaa422411683c53e802cf7cc7cf9be0a0de00886ad4af057232e26b172a0c  '"$MODEL" \
+            | sha256sum -c -
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Run all safety host checks
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf host-checks
+          mkdir host-checks
+
+          javac -d host-checks \
+            app/src/main/java/com/dennis/photomasterai/DeepPixelRepair.java \
+            app/src/main/java/com/dennis/photomasterai/RepairSafetyPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/SocialSourcePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralIntegrityPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/OpticalFringePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/VignettingPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/PersonEvidencePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/HighRingFinishingPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/GeometryPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/LocalTonePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/MixedLightColourPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/PerceptualImprovementPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java \
+            tools/DeepPixelRepairHostChecks.java \
+            tools/RepairSafetyPolicyHostChecks.java \
+            tools/NeuralDenoisePolicyHostChecks.java \
+            tools/SocialSourcePolicyHostChecks.java \
+            tools/SmoothSurfaceGuardHostChecks.java \
+            tools/NeuralIntegrityPolicyHostChecks.java \
+            tools/OpticalFringePolicyHostChecks.java \
+            tools/VignettingPolicyHostChecks.java \
+            tools/PersonEvidencePolicyHostChecks.java \
+            tools/HighBlendDetailGuardHostChecks.java \
+            tools/HighRingFinishingPolicyHostChecks.java \
+            tools/GeometryPolicyHostChecks.java \
+            tools/LocalTonePolicyHostChecks.java \
+            tools/MixedLightColourPolicyHostChecks.java \
+            tools/MixedLightContinuityPolicyHostChecks.java \
+            tools/PerceptualImprovementPolicyHostChecks.java \
+            tools/NightLightControlPolicyHostChecks.java
+
+          for C in \
+            DeepPixelRepairHostChecks \
+            RepairSafetyPolicyHostChecks \
+            NeuralDenoisePolicyHostChecks \
+            SocialSourcePolicyHostChecks \
+            SmoothSurfaceGuardHostChecks \
+            NeuralIntegrityPolicyHostChecks \
+            OpticalFringePolicyHostChecks \
+            VignettingPolicyHostChecks \
+            PersonEvidencePolicyHostChecks \
+            HighBlendDetailGuardHostChecks \
+            HighRingFinishingPolicyHostChecks \
+            GeometryPolicyHostChecks \
+            LocalTonePolicyHostChecks \
+            MixedLightColourPolicyHostChecks \
+            MixedLightContinuityPolicyHostChecks \
+            PerceptualImprovementPolicyHostChecks \
+            NightLightControlPolicyHostChecks
+          do
+            java \
+              -cp host-checks \
+              "com.dennis.photomasterai.$C"
+          done
+
+      - name: Restore stable Photo Master debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: photo-master-ai-debug-keystore-v1
+
+      - name: Create signing key on first build
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$HOME/.android"
+
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+
+            keytool \
+              -genkeypair \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Photo Master AI,O=Dennis Photo Master,C=AU" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -noprompt
+          fi
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Configure Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -x "$SDKMANAGER" ]; then
+
+            SDKMANAGER="$(
+              find "$SDK/cmdline-tools" \
+                -type f \
+                -name 'sdkmanager' \
+                | sort -V \
+                | tail -n 1
+            )"
+          fi
+
+          test -n "$SDKMANAGER" || {
+            echo "::error::sdkmanager not found"
+            exit 1
+          }
+
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Build v0.4.31 APK
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gradle \
+            :app:assembleDebug \
+            --stacktrace
+
+      - name: Verify package and prepare artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+
+          APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
+
+          test -f "$APK" || {
+            echo "::error::APK not found"
+            exit 1
+          }
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+
+          AAPT="$SDK/build-tools/35.0.0/aapt"
+
+          BADGING="$(
+            "$AAPT" dump badging "$APK" \
+              | head -n 1
+          )"
+
+          echo "$BADGING"
+
+          echo "$BADGING" \
+            | grep -q \
+            "package: name='com.dennis.photomasterai'"
+
+          echo "$BADGING" \
+            | grep -q \
+            "versionCode='40'"
+
+          echo "$BADGING" \
+            | grep -q \
+            "versionName='0.4.31'"
+
+          unzip -l "$APK" \
+            | grep -q \
+            'assets/nafnet_sidd_width32_fp16.tflite'
+
+          rm -rf artifact
+          mkdir artifact
+
+          OUT="artifact/PhotoMasterAI-v0.4.31-NIGHT-LIGHT-CONTROL.apk"
+
+          cp \
+            "$APK" \
+            "$OUT"
+
+          sha256sum "$OUT" \
+            > "artifact/PhotoMasterAI-v0.4.31-NIGHT-LIGHT-CONTROL-SHA256.txt"
+
+          cat > "artifact/PhotoMasterAI-v0.4.31-Notes.txt" <<'EOF'
+          Photo Master AI — v0.4.31 Night Light Control
+
+          Version: 0.4.31
+          versionCode: 40
+
+          BASELINE
+          Exact successful v0.4.30 source reconstructed from
+          commit 92ca5f176916d0b150166734050b1cc717cb52b4.
+
+          v0.4.30 remains the frozen Natural/AI baseline.
+
+          NEW
+          - Night Light Control
+          - runs after Mixed-Light Colour
+          - runs before Perceptual Improvement
+          - detects dark-upper / bright-lower / hotspot lighting structure
+          - darkness alone never activates Night Light Control
+          - dark sky regions are explicitly protected
+          - saturated light sources are protected
+          - low-saturation hotspot and flash-spill regions are compressed
+          - nearby low-saturation bloom is moderately contained
+          - maximum channel change capped to 8/255
+          - active-area limit prevents global darkening
+          - candidate rolls back if detail/noise/chroma/ringing/clipping
+            or dark-sky integrity worsens
+
+          TARGET
+          Night scooter regression:
+          - retain black night background
+          - preserve saturated red tail lamp
+          - reduce bright concrete / flash spill
+          - improve scooter/background separation through highlight control
+          - avoid fake HDR or global shadow lifting
+
+          RETAINED
+          - v0.4.30 Perceptual Improvement Controller
+          - v0.4.29 Mixed-Light Continuity Guard
+          - v0.4.27 Local Tone safeguards
+          - v0.4.25 Geometry structural override
+          - preserve-source sRGB / Display P3
+          - high-ring finishing guard
+          - NAFNet-SIDD safeguards
+          - optics and vignetting safeguards
+          - shadow-integrity rollback
+          - background / screen-off processing
+          - JPEG quality 100
+          EOF
+
+      - name: Upload APK and continuation notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoMasterAI-v0.4.31-NIGHT-LIGHT-CONTROL
+          path: |
+            artifact/PhotoMasterAI-v0.4.31-NIGHT-LIGHT-CONTROL.apk
+            artifact/PhotoMasterAI-v0.4.31-NIGHT-LIGHT-CONTROL-SHA256.txt
+            artifact/PhotoMasterAI-v0.4.31-Notes.txt
+          if-no-files-found: error
+          retention-days: 30
