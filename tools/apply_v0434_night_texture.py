@@ -269,6 +269,29 @@ engine = engine.replace(
 
 engine_file.write_text(engine)
 
+# Update the inherited v0.4.32 regression check to the deliberately
+# more conservative v0.4.34 high-ring ceiling. The safety concept is
+# unchanged; only the expected cap changes from 0.240 to 0.225.
+legacy_host = project / "tools/NightLightDetailGuardHostChecks.java"
+legacy = legacy_host.read_text()
+
+if "highRing - 0.240" not in legacy:
+    raise RuntimeError("Legacy Night Light high-ring host-check anchor missing")
+
+legacy = legacy.replace(
+    "highRing - 0.240",
+    "highRing - 0.225",
+    1,
+)
+
+legacy = legacy.replace(
+    "high-ringing scene must cap strength at 0.240",
+    "high-ringing scene must cap strength at 0.225",
+    1,
+)
+
+legacy_host.write_text(legacy)
+
 host_file = project / "tools/NightLightTexturePreservationHostChecks.java"
 host_file.write_text(
 r"""package com.dennis.photomasterai;
