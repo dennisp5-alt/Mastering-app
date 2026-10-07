@@ -1,0 +1,2067 @@
+name: Build Photo Master AI v0.4.30 Perceptual Improvement Controller
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-photo-master-ai-v0.4.30-perceptual-improvement.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Photo Master AI v0.4.30 Perceptual Improvement Controller
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository with history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Recover exact successful v0.4.29 source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          V0429_COMMIT="f5e165f3a6f1f3998db3e4966e35d12111183836"
+
+          git cat-file -e "${V0429_COMMIT}^{commit}" || {
+            echo "::error::Successful v0.4.29 commit unavailable"
+            exit 1
+          }
+
+          git show \
+            "${V0429_COMMIT}:.github/workflows/build-photo-master-ai-v0.4.29-mixed-light-continuity.yml" \
+            > /tmp/v0429.yml
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          lines = Path('/tmp/v0429.yml').read_text().splitlines()
+
+          def extract_step(name, destination):
+              step = None
+
+              for i, line in enumerate(lines):
+                  if line.strip() == '- name: ' + name:
+                      step = i
+                      break
+
+              if step is None:
+                  raise RuntimeError(
+                      'Workflow step not found: ' + name
+                  )
+
+              run = None
+
+              for i in range(step, len(lines)):
+                  if lines[i].strip() == 'run: |':
+                      run = i
+                      break
+
+                  if (
+                      i > step
+                      and lines[i].startswith('      - name:')
+                  ):
+                      break
+
+              if run is None:
+                  raise RuntimeError(
+                      'Run block not found: ' + name
+                  )
+
+              body = []
+
+              for line in lines[run + 1:]:
+                  if line.startswith('      - name:'):
+                      break
+
+                  if not line.strip():
+                      body.append('')
+                  elif line.startswith('          '):
+                      body.append(line[10:])
+                  else:
+                      raise RuntimeError(
+                          'Unexpected indentation while extracting: '
+                          + name
+                      )
+
+              Path(destination).write_text(
+                  '\n'.join(body) + '\n'
+              )
+
+          extract_step(
+              'Recover exact successful v0.4.28 source',
+              '/tmp/recover-v0428.sh'
+          )
+
+          extract_step(
+              'Apply v0.4.29 Mixed-Light Continuity Guard',
+              '/tmp/apply-v0429.sh'
+          )
+          PY
+
+          bash /tmp/recover-v0428.sh
+
+          PROJECT="$(
+            find photomaster-v044-build \
+              -type f \
+              \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \) \
+              -printf '%h\n' \
+              | head -n 1
+          )"
+
+          test -n "$PROJECT" || {
+            echo "::error::Recovered project not found"
+            exit 1
+          }
+
+          export PROJECT
+
+          bash /tmp/apply-v0429.sh
+
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+
+          grep -q "versionCode 38" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q "versionName '0.4.29'" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q "MAX_ADJACENT_GAIN_STEP = 0.045" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourIntelligence.java"
+
+          grep -q "MAX_FINAL_CHANNEL_CODE_DELTA = 9" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourIntelligence.java"
+
+          grep -q "maxGridGainStep > 0.050" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourPolicy.java"
+
+          grep -q "maxEdgeLumaDelta=0.045" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/LocalToneIntelligence.java"
+
+          grep -q "symmetricOpposingOverride" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/GeometryPolicy.java"
+
+          echo "Exact successful v0.4.29 source recovered"
+
+      - name: Apply v0.4.30 Perceptual Improvement Controller
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+
+          cat > "$PROJECT/app/src/main/java/com/dennis/photomasterai/PerceptualImprovementPolicy.java" <<'JAVA_POLICY'
+          package com.dennis.photomasterai;
+
+          import java.util.Locale;
+
+          public final class PerceptualImprovementPolicy {
+
+              public static final double MIN_SCALE = 1.10;
+              public static final double MAX_SCALE = 1.22;
+
+              public static final double MAX_MEAN_EXTRA_DELTA =
+                      0.0060;
+
+              public static final double MAX_CHANNEL_EXTRA_DELTA =
+                      0.0250;
+
+              private PerceptualImprovementPolicy() {}
+
+              public static final class Plan {
+
+                  public final boolean apply;
+                  public final double scale;
+                  public final double headroom;
+                  public final String reason;
+
+                  Plan(
+                          boolean apply,
+                          double scale,
+                          double headroom,
+                          String reason) {
+
+                      this.apply = apply;
+                      this.scale = scale;
+                      this.headroom = headroom;
+                      this.reason = reason;
+                  }
+              }
+
+              public static final class QcResult {
+
+                  public final boolean accepted;
+                  public final String reason;
+
+                  QcResult(
+                          boolean accepted,
+                          String reason) {
+
+                      this.accepted = accepted;
+                      this.reason = reason;
+                  }
+              }
+
+              public static Plan plan(
+                      boolean priorAcceptedCorrection,
+                      double noise,
+                      double chromaNoise,
+                      double ringing,
+                      double saturation) {
+
+                  if (!priorAcceptedCorrection) {
+
+                      return new Plan(
+                              false,
+                              1.0,
+                              0.0,
+                              "no accepted correction signal to extend");
+                  }
+
+                  if (ringing >= 0.94) {
+
+                      return new Plan(
+                              false,
+                              1.0,
+                              0.0,
+                              "ringing leaves insufficient perceptual headroom");
+                  }
+
+                  if (noise >= 0.030) {
+
+                      return new Plan(
+                              false,
+                              1.0,
+                              0.0,
+                              "noise leaves insufficient perceptual headroom");
+                  }
+
+                  if (saturation >= 0.72) {
+
+                      return new Plan(
+                              false,
+                              1.0,
+                              0.0,
+                              "colour density already high");
+                  }
+
+                  double ringHead =
+                          clamp01(
+                                  (0.90 - ringing)
+                                          / 0.40);
+
+                  double noiseHead =
+                          clamp01(
+                                  (0.022 - noise)
+                                          / 0.016);
+
+                  double chromaHead =
+                          clamp01(
+                                  (0.030 - chromaNoise)
+                                          / 0.022);
+
+                  double satHead =
+                          clamp01(
+                                  (0.62 - saturation)
+                                          / 0.38);
+
+                  double headroom =
+                          0.42 * ringHead
+                                  + 0.23 * noiseHead
+                                  + 0.15 * chromaHead
+                                  + 0.20 * satHead;
+
+                  headroom =
+                          clamp01(headroom);
+
+                  double scale =
+                          MIN_SCALE
+                                  + (MAX_SCALE - MIN_SCALE)
+                                  * headroom;
+
+                  /*
+                   * High-ringing images can still receive
+                   * a small extension, but not the full
+                   * available perceptual boost.
+                   */
+
+                  if (ringing > 0.80) {
+
+                      scale =
+                              Math.min(
+                                      scale,
+                                      1.11);
+
+                  } else if (ringing > 0.74) {
+
+                      scale =
+                              Math.min(
+                                      scale,
+                                      1.15);
+                  }
+
+                  scale =
+                          clamp(
+                                  scale,
+                                  MIN_SCALE,
+                                  MAX_SCALE);
+
+                  return new Plan(
+                          true,
+                          scale,
+                          headroom,
+                          String.format(
+                                  Locale.US,
+                                  "accepted-correction extrapolation %.2fx with %.0f%% QC headroom",
+                                  scale,
+                                  headroom * 100.0));
+              }
+
+              public static QcResult evaluateCandidate(
+                      double beforeDetail,
+                      double afterDetail,
+                      double beforeNoise,
+                      double afterNoise,
+                      double beforeChromaNoise,
+                      double afterChromaNoise,
+                      double beforeRinging,
+                      double afterRinging,
+                      double beforeSaturation,
+                      double afterSaturation,
+                      double beforeShadowClip,
+                      double afterShadowClip,
+                      double beforeHighlightClip,
+                      double afterHighlightClip,
+                      double sourceToMasterSignal,
+                      double activeFraction,
+                      double meanExtraDelta,
+                      double maxChannelExtraDelta) {
+
+                  StringBuilder fail =
+                          new StringBuilder();
+
+                  if (sourceToMasterSignal < 0.0015) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "accepted correction signal %.4f < 0.0015",
+                                      sourceToMasterSignal));
+                  }
+
+                  if (activeFraction < 0.010) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "active pixels %.2f%% < 1.00%%",
+                                      activeFraction * 100.0));
+                  }
+
+                  if (meanExtraDelta < 0.00025) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "visible extension %.5f < 0.00025",
+                                      meanExtraDelta));
+                  }
+
+                  if (
+                      afterDetail
+                              < beforeDetail * 0.985) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "detail %.4f -> %.4f below 98.5%% retention",
+                                      beforeDetail,
+                                      afterDetail));
+                  }
+
+                  if (
+                      afterNoise
+                              > beforeNoise + 0.0010) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "noise %.4f -> %.4f exceeds +0.0010",
+                                      beforeNoise,
+                                      afterNoise));
+                  }
+
+                  if (
+                      afterChromaNoise
+                              > beforeChromaNoise
+                              + 0.0010) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "chroma noise %.4f -> %.4f exceeds +0.0010",
+                                      beforeChromaNoise,
+                                      afterChromaNoise));
+                  }
+
+                  if (
+                      afterRinging
+                              > Math.min(
+                                      1.0,
+                                      beforeRinging
+                                              + 0.006)) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "ringing %.4f -> %.4f exceeds allowance",
+                                      beforeRinging,
+                                      afterRinging));
+                  }
+
+                  if (
+                      Math.abs(
+                              afterSaturation
+                                      - beforeSaturation)
+                              > 0.010) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "saturation delta %.4f > 0.0100",
+                                      Math.abs(
+                                              afterSaturation
+                                                      - beforeSaturation)));
+                  }
+
+                  if (
+                      afterShadowClip
+                              > beforeShadowClip
+                              + 0.0010) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "shadow clip %.4f -> %.4f exceeds +0.0010",
+                                      beforeShadowClip,
+                                      afterShadowClip));
+                  }
+
+                  if (
+                      afterHighlightClip
+                              > beforeHighlightClip
+                              + 0.0010) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "highlight clip %.4f -> %.4f exceeds +0.0010",
+                                      beforeHighlightClip,
+                                      afterHighlightClip));
+                  }
+
+                  if (
+                      meanExtraDelta
+                              > MAX_MEAN_EXTRA_DELTA) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "mean extra channel delta %.4f > %.4f",
+                                      meanExtraDelta,
+                                      MAX_MEAN_EXTRA_DELTA));
+                  }
+
+                  if (
+                      maxChannelExtraDelta
+                              > MAX_CHANNEL_EXTRA_DELTA) {
+
+                      add(
+                              fail,
+                              String.format(
+                                      Locale.US,
+                                      "max extra channel delta %.4f > %.4f",
+                                      maxChannelExtraDelta,
+                                      MAX_CHANNEL_EXTRA_DELTA));
+                  }
+
+                  return fail.length() == 0
+                          ? new QcResult(
+                                  true,
+                                  "perceptual headroom QC passed")
+                          : new QcResult(
+                                  false,
+                                  fail.toString());
+              }
+
+              private static void add(
+                      StringBuilder out,
+                      String value) {
+
+                  if (out.length() > 0)
+                      out.append("; ");
+
+                  out.append(value);
+              }
+
+              private static double clamp01(
+                      double value) {
+
+                  return clamp(
+                          value,
+                          0.0,
+                          1.0);
+              }
+
+              private static double clamp(
+                      double value,
+                      double lo,
+                      double hi) {
+
+                  return Math.max(
+                          lo,
+                          Math.min(
+                                  hi,
+                                  value));
+              }
+          }
+          JAVA_POLICY
+
+          cat > "$PROJECT/app/src/main/java/com/dennis/photomasterai/PerceptualImprovementIntelligence.java" <<'JAVA_ENGINE'
+          package com.dennis.photomasterai;
+
+          import android.graphics.Bitmap;
+
+          import java.util.Locale;
+
+          public final class PerceptualImprovementIntelligence {
+
+              private static final int CHUNK = 128;
+
+              /*
+               * Absolute extra change added by this controller,
+               * beyond the already accepted master.
+               *
+               * 6 / 255 = 0.02353.
+               */
+
+              private static final int
+                      MAX_EXTRA_CODE_DELTA = 6;
+
+              private PerceptualImprovementIntelligence() {}
+
+              public static final class Outcome {
+
+                  public final Bitmap bitmap;
+                  public final PhotoAnalysis analysis;
+                  public final boolean changed;
+                  public final String report;
+
+                  Outcome(
+                          Bitmap bitmap,
+                          PhotoAnalysis analysis,
+                          boolean changed,
+                          String report) {
+
+                      this.bitmap = bitmap;
+                      this.analysis = analysis;
+                      this.changed = changed;
+                      this.report = report;
+                  }
+              }
+
+              private static final class RenderSummary {
+
+                  double sourceSignalSum;
+                  double extraDeltaSum;
+                  double maxExtraDelta;
+
+                  long signalCount;
+                  long extraDeltaCount;
+                  long activePixels;
+                  long totalPixels;
+              }
+
+              public static Outcome process(
+                      Bitmap mastered,
+                      Bitmap authoritativeOriginal,
+                      String sourceReport) {
+
+                  if (
+                      mastered == null
+                              || mastered.isRecycled()
+                              || authoritativeOriginal == null
+                              || authoritativeOriginal.isRecycled()) {
+
+                      return new Outcome(
+                              mastered,
+                              mastered == null
+                                      || mastered.isRecycled()
+                                      ? null
+                                      : PhotoAnalysis.analyse(
+                                              mastered),
+                              false,
+                              "• Controller skipped — invalid bitmap input");
+                  }
+
+                  if (
+                      mastered.getWidth()
+                              != authoritativeOriginal.getWidth()
+                              || mastered.getHeight()
+                              != authoritativeOriginal.getHeight()) {
+
+                      return new Outcome(
+                              mastered,
+                              PhotoAnalysis.analyse(
+                                      mastered),
+                              false,
+                              "• Controller withheld — source/master dimensions differ");
+                  }
+
+                  PhotoAnalysis before =
+                          PhotoAnalysis.analyse(
+                                  mastered);
+
+                  boolean acceptedSignal =
+                          hasAcceptedCorrection(
+                                  sourceReport);
+
+                  PerceptualImprovementPolicy.Plan plan =
+                          PerceptualImprovementPolicy.plan(
+                                  acceptedSignal,
+                                  before.noise,
+                                  before.flatChromaNoise,
+                                  before.ringing,
+                                  before.avgSat);
+
+                  StringBuilder report =
+                          new StringBuilder();
+
+                  report.append(
+                          String.format(
+                                  Locale.US,
+                                  "• QC headroom %.1f%% | requested correction scale %.3fx%n",
+                                  plan.headroom * 100.0,
+                                  plan.scale));
+
+                  report.append(
+                          "• Method: extend only the direction of already-accepted source→master corrections\n");
+
+                  report.append(
+                          "• Protections: clipping extremes | saturated colour | large repair deltas | high ringing\n");
+
+                  if (!plan.apply) {
+
+                      report.append(
+                              "• Controller WITHHELD — ")
+                              .append(
+                                      plan.reason)
+                              .append(
+                                      "\n");
+
+                      return new Outcome(
+                              mastered,
+                              before,
+                              false,
+                              report.toString());
+                  }
+
+                  RenderSummary summary =
+                          new RenderSummary();
+
+                  Bitmap candidate =
+                          render(
+                                  mastered,
+                                  authoritativeOriginal,
+                                  plan.scale,
+                                  summary);
+
+                  if (candidate == null) {
+
+                      report.append(
+                              "• Controller WITHHELD — candidate render unavailable\n");
+
+                      return new Outcome(
+                              mastered,
+                              before,
+                              false,
+                              report.toString());
+                  }
+
+                  PhotoAnalysis after =
+                          PhotoAnalysis.analyse(
+                                  candidate);
+
+                  double sourceSignal =
+                          summary.signalCount > 0
+                                  ? summary.sourceSignalSum
+                                  / summary.signalCount
+                                  : 0.0;
+
+                  double meanExtraDelta =
+                          summary.extraDeltaCount > 0
+                                  ? summary.extraDeltaSum
+                                  / summary.extraDeltaCount
+                                  : 0.0;
+
+                  double activeFraction =
+                          summary.totalPixels > 0
+                                  ? summary.activePixels
+                                  / (double)
+                                  summary.totalPixels
+                                  : 0.0;
+
+                  PerceptualImprovementPolicy.QcResult qc =
+                          PerceptualImprovementPolicy
+                                  .evaluateCandidate(
+                                          before.detail,
+                                          after.detail,
+
+                                          before.noise,
+                                          after.noise,
+
+                                          before.flatChromaNoise,
+                                          after.flatChromaNoise,
+
+                                          before.ringing,
+                                          after.ringing,
+
+                                          before.avgSat,
+                                          after.avgSat,
+
+                                          before.shadowClip,
+                                          after.shadowClip,
+
+                                          before.highlightClip,
+                                          after.highlightClip,
+
+                                          sourceSignal,
+                                          activeFraction,
+                                          meanExtraDelta,
+                                          summary.maxExtraDelta);
+
+                  report.append(
+                          String.format(
+                                  Locale.US,
+                                  "• Accepted correction signal %.4f | active pixels %.1f%%%n",
+                                  sourceSignal,
+                                  activeFraction * 100.0));
+
+                  report.append(
+                          String.format(
+                                  Locale.US,
+                                  "• Mean extra channel delta %.4f | max extra channel delta %.4f | code cap %d/255%n",
+                                  meanExtraDelta,
+                                  summary.maxExtraDelta,
+                                  MAX_EXTRA_CODE_DELTA));
+
+                  report.append(
+                          String.format(
+                                  Locale.US,
+                                  "• Detail %.4f -> %.4f | noise %.4f -> %.4f | ring %.4f -> %.4f | sat %.4f -> %.4f%n",
+                                  before.detail,
+                                  after.detail,
+                                  before.noise,
+                                  after.noise,
+                                  before.ringing,
+                                  after.ringing,
+                                  before.avgSat,
+                                  after.avgSat));
+
+                  if (!qc.accepted) {
+
+                      if (!candidate.isRecycled())
+                          candidate.recycle();
+
+                      report.append(
+                              "• Controller ROLLED BACK — ")
+                              .append(
+                                      qc.reason)
+                              .append(
+                                      "\n");
+
+                      return new Outcome(
+                              mastered,
+                              before,
+                              false,
+                              report.toString());
+                  }
+
+                  report.append(
+                          "• Controller ACCEPTED — existing corrections strengthened inside remaining QC headroom\n");
+
+                  return new Outcome(
+                          candidate,
+                          after,
+                          true,
+                          report.toString());
+              }
+
+              private static Bitmap render(
+                      Bitmap mastered,
+                      Bitmap original,
+                      double scale,
+                      RenderSummary summary) {
+
+                  int width =
+                          mastered.getWidth();
+
+                  int height =
+                          mastered.getHeight();
+
+                  Bitmap output =
+                          Bitmap.createBitmap(
+                                  width,
+                                  height,
+                                  Bitmap.Config.ARGB_8888);
+
+                  double extra =
+                          Math.max(
+                                  0.0,
+                                  scale - 1.0);
+
+                  for (
+                      int y0 = 0;
+                      y0 < height;
+                      y0 += CHUNK) {
+
+                      int rows =
+                              Math.min(
+                                      CHUNK,
+                                      height - y0);
+
+                      int[] current =
+                              new int[
+                                      width
+                                              * rows];
+
+                      int[] source =
+                              new int[
+                                      width
+                                              * rows];
+
+                      int[] destination =
+                              new int[
+                                      width
+                                              * rows];
+
+                      mastered.getPixels(
+                              current,
+                              0,
+                              width,
+                              0,
+                              y0,
+                              width,
+                              rows);
+
+                      original.getPixels(
+                              source,
+                              0,
+                              width,
+                              0,
+                              y0,
+                              width,
+                              rows);
+
+                      for (
+                          int i = 0;
+                          i < current.length;
+                          i++) {
+
+                          int currentPixel =
+                                  current[i];
+
+                          int originalPixel =
+                                  source[i];
+
+                          int alpha =
+                                  (currentPixel >>> 24)
+                                          & 255;
+
+                          int currentR =
+                                  (currentPixel >>> 16)
+                                          & 255;
+
+                          int currentG =
+                                  (currentPixel >>> 8)
+                                          & 255;
+
+                          int currentB =
+                                  currentPixel
+                                          & 255;
+
+                          int originalR =
+                                  (originalPixel >>> 16)
+                                          & 255;
+
+                          int originalG =
+                                  (originalPixel >>> 8)
+                                          & 255;
+
+                          int originalB =
+                                  originalPixel
+                                          & 255;
+
+                          int deltaR =
+                                  currentR
+                                          - originalR;
+
+                          int deltaG =
+                                  currentG
+                                          - originalG;
+
+                          int deltaB =
+                                  currentB
+                                          - originalB;
+
+                          double sourceDelta =
+                                  (
+                                      Math.abs(
+                                              deltaR)
+                                              + Math.abs(
+                                                      deltaG)
+                                              + Math.abs(
+                                                      deltaB)
+                                  )
+                                          / (
+                                              3.0
+                                                      * 255.0);
+
+                          summary.sourceSignalSum
+                                  += sourceDelta;
+
+                          summary.signalCount++;
+                          summary.totalPixels++;
+
+                          double luminance =
+                                  luma(
+                                          currentR,
+                                          currentG,
+                                          currentB);
+
+                          double saturation =
+                                  saturation(
+                                          currentR,
+                                          currentG,
+                                          currentB);
+
+                          int maxSourceCodeDelta =
+                                  Math.max(
+                                          Math.abs(
+                                                  deltaR),
+                                          Math.max(
+                                                  Math.abs(
+                                                          deltaG),
+                                                  Math.abs(
+                                                          deltaB)));
+
+                          double protection =
+                                  1.0;
+
+                          /*
+                           * Extreme shadows/highlights:
+                           * avoid increasing clipping.
+                           */
+
+                          if (
+                              luminance <= 0.025
+                                      || luminance
+                                      >= 0.975) {
+
+                              protection =
+                                      0.0;
+
+                          } else if (
+                              luminance < 0.10
+                                      || luminance
+                                      > 0.92) {
+
+                              protection
+                                      *= 0.35;
+                          }
+
+                          /*
+                           * Protect already-dense colour.
+                           */
+
+                          if (
+                              saturation > 0.80) {
+
+                              protection
+                                      *= 0.25;
+
+                          } else if (
+                              saturation > 0.65) {
+
+                              protection
+                                      *= 0.55;
+                          }
+
+                          /*
+                           * Very large original→master changes
+                           * are likely repairs, containment,
+                           * clipping recovery or other major
+                           * corrections.
+                           *
+                           * Do not meaningfully extrapolate them.
+                           */
+
+                          if (
+                              maxSourceCodeDelta > 64) {
+
+                              protection =
+                                      0.0;
+
+                          } else if (
+                              maxSourceCodeDelta > 40) {
+
+                              protection
+                                      *= 0.15;
+
+                          } else if (
+                              maxSourceCodeDelta > 28) {
+
+                              protection
+                                      *= 0.45;
+                          }
+
+                          /*
+                           * No meaningful existing correction:
+                           * do nothing.
+                           */
+
+                          if (
+                              maxSourceCodeDelta < 2) {
+
+                              protection =
+                                      0.0;
+                          }
+
+                          double factor =
+                                  extra
+                                          * protection;
+
+                          double newR =
+                                  currentR
+                                          + deltaR
+                                          * factor;
+
+                          double newG =
+                                  currentG
+                                          + deltaG
+                                          * factor;
+
+                          double newB =
+                                  currentB
+                                          + deltaB
+                                          * factor;
+
+                          /*
+                           * Hard final extension cap:
+                           * maximum six 8-bit code values beyond
+                           * the already accepted master.
+                           */
+
+                          newR =
+                                  clamp(
+                                          newR,
+                                          currentR
+                                                  - MAX_EXTRA_CODE_DELTA,
+                                          currentR
+                                                  + MAX_EXTRA_CODE_DELTA);
+
+                          newG =
+                                  clamp(
+                                          newG,
+                                          currentG
+                                                  - MAX_EXTRA_CODE_DELTA,
+                                          currentG
+                                                  + MAX_EXTRA_CODE_DELTA);
+
+                          newB =
+                                  clamp(
+                                          newB,
+                                          currentB
+                                                  - MAX_EXTRA_CODE_DELTA,
+                                          currentB
+                                                  + MAX_EXTRA_CODE_DELTA);
+
+                          int outR =
+                                  c255(
+                                          (int)
+                                          Math.round(
+                                                  newR));
+
+                          int outG =
+                                  c255(
+                                          (int)
+                                          Math.round(
+                                                  newG));
+
+                          int outB =
+                                  c255(
+                                          (int)
+                                          Math.round(
+                                                  newB));
+
+                          double extraR =
+                                  Math.abs(
+                                          outR
+                                                  - currentR)
+                                          / 255.0;
+
+                          double extraG =
+                                  Math.abs(
+                                          outG
+                                                  - currentG)
+                                          / 255.0;
+
+                          double extraB =
+                                  Math.abs(
+                                          outB
+                                                  - currentB)
+                                          / 255.0;
+
+                          double meanExtra =
+                                  (
+                                      extraR
+                                              + extraG
+                                              + extraB
+                                  )
+                                          / 3.0;
+
+                          summary.extraDeltaSum
+                                  += meanExtra;
+
+                          summary.extraDeltaCount++;
+
+                          summary.maxExtraDelta =
+                                  Math.max(
+                                          summary.maxExtraDelta,
+                                          Math.max(
+                                                  extraR,
+                                                  Math.max(
+                                                          extraG,
+                                                          extraB)));
+
+                          if (
+                              outR != currentR
+                                      || outG != currentG
+                                      || outB
+                                      != currentB) {
+
+                              summary.activePixels++;
+                          }
+
+                          destination[i] =
+                                  (alpha << 24)
+                                          | (outR << 16)
+                                          | (outG << 8)
+                                          | outB;
+                      }
+
+                      output.setPixels(
+                              destination,
+                              0,
+                              width,
+                              0,
+                              y0,
+                              width,
+                              rows);
+                  }
+
+                  return output;
+              }
+
+              private static boolean hasAcceptedCorrection(
+                      String report) {
+
+                  if (
+                      report == null
+                              || report.isEmpty()) {
+
+                      return false;
+                  }
+
+                  return report.contains(
+                          "Local tone ACCEPTED")
+
+                          || report.contains(
+                                  "Mixed-light colour ACCEPTED")
+
+                          || report.contains(
+                                  "Optical QC: ACCEPTED")
+
+                          || report.contains(
+                                  "Neural QC: ACCEPTED")
+
+                          || report.contains(
+                                  "geometry QC ACCEPTED")
+
+                          || report.contains(
+                                  "Geometry QC ACCEPTED");
+              }
+
+              private static double saturation(
+                      int r,
+                      int g,
+                      int b) {
+
+                  int max =
+                          Math.max(
+                                  r,
+                                  Math.max(
+                                          g,
+                                          b));
+
+                  int min =
+                          Math.min(
+                                  r,
+                                  Math.min(
+                                          g,
+                                          b));
+
+                  return max <= 0
+                          ? 0.0
+                          : (
+                              max - min
+                          )
+                          / (double) max;
+              }
+
+              private static double luma(
+                      int r,
+                      int g,
+                      int b) {
+
+                  return (
+                      0.2126 * r
+                              + 0.7152 * g
+                              + 0.0722 * b
+                  )
+                          / 255.0;
+              }
+
+              private static double clamp(
+                      double value,
+                      double low,
+                      double high) {
+
+                  return Math.max(
+                          low,
+                          Math.min(
+                                  high,
+                                  value));
+              }
+
+              private static int c255(
+                      int value) {
+
+                  return Math.max(
+                          0,
+                          Math.min(
+                                  255,
+                                  value));
+              }
+          }
+          JAVA_ENGINE
+
+          cat > "$PROJECT/tools/PerceptualImprovementPolicyHostChecks.java" <<'JAVA_HOST'
+          package com.dennis.photomasterai;
+
+          public final class PerceptualImprovementPolicyHostChecks {
+
+              public static void main(
+                      String[] args) {
+
+                  PerceptualImprovementPolicy.Plan normal =
+                          PerceptualImprovementPolicy.plan(
+                                  true,
+                                  0.008,
+                                  0.016,
+                                  0.68,
+                                  0.31);
+
+                  require(
+                          normal.apply,
+                          "normal safe scene should be eligible");
+
+                  require(
+                          normal.scale >= 1.10
+                                  && normal.scale <= 1.22,
+                          "normal scale must remain inside natural envelope");
+
+                  PerceptualImprovementPolicy.Plan highRing =
+                          PerceptualImprovementPolicy.plan(
+                                  true,
+                                  0.008,
+                                  0.017,
+                                  0.85,
+                                  0.19);
+
+                  require(
+                          highRing.apply,
+                          "high-ring scene may receive minimal extension");
+
+                  require(
+                          highRing.scale <= 1.11 + 1e-9,
+                          "high-ring scene must be strongly capped");
+
+                  PerceptualImprovementPolicy.Plan noSignal =
+                          PerceptualImprovementPolicy.plan(
+                                  false,
+                                  0.008,
+                                  0.016,
+                                  0.68,
+                                  0.31);
+
+                  require(
+                          !noSignal.apply,
+                          "controller must not invent a correction direction");
+
+                  PerceptualImprovementPolicy.QcResult safe =
+                          PerceptualImprovementPolicy.evaluateCandidate(
+                                  0.040,
+                                  0.040,
+
+                                  0.008,
+                                  0.008,
+
+                                  0.016,
+                                  0.016,
+
+                                  0.68,
+                                  0.681,
+
+                                  0.31,
+                                  0.314,
+
+                                  0.003,
+                                  0.003,
+
+                                  0.000,
+                                  0.000,
+
+                                  0.012,
+                                  0.40,
+                                  0.0020,
+                                  0.0235);
+
+                  require(
+                          safe.accepted,
+                          "safe perceptual candidate should pass");
+
+                  PerceptualImprovementPolicy.QcResult ringFail =
+                          PerceptualImprovementPolicy.evaluateCandidate(
+                                  0.040,
+                                  0.040,
+
+                                  0.008,
+                                  0.008,
+
+                                  0.016,
+                                  0.016,
+
+                                  0.68,
+                                  0.690,
+
+                                  0.31,
+                                  0.314,
+
+                                  0.003,
+                                  0.003,
+
+                                  0.000,
+                                  0.000,
+
+                                  0.012,
+                                  0.40,
+                                  0.0020,
+                                  0.0235);
+
+                  require(
+                          !ringFail.accepted,
+                          "ringing increase above allowance must fail");
+
+                  require(
+                          ringFail.reason.contains(
+                                  "ringing"),
+                          "ring failure must identify ringing");
+
+                  PerceptualImprovementPolicy.QcResult deltaFail =
+                          PerceptualImprovementPolicy.evaluateCandidate(
+                                  0.040,
+                                  0.040,
+
+                                  0.008,
+                                  0.008,
+
+                                  0.016,
+                                  0.016,
+
+                                  0.68,
+                                  0.681,
+
+                                  0.31,
+                                  0.314,
+
+                                  0.003,
+                                  0.003,
+
+                                  0.000,
+                                  0.000,
+
+                                  0.012,
+                                  0.40,
+                                  0.0020,
+                                  0.0260);
+
+                  require(
+                          !deltaFail.accepted,
+                          "max extra delta above ceiling must fail");
+
+                  require(
+                          deltaFail.reason.contains(
+                                  "max extra channel delta"),
+                          "delta failure must identify max extra channel delta");
+
+                  System.out.println(
+                          "PerceptualImprovementPolicyHostChecks passed");
+              }
+
+              private static void require(
+                      boolean value,
+                      String message) {
+
+                  if (!value) {
+
+                      throw new AssertionError(
+                              message);
+                  }
+              }
+          }
+          JAVA_HOST
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          project = Path(
+              os.environ['PROJECT']
+          )
+
+          build_file = project / 'app/build.gradle'
+          build = build_file.read_text()
+
+          if 'versionCode 38' not in build:
+              raise RuntimeError(
+                  'v0.4.29 versionCode not found'
+              )
+
+          if "versionName '0.4.29'" not in build:
+              raise RuntimeError(
+                  'v0.4.29 versionName not found'
+              )
+
+          build = build.replace(
+              'versionCode 38',
+              'versionCode 39',
+              1
+          )
+
+          build = build.replace(
+              "versionName '0.4.29'",
+              "versionName '0.4.30'",
+              1
+          )
+
+          build_file.write_text(
+              build
+          )
+
+          main_file = project / (
+              'app/src/main/java/com/dennis/'
+              'photomasterai/MainActivity.java'
+          )
+
+          main = main_file.read_text()
+
+          pattern = re.compile(
+              r'(?ms)^'
+              r'(?P<i>[ \t]*)'
+              r'PhotoMasterEngine\.Result[ \t]+'
+              r'v0424ColourResult[ \t]*=[ \t\r\n]*'
+              r'applyColourSpaceGuard\([ \t\r\n]*'
+              r'v0428MixedLightResult[ \t]*,[ \t\r\n]*'
+              r'originalBitmap[ \t\r\n]*\);'
+          )
+
+          match = pattern.search(
+              main
+          )
+
+          if match is None:
+
+              at = main.find(
+                  'v0428MixedLightResult'
+              )
+
+              if at >= 0:
+
+                  print(
+                      main[
+                          max(
+                              0,
+                              at - 900
+                          ):
+                          at + 2200
+                      ]
+                  )
+
+              raise RuntimeError(
+                  'v0.4.29 Mixed-Light -> '
+                  'Colour Management flow not found'
+              )
+
+          indentation = match.group(
+              'i'
+          )
+
+          replacement = (
+              indentation
+              + 'PhotoMasterEngine.Result '
+              + 'v0430PerceptualResult =\n'
+
+              + indentation
+              + '        '
+              + 'applyPerceptualImprovementController(\n'
+
+              + indentation
+              + '                '
+              + 'v0428MixedLightResult,\n'
+
+              + indentation
+              + '                '
+              + 'originalBitmap);\n\n'
+
+              + indentation
+              + 'PhotoMasterEngine.Result '
+              + 'v0424ColourResult =\n'
+
+              + indentation
+              + '        '
+              + 'applyColourSpaceGuard(\n'
+
+              + indentation
+              + '                '
+              + 'v0430PerceptualResult,\n'
+
+              + indentation
+              + '                '
+              + 'originalBitmap);'
+          )
+
+          main, count = pattern.subn(
+              lambda _: replacement,
+              main,
+              count=1
+          )
+
+          if count != 1:
+
+              raise RuntimeError(
+                  'Unexpected perceptual pipeline '
+                  'replacement count'
+              )
+
+          anchor = (
+              '    private PhotoMasterEngine.Result '
+              'applyColourSpaceGuard('
+          )
+
+          if anchor not in main:
+
+              raise RuntimeError(
+                  'Colour-space helper anchor not found'
+              )
+
+          helper_lines = [
+              '    private PhotoMasterEngine.Result '
+              'applyPerceptualImprovementController(',
+
+              '            PhotoMasterEngine.Result result,',
+
+              '            Bitmap authoritativeOriginal) {',
+
+              '        if (result == null '
+              '|| result.bitmap == null '
+              '|| result.bitmap.isRecycled()',
+
+              '                || authoritativeOriginal == null '
+              '|| authoritativeOriginal.isRecycled()) '
+              'return result;',
+
+              '        PerceptualImprovementIntelligence.Outcome '
+              'improved =',
+
+              '                PerceptualImprovementIntelligence.process(',
+
+              '                        result.bitmap, '
+              'authoritativeOriginal, result.report);',
+
+              '        String report = '
+              'insertPerceptualImprovementReport(',
+
+              '                result.report, '
+              'improved.report);',
+
+              '        if (improved.analysis != null)',
+
+              '            report = '
+              'replaceOutputQcMetrics('
+              'report, improved.analysis);',
+
+              '        if (improved.bitmap != result.bitmap) {',
+
+              '            Bitmap previous = result.bitmap;',
+
+              '            if (previous != authoritativeOriginal '
+              '&& !previous.isRecycled())',
+
+              '                previous.recycle();',
+
+              '        }',
+
+              '        return new PhotoMasterEngine.Result(',
+
+              '                improved.bitmap,',
+
+              '                report,',
+
+              '                improved.analysis != null',
+
+              '                        ? improved.analysis',
+
+              '                        : PhotoAnalysis.analyse('
+              'improved.bitmap));',
+
+              '    }',
+
+              '',
+
+              '    private String '
+              'insertPerceptualImprovementReport(',
+
+              '            String sourceReport,',
+
+              '            String perceptualReport) {',
+
+              '        String section = '
+              '"\\nPERCEPTUAL IMPROVEMENT CONTROLLER\\n"',
+
+              '                + perceptualReport + "\\n";',
+
+              '        if (sourceReport == null) '
+              'return section.trim();',
+
+              '        String marker = "\\nOUTPUT QC\\n";',
+
+              '        int at = sourceReport.indexOf(marker);',
+
+              '        if (at < 0) '
+              'return sourceReport + section;',
+
+              '        return sourceReport.substring(0, at)',
+
+              '                + section',
+
+              '                + sourceReport.substring(at);',
+
+              '    }',
+
+              '',
+          ]
+
+          helper = '\n'.join(
+              helper_lines
+          )
+
+          main = main.replace(
+              anchor,
+              helper + anchor,
+              1
+          )
+
+          main_file.write_text(
+              main
+          )
+
+          print(
+              'v0.4.30 pipeline applied: '
+              'Local Tone -> Mixed-Light -> '
+              'Perceptual Improvement -> '
+              'Colour Management -> Geometry'
+          )
+          PY
+
+          grep -q "versionCode 39" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q "versionName '0.4.30'" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q "class PerceptualImprovementPolicy" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PerceptualImprovementPolicy.java"
+
+          grep -q "class PerceptualImprovementIntelligence" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PerceptualImprovementIntelligence.java"
+
+          grep -q "MAX_EXTRA_CODE_DELTA = 6" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PerceptualImprovementIntelligence.java"
+
+          grep -q "applyPerceptualImprovementController" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+
+          grep -q "PERCEPTUAL IMPROVEMENT CONTROLLER" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+
+          grep -q "MAX_ADJACENT_GAIN_STEP = 0.045" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourIntelligence.java"
+
+          grep -q "MAX_FINAL_CHANNEL_CODE_DELTA = 9" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourIntelligence.java"
+
+          grep -q "maxGridGainStep > 0.050" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourPolicy.java"
+
+      - name: Fetch pinned NAFNet-SIDD model
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+
+          ASSETS="$PROJECT/app/src/main/assets"
+          MODEL="$ASSETS/nafnet_sidd_width32_fp16.tflite"
+
+          mkdir -p "$ASSETS"
+
+          URL='https://huggingface.co/litert-community/NAFNet-SIDD-width32-LiteRT/resolve/main/nafnet_sidd_width32_fp16.tflite?download=true'
+
+          curl \
+            --fail \
+            --location \
+            --retry 5 \
+            --retry-all-errors \
+            --connect-timeout 30 \
+            --output "$MODEL.tmp" \
+            "$URL"
+
+          mv "$MODEL.tmp" "$MODEL"
+
+          test "$(stat -c%s "$MODEL")" -eq 62454048 || {
+            echo "::error::Unexpected NAFNet model size"
+            exit 1
+          }
+
+          echo \
+            'f8fbaa422411683c53e802cf7cc7cf9be0a0de00886ad4af057232e26b172a0c  '"$MODEL" \
+            | sha256sum -c -
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Run all safety host checks
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf host-checks
+          mkdir host-checks
+
+          javac -d host-checks \
+            app/src/main/java/com/dennis/photomasterai/DeepPixelRepair.java \
+            app/src/main/java/com/dennis/photomasterai/RepairSafetyPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/SocialSourcePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralIntegrityPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/OpticalFringePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/VignettingPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/PersonEvidencePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/HighRingFinishingPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/GeometryPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/LocalTonePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/MixedLightColourPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/PerceptualImprovementPolicy.java \
+            tools/DeepPixelRepairHostChecks.java \
+            tools/RepairSafetyPolicyHostChecks.java \
+            tools/NeuralDenoisePolicyHostChecks.java \
+            tools/SocialSourcePolicyHostChecks.java \
+            tools/SmoothSurfaceGuardHostChecks.java \
+            tools/NeuralIntegrityPolicyHostChecks.java \
+            tools/OpticalFringePolicyHostChecks.java \
+            tools/VignettingPolicyHostChecks.java \
+            tools/PersonEvidencePolicyHostChecks.java \
+            tools/HighBlendDetailGuardHostChecks.java \
+            tools/HighRingFinishingPolicyHostChecks.java \
+            tools/GeometryPolicyHostChecks.java \
+            tools/LocalTonePolicyHostChecks.java \
+            tools/MixedLightColourPolicyHostChecks.java \
+            tools/MixedLightContinuityPolicyHostChecks.java \
+            tools/PerceptualImprovementPolicyHostChecks.java
+
+          for C in \
+            DeepPixelRepairHostChecks \
+            RepairSafetyPolicyHostChecks \
+            NeuralDenoisePolicyHostChecks \
+            SocialSourcePolicyHostChecks \
+            SmoothSurfaceGuardHostChecks \
+            NeuralIntegrityPolicyHostChecks \
+            OpticalFringePolicyHostChecks \
+            VignettingPolicyHostChecks \
+            PersonEvidencePolicyHostChecks \
+            HighBlendDetailGuardHostChecks \
+            HighRingFinishingPolicyHostChecks \
+            GeometryPolicyHostChecks \
+            LocalTonePolicyHostChecks \
+            MixedLightColourPolicyHostChecks \
+            MixedLightContinuityPolicyHostChecks \
+            PerceptualImprovementPolicyHostChecks
+          do
+            java \
+              -cp host-checks \
+              "com.dennis.photomasterai.$C"
+          done
+
+      - name: Restore stable Photo Master debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: photo-master-ai-debug-keystore-v1
+
+      - name: Create signing key on first build
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$HOME/.android"
+
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+
+            keytool \
+              -genkeypair \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Photo Master AI,O=Dennis Photo Master,C=AU" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -noprompt
+          fi
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Configure Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -x "$SDKMANAGER" ]; then
+
+            SDKMANAGER="$(
+              find "$SDK/cmdline-tools" \
+                -type f \
+                -name 'sdkmanager' \
+                | sort -V \
+                | tail -n 1
+            )"
+          fi
+
+          test -n "$SDKMANAGER" || {
+            echo "::error::sdkmanager not found"
+            exit 1
+          }
+
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Build v0.4.30 APK
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gradle \
+            :app:assembleDebug \
+            --stacktrace
+
+      - name: Verify package and prepare artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+
+          APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
+
+          test -f "$APK" || {
+            echo "::error::APK not found"
+            exit 1
+          }
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+
+          AAPT="$SDK/build-tools/35.0.0/aapt"
+
+          BADGING="$(
+            "$AAPT" dump badging "$APK" \
+              | head -n 1
+          )"
+
+          echo "$BADGING"
+
+          echo "$BADGING" \
+            | grep -q \
+            "package: name='com.dennis.photomasterai'"
+
+          echo "$BADGING" \
+            | grep -q \
+            "versionCode='39'"
+
+          echo "$BADGING" \
+            | grep -q \
+            "versionName='0.4.30'"
+
+          unzip -l "$APK" \
+            | grep -q \
+            'assets/nafnet_sidd_width32_fp16.tflite'
+
+          rm -rf artifact
+          mkdir artifact
+
+          OUT="artifact/PhotoMasterAI-v0.4.30-PERCEPTUAL-IMPROVEMENT.apk"
+
+          cp \
+            "$APK" \
+            "$OUT"
+
+          sha256sum "$OUT" \
+            > "artifact/PhotoMasterAI-v0.4.30-PERCEPTUAL-IMPROVEMENT-SHA256.txt"
+
+          cat > "artifact/PhotoMasterAI-v0.4.30-Notes.txt" <<'EOF'
+          Photo Master AI — v0.4.30 Perceptual Improvement Controller
+
+          Version: 0.4.30
+          versionCode: 39
+
+          BASELINE
+          Exact successful v0.4.29 source reconstructed from run 37614870974.
+
+          v0.4.29 is the frozen known-good Mixed-Light Continuity baseline.
+
+          NEW
+          - Perceptual Improvement Controller
+          - positioned after Mixed-Light and before Colour Management
+          - strengthens only corrections already accepted by previous stages
+          - natural correction extension range 1.10x to 1.22x
+          - high-ringing images capped to approximately 1.11x
+          - no new correction direction invented
+          - clipped extremes protected
+          - highly saturated pixels protected
+          - large repair / containment deltas protected
+          - extra channel movement hard capped at 6/255
+          - candidate rollback if detail, noise, chroma noise, ringing,
+            saturation or clipping worsens
+          - no meaningful source-to-master correction means no enhancement
+
+          RETAINED
+          - v0.4.29 Mixed-Light continuity guard
+          - adjacent Mixed-Light gain target <= 0.045
+          - final Mixed-Light channel cap 9/255
+          - Mixed-Light max-channel QC 0.040
+          - v0.4.27 Local Tone safeguards
+          - v0.4.25 geometry structural override
+          - preserve-source sRGB / Display P3
+          - high-ring finishing guard
+          - NAFNet-SIDD safeguards
+          - optics and vignetting safeguards
+          - shadow-integrity rollback
+          - background / screen-off processing
+          - JPEG quality 100
+
+          PURPOSE
+          Restore more visible master-vs-original improvement without
+          blanket saturation, contrast or sharpening.
+
+          Instead, v0.4.30 measures the already accepted difference
+          between the authoritative original and the current safe master.
+
+          It then extends that existing correction direction only when
+          remaining QC headroom supports doing so.
+
+          FIRST REGRESSION SET
+          - Indoor room
+          - Flower
+          - Night scooter
+
+          EXPECTED
+          Indoor room:
+          Moderate visible extension should be possible.
+
+          Flower:
+          Strong saturation / highlight protections may keep the
+          extension restrained.
+
+          Night scooter:
+          High ringing should cap the extension close to 1.11x or cause
+          the controller to roll back.
+          EOF
+
+      - name: Upload APK and continuation notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoMasterAI-v0.4.30-PERCEPTUAL-IMPROVEMENT
+          path: |
+            artifact/PhotoMasterAI-v0.4.30-PERCEPTUAL-IMPROVEMENT.apk
+            artifact/PhotoMasterAI-v0.4.30-PERCEPTUAL-IMPROVEMENT-SHA256.txt
+            artifact/PhotoMasterAI-v0.4.30-Notes.txt
+          if-no-files-found: error
+          retention-days: 30
