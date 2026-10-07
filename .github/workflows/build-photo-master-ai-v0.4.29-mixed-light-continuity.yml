@@ -132,6 +132,9 @@ jobs:
           grep -q "versionName '0.4.28'" \
             "$PROJECT/app/build.gradle"
 
+          grep -q "class MixedLightColourPolicy" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourPolicy.java"
+
           grep -q "class MixedLightColourIntelligence" \
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourIntelligence.java"
 
@@ -157,16 +160,13 @@ jobs:
           from pathlib import Path
           import os
 
-          project = Path(
-              os.environ['PROJECT']
-          )
+          project = Path(os.environ['PROJECT'])
 
-          # -------------------------------------------------------------
+          # ---------------------------------------------------------
           # VERSION
-          # -------------------------------------------------------------
+          # ---------------------------------------------------------
 
           build_file = project / 'app/build.gradle'
-
           build = build_file.read_text()
 
           if 'versionCode 37' not in build:
@@ -191,16 +191,14 @@ jobs:
               1
           )
 
-          build_file.write_text(
-              build
-          )
+          build_file.write_text(build)
 
-          # -------------------------------------------------------------
+          # ---------------------------------------------------------
           # MIXED-LIGHT POLICY
           #
-          # Keep max final channel QC at 0.040.
-          # Tighten regional continuity QC from 0.060 to 0.050.
-          # -------------------------------------------------------------
+          # Max channel QC remains 0.040.
+          # Adjacent regional gain QC becomes 0.050.
+          # ---------------------------------------------------------
 
           policy_file = project / (
               'app/src/main/java/com/dennis/photomasterai/'
@@ -209,38 +207,44 @@ jobs:
 
           policy = policy_file.read_text()
 
-          if 'maxGridGainStep > 0.060' not in policy:
+          old_policy_limit = 'maxGridGainStep > 0.060'
+          new_policy_limit = 'maxGridGainStep > 0.050'
+
+          if old_policy_limit not in policy:
               raise RuntimeError(
                   'v0.4.28 regional gain QC anchor not found'
               )
 
           policy = policy.replace(
-              'maxGridGainStep > 0.060',
-              'maxGridGainStep > 0.050',
+              old_policy_limit,
+              new_policy_limit,
               1
           )
 
-          if (
+          old_policy_text = (
               'regional gain step %.4f > 0.0600'
-              not in policy
-          ):
+          )
+
+          new_policy_text = (
+              'regional gain step %.4f > 0.0500'
+          )
+
+          if old_policy_text not in policy:
               raise RuntimeError(
                   'v0.4.28 regional gain report anchor not found'
               )
 
           policy = policy.replace(
-              'regional gain step %.4f > 0.0600',
-              'regional gain step %.4f > 0.0500',
+              old_policy_text,
+              new_policy_text,
               1
           )
 
-          policy_file.write_text(
-              policy
-          )
+          policy_file.write_text(policy)
 
-          # -------------------------------------------------------------
+          # ---------------------------------------------------------
           # MIXED-LIGHT ENGINE
-          # -------------------------------------------------------------
+          # ---------------------------------------------------------
 
           engine_file = project / (
               'app/src/main/java/com/dennis/photomasterai/'
@@ -249,17 +253,24 @@ jobs:
 
           engine = engine_file.read_text()
 
+          # ---------------------------------------------------------
+          # NEW SAFETY CONSTANTS
+          # ---------------------------------------------------------
+
           constants_old = (
               'private static final int GX = 8, GY = 8, '
               'MAX_EDGE = 640, CHUNK = 128;'
           )
 
           constants_new = (
-              constants_old
-              + '\n              private static final double '
-              + 'MAX_ADJACENT_GAIN_STEP = 0.045;'
-              + '\n              private static final int '
-              + 'MAX_FINAL_CHANNEL_CODE_DELTA = 9;'
+              'private static final int GX = 8, GY = 8, '
+              'MAX_EDGE = 640, CHUNK = 128;'
+              '\n'
+              '              private static final double '
+              'MAX_ADJACENT_GAIN_STEP = 0.045;'
+              '\n'
+              '              private static final int '
+              'MAX_FINAL_CHANNEL_CODE_DELTA = 9;'
           )
 
           if constants_old not in engine:
@@ -273,14 +284,19 @@ jobs:
               1
           )
 
+          # ---------------------------------------------------------
+          # CONTINUITY SCALE DIAGNOSTIC
+          # ---------------------------------------------------------
+
           field_old = (
               'double meanNeutralError, '
               'gainSpread, maxGridGainStep;'
           )
 
           field_new = (
-              'double meanNeutralError, gainSpread, '
-              'maxGridGainStep, continuityScale = 1.0;'
+              'double meanNeutralError, '
+              'gainSpread, maxGridGainStep, '
+              'continuityScale = 1.0;'
           )
 
           if field_old not in engine:
@@ -294,18 +310,32 @@ jobs:
               1
           )
 
-          analysis_old = '''                  e.meanNeutralError = targetErrorCount>0 ? targetErrorSum/targetErrorCount : 0.0;
-                  e.gainSpread = gainSpread(e);
-                  e.maxGridGainStep = maxGridGainStep(e);'''
+          # ---------------------------------------------------------
+          # NORMALISE THE REGIONAL CORRECTION FIELD
+          # ---------------------------------------------------------
 
-          analysis_new = '''                  e.meanNeutralError = targetErrorCount>0 ? targetErrorSum/targetErrorCount : 0.0;
-                  enforceContinuity(e);
-                  e.gainSpread = gainSpread(e);
-                  e.maxGridGainStep = maxGridGainStep(e);'''
+          analysis_old = (
+              '                  e.meanNeutralError = '
+              'targetErrorCount>0 ? '
+              'targetErrorSum/targetErrorCount : 0.0;\n'
+              '                  e.gainSpread = gainSpread(e);\n'
+              '                  e.maxGridGainStep = '
+              'maxGridGainStep(e);'
+          )
+
+          analysis_new = (
+              '                  e.meanNeutralError = '
+              'targetErrorCount>0 ? '
+              'targetErrorSum/targetErrorCount : 0.0;\n'
+              '                  enforceContinuity(e);\n'
+              '                  e.gainSpread = gainSpread(e);\n'
+              '                  e.maxGridGainStep = '
+              'maxGridGainStep(e);'
+          )
 
           if analysis_old not in engine:
               raise RuntimeError(
-                  'v0.4.28 analysis continuity anchor not found'
+                  'v0.4.28 continuity analysis anchor not found'
               )
 
           engine = engine.replace(
@@ -314,50 +344,67 @@ jobs:
               1
           )
 
+          # ---------------------------------------------------------
+          # ADD CONTINUITY FUNCTION
+          # ---------------------------------------------------------
+
           helper_anchor = (
               '              private static double '
               'gainSpread(Evidence e) {'
           )
 
+          helper_lines = [
+              '              private static void '
+              'enforceContinuity(Evidence e) {',
+              '                  double rawStep=',
+              '                          maxGridGainStep(e);',
+              '',
+              '                  if (rawStep<=MAX_ADJACENT_GAIN_STEP',
+              '                          || rawStep<=1e-9) {',
+              '                      e.continuityScale=1.0;',
+              '                      return;',
+              '                  }',
+              '',
+              '                  double scale=',
+              '                          MAX_ADJACENT_GAIN_STEP',
+              '                                  / rawStep;',
+              '',
+              '                  for (int y=0;y<GY;y++) {',
+              '                      for (int x=0;x<GX;x++) {',
+              '                          Cell c=e.cells[y][x];',
+              '',
+              '                          if (!c.valid) {',
+              '                              continue;',
+              '                          }',
+              '',
+              '                          c.gainR=',
+              '                                  1.0',
+              '                                  +(c.gainR-1.0)',
+              '                                  *scale;',
+              '',
+              '                          c.gainG=',
+              '                                  1.0',
+              '                                  +(c.gainG-1.0)',
+              '                                  *scale;',
+              '',
+              '                          c.gainB=',
+              '                                  1.0',
+              '                                  +(c.gainB-1.0)',
+              '                                  *scale;',
+              '                      }',
+              '                  }',
+              '',
+              '                  e.continuityScale=scale;',
+              '              }',
+              '',
+          ]
+
+          helper = '\n'.join(helper_lines)
+
           if helper_anchor not in engine:
               raise RuntimeError(
                   'v0.4.28 gainSpread helper anchor not found'
               )
-
-          helper = '''              private static void enforceContinuity(Evidence e) {
-                  double rawStep=maxGridGainStep(e);
-
-                  if (rawStep<=MAX_ADJACENT_GAIN_STEP || rawStep<=1e-9) {
-                      e.continuityScale=1.0;
-                      return;
-                  }
-
-                  double scale=
-                          MAX_ADJACENT_GAIN_STEP/rawStep;
-
-                  for (int y=0;y<GY;y++) {
-                      for (int x=0;x<GX;x++) {
-                          Cell c=e.cells[y][x];
-
-                          if (!c.valid) {
-                              continue;
-                          }
-
-                          c.gainR=
-                                  1.0+(c.gainR-1.0)*scale;
-
-                          c.gainG=
-                                  1.0+(c.gainG-1.0)*scale;
-
-                          c.gainB=
-                                  1.0+(c.gainB-1.0)*scale;
-                      }
-                  }
-
-                  e.continuityScale=scale;
-              }
-
-'''
 
           engine = engine.replace(
               helper_anchor,
@@ -365,41 +412,80 @@ jobs:
               1
           )
 
-          render_old = '''                              if (lum>1e-6 && nl>1e-6) {
-                                  double preserve=clamp(lum/nl,0.96,1.04);
-                                  nr*=preserve; ng*=preserve; nb*=preserve;
-                              }
+          # ---------------------------------------------------------
+          # FINAL POST-LUMINANCE RGB MOVEMENT GUARD
+          #
+          # 9/255 = 0.03529.
+          # This keeps final movement safely below QC = 0.040.
+          # ---------------------------------------------------------
 
-                              int ir=c255((int)Math.round(nr));'''
+          render_old = (
+              '                              '
+              'if (lum>1e-6 && nl>1e-6) {\n'
+              '                                  '
+              'double preserve=clamp('
+              'lum/nl,0.96,1.04);\n'
+              '                                  '
+              'nr*=preserve; ng*=preserve; '
+              'nb*=preserve;\n'
+              '                              }\n'
+              '\n'
+              '                              '
+              'int ir=c255((int)Math.round(nr));'
+          )
 
-          render_new = '''                              if (lum>1e-6 && nl>1e-6) {
-                                  double preserve=clamp(lum/nl,0.96,1.04);
-                                  nr*=preserve; ng*=preserve; nb*=preserve;
-                              }
+          render_new_lines = [
+              '                              '
+              'if (lum>1e-6 && nl>1e-6) {',
+              '                                  '
+              'double preserve=clamp('
+              'lum/nl,0.96,1.04);',
+              '                                  '
+              'nr*=preserve; ng*=preserve; '
+              'nb*=preserve;',
+              '                              }',
+              '',
+              '                              '
+              '// Final post-luminance RGB guard.',
+              '                              '
+              '// 9/255 = 0.0353.',
+              '                              '
+              'nr=clamp(',
+              '                                      '
+              'nr,',
+              '                                      '
+              'rr-MAX_FINAL_CHANNEL_CODE_DELTA,',
+              '                                      '
+              'rr+MAX_FINAL_CHANNEL_CODE_DELTA);',
+              '',
+              '                              '
+              'ng=clamp(',
+              '                                      '
+              'ng,',
+              '                                      '
+              'gg-MAX_FINAL_CHANNEL_CODE_DELTA,',
+              '                                      '
+              'gg+MAX_FINAL_CHANNEL_CODE_DELTA);',
+              '',
+              '                              '
+              'nb=clamp(',
+              '                                      '
+              'nb,',
+              '                                      '
+              'bb-MAX_FINAL_CHANNEL_CODE_DELTA,',
+              '                                      '
+              'bb+MAX_FINAL_CHANNEL_CODE_DELTA);',
+              '',
+              '                              '
+              'int ir=c255((int)Math.round(nr));',
+          ]
 
-                              // Final post-luminance RGB safety clamp.
-                              // 9 / 255 = 0.0353, leaving margin below
-                              // the unchanged 0.0400 QC limit.
-                              nr=clamp(
-                                      nr,
-                                      rr-MAX_FINAL_CHANNEL_CODE_DELTA,
-                                      rr+MAX_FINAL_CHANNEL_CODE_DELTA);
-
-                              ng=clamp(
-                                      ng,
-                                      gg-MAX_FINAL_CHANNEL_CODE_DELTA,
-                                      gg+MAX_FINAL_CHANNEL_CODE_DELTA);
-
-                              nb=clamp(
-                                      nb,
-                                      bb-MAX_FINAL_CHANNEL_CODE_DELTA,
-                                      bb+MAX_FINAL_CHANNEL_CODE_DELTA);
-
-                              int ir=c255((int)Math.round(nr));'''
+          render_new = '\n'.join(render_new_lines)
 
           if render_old not in engine:
               raise RuntimeError(
-                  'v0.4.28 post-luminance render anchor not found'
+                  'v0.4.28 post-luminance render anchor '
+                  'not found'
               )
 
           engine = engine.replace(
@@ -408,26 +494,37 @@ jobs:
               1
           )
 
-          # Report the continuity guard so regression testing can
-          # distinguish field normalization from ordinary correction.
+          # ---------------------------------------------------------
+          # REPORT CONTINUITY ACTIVITY
+          # ---------------------------------------------------------
 
           report_marker = (
               '                  if (!plan.apply) {'
           )
 
+          report_lines = [
+              '                  r.append(',
+              '                          String.format(',
+              '                                  Locale.US,',
+              '                                  '
+              '"• Continuity guard field scale %.1f%% '
+              '| adjacent gain cap %.4f '
+              '| final channel cap %d/255%n",',
+              '                                  '
+              'e.continuityScale*100.0,',
+              '                                  '
+              'MAX_ADJACENT_GAIN_STEP,',
+              '                                  '
+              'MAX_FINAL_CHANNEL_CODE_DELTA));',
+              '',
+          ]
+
+          report_add = '\n'.join(report_lines)
+
           if report_marker not in engine:
               raise RuntimeError(
                   'v0.4.28 report marker not found'
               )
-
-          report_add = '''                  r.append(String.format(
-                          Locale.US,
-                          "• Continuity guard field scale %.1f%% | adjacent gain cap %.4f | final channel cap %d/255%n",
-                          e.continuityScale*100.0,
-                          MAX_ADJACENT_GAIN_STEP,
-                          MAX_FINAL_CHANNEL_CODE_DELTA));
-
-'''
 
           engine = engine.replace(
               report_marker,
@@ -435,78 +532,133 @@ jobs:
               1
           )
 
-          engine_file.write_text(
-              engine
-          )
+          engine_file.write_text(engine)
 
-          # -------------------------------------------------------------
-          # EXTEND HOST CHECKS
-          # -------------------------------------------------------------
+          # ---------------------------------------------------------
+          # NEW PURE-JAVA HOST CHECK
+          # ---------------------------------------------------------
 
           host_file = project / (
-              'tools/MixedLightColourPolicyHostChecks.java'
+              'tools/'
+              'MixedLightContinuityPolicyHostChecks.java'
           )
 
-          host = host_file.read_text()
-
-          marker = (
-              '                  System.out.println('
-              '"MixedLightColourPolicyHostChecks passed");'
-          )
-
-          if marker not in host:
-              raise RuntimeError(
-                  'Mixed-Light host check marker not found'
-              )
-
-          extra = '''                  MixedLightColourPolicy.QcResult stepFail =
-                          MixedLightColourPolicy.evaluateCandidate(
-                                  0.042,0.030,
-                                  0.050,0.050,
-                                  0.010,0.010,
-                                  0.018,0.018,
-                                  0.700,0.700,
-                                  0.240,0.240,
-                                  0.003,0.003,
-                                  0.002,0.002,
-                                  0.006,0.027,0.051);
-
-                  req(
-                          !stepFail.accepted,
-                          "regional step above 0.050 must fail");
-
-                  req(
-                          stepFail.reason.contains(
-                                  "regional gain step"),
-                          "reason must name regional gain step");
-
-'''
-
-          host = host.replace(
-              marker,
-              extra + marker,
-              1
-          )
+          host_lines = [
+              'package com.dennis.photomasterai;',
+              '',
+              'public final class '
+              'MixedLightContinuityPolicyHostChecks {',
+              '',
+              '    public static void main(',
+              '            String[] args) {',
+              '',
+              '        MixedLightColourPolicy.QcResult safe =',
+              '                MixedLightColourPolicy.'
+              'evaluateCandidate(',
+              '                        0.042,0.030,',
+              '                        0.050,0.050,',
+              '                        0.010,0.010,',
+              '                        0.018,0.018,',
+              '                        0.700,0.700,',
+              '                        0.240,0.240,',
+              '                        0.003,0.003,',
+              '                        0.002,0.002,',
+              '                        0.006,0.035,0.045);',
+              '',
+              '        require(',
+              '                safe.accepted,',
+              '                "safe continuity candidate '
+              'should pass");',
+              '',
+              '        MixedLightColourPolicy.QcResult '
+              'channelFail =',
+              '                MixedLightColourPolicy.'
+              'evaluateCandidate(',
+              '                        0.042,0.030,',
+              '                        0.050,0.050,',
+              '                        0.010,0.010,',
+              '                        0.018,0.018,',
+              '                        0.700,0.700,',
+              '                        0.240,0.240,',
+              '                        0.003,0.003,',
+              '                        0.002,0.002,',
+              '                        0.006,0.041,0.045);',
+              '',
+              '        require(',
+              '                !channelFail.accepted,',
+              '                "channel delta above 0.040 '
+              'must fail");',
+              '',
+              '        require(',
+              '                channelFail.reason.contains(',
+              '                        "max channel delta"),',
+              '                "channel failure must be '
+              'reported");',
+              '',
+              '        MixedLightColourPolicy.QcResult '
+              'stepFail =',
+              '                MixedLightColourPolicy.'
+              'evaluateCandidate(',
+              '                        0.042,0.030,',
+              '                        0.050,0.050,',
+              '                        0.010,0.010,',
+              '                        0.018,0.018,',
+              '                        0.700,0.700,',
+              '                        0.240,0.240,',
+              '                        0.003,0.003,',
+              '                        0.002,0.002,',
+              '                        0.006,0.035,0.051);',
+              '',
+              '        require(',
+              '                !stepFail.accepted,',
+              '                "regional step above 0.050 '
+              'must fail");',
+              '',
+              '        require(',
+              '                stepFail.reason.contains(',
+              '                        "regional gain step"),',
+              '                "regional failure must be '
+              'reported");',
+              '',
+              '        System.out.println(',
+              '                "MixedLightContinuityPolicy'
+              'HostChecks passed");',
+              '    }',
+              '',
+              '    private static void require(',
+              '            boolean condition,',
+              '            String message) {',
+              '',
+              '        if (!condition) {',
+              '            throw new AssertionError(message);',
+              '        }',
+              '    }',
+              '}',
+              '',
+          ]
 
           host_file.write_text(
-              host
+              '\n'.join(host_lines)
           )
 
           print(
-              'v0.4.29 Mixed-Light Continuity Guard applied'
+              'v0.4.29 Mixed-Light Continuity Guard '
+              'applied'
           )
 
           print(
-              'Adjacent regional gain field normalized to <= 0.045'
+              'Adjacent regional gain field normalized '
+              'to <= 0.045'
           )
 
           print(
-              'Final channel movement capped to 9/255 (~0.0353)'
+              'Final RGB movement capped to '
+              '9/255 (~0.0353)'
           )
 
           print(
               'Max-channel QC remains 0.040; '
-              'regional continuity QC tightened to 0.050'
+              'regional QC tightened to 0.050'
           )
           PY
 
@@ -524,6 +676,9 @@ jobs:
 
           grep -q "maxGridGainStep > 0.050" \
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourPolicy.java"
+
+          grep -q "Continuity guard field scale" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourIntelligence.java"
 
           grep -q "maxEdgeLumaDelta=0.045" \
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/LocalToneIntelligence.java"
@@ -580,7 +735,8 @@ jobs:
           rm -rf host-checks
           mkdir host-checks
 
-          javac -d host-checks \
+          javac \
+            -d host-checks \
             app/src/main/java/com/dennis/photomasterai/DeepPixelRepair.java \
             app/src/main/java/com/dennis/photomasterai/RepairSafetyPolicy.java \
             app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java \
@@ -606,7 +762,8 @@ jobs:
             tools/HighRingFinishingPolicyHostChecks.java \
             tools/GeometryPolicyHostChecks.java \
             tools/LocalTonePolicyHostChecks.java \
-            tools/MixedLightColourPolicyHostChecks.java
+            tools/MixedLightColourPolicyHostChecks.java \
+            tools/MixedLightContinuityPolicyHostChecks.java
 
           for C in \
             DeepPixelRepairHostChecks \
@@ -622,7 +779,8 @@ jobs:
             HighRingFinishingPolicyHostChecks \
             GeometryPolicyHostChecks \
             LocalTonePolicyHostChecks \
-            MixedLightColourPolicyHostChecks
+            MixedLightColourPolicyHostChecks \
+            MixedLightContinuityPolicyHostChecks
           do
             java \
               -cp host-checks \
@@ -700,7 +858,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gradle :app:assembleDebug --stacktrace
+
+          gradle \
+            :app:assembleDebug \
+            --stacktrace
 
       - name: Verify package and prepare artifact
         shell: bash
@@ -717,6 +878,7 @@ jobs:
           }
 
           SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+
           AAPT="$SDK/build-tools/35.0.0/aapt"
 
           BADGING="$(
@@ -727,23 +889,29 @@ jobs:
           echo "$BADGING"
 
           echo "$BADGING" \
-            | grep -q "package: name='com.dennis.photomasterai'"
+            | grep -q \
+            "package: name='com.dennis.photomasterai'"
 
           echo "$BADGING" \
-            | grep -q "versionCode='38'"
+            | grep -q \
+            "versionCode='38'"
 
           echo "$BADGING" \
-            | grep -q "versionName='0.4.29'"
+            | grep -q \
+            "versionName='0.4.29'"
 
           unzip -l "$APK" \
-            | grep -q 'assets/nafnet_sidd_width32_fp16.tflite'
+            | grep -q \
+            'assets/nafnet_sidd_width32_fp16.tflite'
 
           rm -rf artifact
           mkdir artifact
 
           OUT="artifact/PhotoMasterAI-v0.4.29-MIXED-LIGHT-CONTINUITY.apk"
 
-          cp "$APK" "$OUT"
+          cp \
+            "$APK" \
+            "$OUT"
 
           sha256sum "$OUT" \
             > "artifact/PhotoMasterAI-v0.4.29-MIXED-LIGHT-CONTINUITY-SHA256.txt"
@@ -755,41 +923,48 @@ jobs:
           versionCode: 38
 
           BASELINE
-          Exact successful v0.4.28 source reconstructed from run 37602511410.
-          v0.4.27 remains the frozen pre-Mixed-Light fallback.
+          Exact successful v0.4.28 source reconstructed from
+          successful run 37602511410.
 
           NEW
-          - Adjacent Mixed-Light regional gain field capped at 0.045
-          - Final post-luminance RGB movement capped at 9/255 (~0.0353)
-          - Max-channel QC remains 0.0400
+          - Adjacent Mixed-Light gain field limited to 0.045
+          - Final post-luminance RGB movement capped at 9/255
+          - 9/255 = approximately 0.0353
+          - Max channel QC remains 0.0400
           - Regional gain-step QC tightened to 0.0500
-          - Existing +/-3.5% Mixed-Light correction envelope retained
-          - Exact rollback diagnostics retained
+          - Existing +/-3.5% correction envelope retained
+          - Continuity activity reported in Mixed-Light section
 
-          GOAL
-          Preserve useful Mixed-Light improvements that v0.4.28 measured
-          but rolled back because isolated pixels or adjacent regions
-          exceeded the final output safety limits.
+          PURPOSE
+          Preserve useful Mixed-Light candidates that v0.4.28
+          measured but rejected because isolated pixels or
+          neighbouring correction regions exceeded output limits.
 
           REGRESSION TARGETS
+
           Indoor room:
-          v0.4.28 neutral error improved 19% but max channel reached 0.0471.
+          v0.4.28 neutral error improved about 19% but max final
+          channel movement reached 0.0471.
 
           Night scooter:
-          v0.4.28 neutral error improved 27% but max channel reached 0.0549
-          and regional gain step reached 0.0700.
+          v0.4.28 neutral error improved about 27% but max final
+          channel movement reached 0.0549 and regional gain step
+          reached 0.0700.
 
           Flower:
-          v0.4.28 neutral error improved 30.8% but max channel reached 0.0510.
+          v0.4.28 neutral error improved about 30.8% but max final
+          channel movement reached 0.0510.
 
           RETAINED
           - v0.4.27 Local Tone safeguards
           - v0.4.25 geometry structural override
           - preserve-source sRGB / Display P3
-          - high-ring guard
-          - neural denoise safeguards
-          - optics/vignetting/shadow-integrity safeguards
-          - background processing
+          - high-ring finishing guard
+          - NAFNet-SIDD safeguards
+          - optics safeguards
+          - vignetting safeguards
+          - shadow-integrity rollback
+          - background and screen-off processing
           - JPEG quality 100
           EOF
 
