@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - '.github/workflows/build-photo-master-ai-v0.4.34-night-light-texture-preservation.yml'
+      - 'tools/apply_v0434_night_texture.py'
 
 permissions:
   contents: write
