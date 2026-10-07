@@ -1,0 +1,1147 @@
+name: Build Photo Master AI v0.4.28 Mixed-Light Colour Intelligence
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-photo-master-ai-v0.4.28-mixed-light-colour.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Photo Master AI v0.4.28 Mixed-Light Colour Intelligence
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository with history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Recover exact successful v0.4.27 source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          V0427_COMMIT="c136ca9031716f12c9f126ea337fe0c9254389ae"
+          git cat-file -e "${V0427_COMMIT}^{commit}" || {
+            echo "::error::Successful v0.4.27 commit unavailable"
+            exit 1
+          }
+
+          git show \
+            "${V0427_COMMIT}:.github/workflows/build-photo-master-ai-v0.4.27-local-tone-guard.yml" \
+            > /tmp/v0427.yml
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          lines = Path('/tmp/v0427.yml').read_text().splitlines()
+
+          def extract_step(name, destination):
+              step = next(
+                  (i for i, line in enumerate(lines)
+                   if line.strip() == '- name: ' + name),
+                  None)
+              if step is None:
+                  raise RuntimeError('Workflow step not found: ' + name)
+
+              run = None
+              for i in range(step, len(lines)):
+                  if lines[i].strip() == 'run: |':
+                      run = i
+                      break
+                  if i > step and lines[i].startswith('      - name:'):
+                      break
+              if run is None:
+                  raise RuntimeError('Run block not found: ' + name)
+
+              body = []
+              for line in lines[run + 1:]:
+                  if line.startswith('      - name:'):
+                      break
+                  if not line.strip():
+                      body.append('')
+                  elif line.startswith('          '):
+                      body.append(line[10:])
+                  else:
+                      raise RuntimeError(
+                          'Unexpected indentation while extracting: ' + name)
+
+              Path(destination).write_text('\n'.join(body) + '\n')
+
+          extract_step(
+              'Recover exact successful v0.4.26 source',
+              '/tmp/recover-v0426.sh')
+          extract_step(
+              'Apply v0.4.27 Local Tone safeguard refinement',
+              '/tmp/apply-v0427.sh')
+          PY
+
+          bash /tmp/recover-v0426.sh
+
+          PROJECT="$(
+            find photomaster-v044-build \
+              -type f \
+              \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \) \
+              -printf '%h\n' | head -n 1
+          )"
+
+          test -n "$PROJECT" || {
+            echo "::error::Recovered project not found"
+            exit 1
+          }
+
+          export PROJECT
+          bash /tmp/apply-v0427.sh
+
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+
+          grep -q "versionCode 36" "$PROJECT/app/build.gradle"
+          grep -q "versionName '0.4.27'" "$PROJECT/app/build.gradle"
+          grep -q "maxEdgeLumaDelta=0.045" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/LocalToneIntelligence.java"
+          grep -q "symmetricOpposingOverride" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/GeometryPolicy.java"
+
+          echo "Exact successful v0.4.27 source recovered"
+
+      - name: Apply v0.4.28 Mixed-Light Colour Intelligence
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+
+          cat > "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourPolicy.java" <<'JAVA_POLICY'
+          package com.dennis.photomasterai;
+
+          import java.util.Locale;
+
+          public final class MixedLightColourPolicy {
+              public static final double MAX_GAIN_DEVIATION = 0.035;
+
+              private MixedLightColourPolicy() {}
+
+              public static final class Plan {
+                  public final boolean apply;
+                  public final String reason;
+                  Plan(boolean apply, String reason) {
+                      this.apply = apply;
+                      this.reason = reason;
+                  }
+              }
+
+              public static final class QcResult {
+                  public final boolean accepted;
+                  public final String reason;
+                  QcResult(boolean accepted, String reason) {
+                      this.accepted = accepted;
+                      this.reason = reason;
+                  }
+              }
+
+              public static Plan plan(
+                      int validReferenceZones,
+                      int correctionZones,
+                      int distinctIlluminantGroups,
+                      double gainSpread,
+                      double meanNeutralError) {
+
+                  if (validReferenceZones < 3)
+                      return new Plan(false, "insufficient neutral-reference zones");
+                  if (correctionZones < 2)
+                      return new Plan(false, "insufficient locally correctable colour evidence");
+                  if (meanNeutralError < 0.012)
+                      return new Plan(false, "neutral-reference colour error already low");
+
+                  boolean multipleGroups =
+                          distinctIlluminantGroups >= 2 && gainSpread >= 0.010;
+                  boolean strongRegionalSpread = gainSpread >= 0.018;
+
+                  if (!multipleGroups && !strongRegionalSpread)
+                      return new Plan(
+                              false,
+                              "regional colour evidence is too uniform for mixed-light correction");
+
+                  return new Plan(
+                          true,
+                          multipleGroups
+                                  ? "multiple illuminant groups detected"
+                                  : "strong regional colour-temperature spread detected");
+              }
+
+              public static QcResult evaluateCandidate(
+                      double beforeNeutralError,
+                      double afterNeutralError,
+                      double beforeDetail,
+                      double afterDetail,
+                      double beforeNoise,
+                      double afterNoise,
+                      double beforeChromaNoise,
+                      double afterChromaNoise,
+                      double beforeRinging,
+                      double afterRinging,
+                      double beforeSaturation,
+                      double afterSaturation,
+                      double beforeShadowClip,
+                      double afterShadowClip,
+                      double beforeHighlightClip,
+                      double afterHighlightClip,
+                      double meanChannelDelta,
+                      double maxChannelDelta,
+                      double maxGridGainStep) {
+
+                  StringBuilder fail = new StringBuilder();
+                  double improve = beforeNeutralError - afterNeutralError;
+                  double relative = beforeNeutralError > 1e-9
+                          ? improve / beforeNeutralError : 0.0;
+
+                  if (improve < 0.0020 || relative < 0.08)
+                      add(fail, String.format(
+                              Locale.US,
+                              "neutral error %.4f -> %.4f did not improve by >=0.0020 and 8%%",
+                              beforeNeutralError, afterNeutralError));
+
+                  double detailRetention =
+                          afterDetail / Math.max(1e-9, beforeDetail);
+                  if (detailRetention < 0.97)
+                      add(fail, String.format(
+                              Locale.US,
+                              "detail retention %.3f < 0.970",
+                              detailRetention));
+
+                  if (afterNoise > beforeNoise + 0.0010)
+                      add(fail, String.format(
+                              Locale.US,
+                              "noise %.4f -> %.4f exceeds +0.0010",
+                              beforeNoise, afterNoise));
+
+                  if (afterChromaNoise > beforeChromaNoise + 0.0010)
+                      add(fail, String.format(
+                              Locale.US,
+                              "chroma noise %.4f -> %.4f exceeds +0.0010",
+                              beforeChromaNoise, afterChromaNoise));
+
+                  if (afterRinging > Math.min(1.0, beforeRinging + 0.008))
+                      add(fail, String.format(
+                              Locale.US,
+                              "ringing %.4f -> %.4f exceeds allowance",
+                              beforeRinging, afterRinging));
+
+                  if (Math.abs(afterSaturation - beforeSaturation) > 0.012)
+                      add(fail, String.format(
+                              Locale.US,
+                              "saturation delta %.4f > 0.0120",
+                              Math.abs(afterSaturation - beforeSaturation)));
+
+                  if (afterShadowClip > beforeShadowClip + 0.0015)
+                      add(fail, String.format(
+                              Locale.US,
+                              "shadow clip %.4f -> %.4f exceeds +0.0015",
+                              beforeShadowClip, afterShadowClip));
+
+                  if (afterHighlightClip > beforeHighlightClip + 0.0015)
+                      add(fail, String.format(
+                              Locale.US,
+                              "highlight clip %.4f -> %.4f exceeds +0.0015",
+                              beforeHighlightClip, afterHighlightClip));
+
+                  if (meanChannelDelta > 0.012)
+                      add(fail, String.format(
+                              Locale.US,
+                              "mean channel delta %.4f > 0.0120",
+                              meanChannelDelta));
+
+                  if (maxChannelDelta > 0.040)
+                      add(fail, String.format(
+                              Locale.US,
+                              "max channel delta %.4f > 0.0400",
+                              maxChannelDelta));
+
+                  if (maxGridGainStep > 0.060)
+                      add(fail, String.format(
+                              Locale.US,
+                              "regional gain step %.4f > 0.0600",
+                              maxGridGainStep));
+
+                  return fail.length() == 0
+                          ? new QcResult(true, "mixed-light colour QC passed")
+                          : new QcResult(false, fail.toString());
+              }
+
+              private static void add(StringBuilder out, String value) {
+                  if (out.length() > 0) out.append("; ");
+                  out.append(value);
+              }
+          }
+          JAVA_POLICY
+
+          cat > "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourIntelligence.java" <<'JAVA_ENGINE'
+          package com.dennis.photomasterai;
+
+          import android.graphics.Bitmap;
+          import java.util.Locale;
+
+          public final class MixedLightColourIntelligence {
+              private static final int GX = 8, GY = 8, MAX_EDGE = 640, CHUNK = 128;
+
+              private MixedLightColourIntelligence() {}
+
+              public static final class Outcome {
+                  public final Bitmap bitmap;
+                  public final PhotoAnalysis analysis;
+                  public final boolean changed;
+                  public final String report;
+                  Outcome(Bitmap b, PhotoAnalysis a, boolean c, String r) {
+                      bitmap = b; analysis = a; changed = c; report = r;
+                  }
+              }
+
+              private static final class Cell {
+                  long pixels, neutral;
+                  double sumR, sumG, sumB, meanR, meanG, meanB, error;
+                  double gainR = 1.0, gainG = 1.0, gainB = 1.0, confidence;
+                  boolean valid, correctable;
+                  int group;
+              }
+
+              private static final class Evidence {
+                  final Cell[][] cells = new Cell[GY][GX];
+                  int validZones, correctionZones;
+                  int neutralZones, warmZones, coolZones, greenZones, magentaZones;
+                  int distinctGroups;
+                  double meanNeutralError, gainSpread, maxGridGainStep;
+                  Evidence() {
+                      for (int y=0; y<GY; y++)
+                          for (int x=0; x<GX; x++)
+                              cells[y][x] = new Cell();
+                  }
+              }
+
+              private static final class RenderSummary {
+                  double deltaSum, maxChannelDelta, maxAppliedGainDeviation;
+                  long deltaCount;
+              }
+
+              public static Outcome process(
+                      Bitmap mastered,
+                      Bitmap authoritativeOriginal,
+                      String sourceReport) {
+
+                  if (mastered == null || mastered.isRecycled()
+                          || authoritativeOriginal == null
+                          || authoritativeOriginal.isRecycled()) {
+                      return new Outcome(
+                              mastered,
+                              mastered == null || mastered.isRecycled()
+                                      ? null : PhotoAnalysis.analyse(mastered),
+                              false,
+                              "• Mixed-light colour stage skipped — invalid bitmap input");
+                  }
+
+                  PhotoAnalysis before = PhotoAnalysis.analyse(mastered);
+                  Evidence e = analyse(mastered);
+
+                  MixedLightColourPolicy.Plan plan =
+                          MixedLightColourPolicy.plan(
+                                  e.validZones, e.correctionZones, e.distinctGroups,
+                                  e.gainSpread, e.meanNeutralError);
+
+                  String tags = extractTags(sourceReport);
+                  boolean sky = tags.contains("sky")
+                          || (sourceReport != null
+                          && sourceReport.toLowerCase(Locale.US).contains("sky-rich"));
+                  boolean person = tags.contains("person");
+                  boolean plant = tags.contains("plant")
+                          || tags.contains("flower")
+                          || tags.contains("field")
+                          || tags.contains("foliage");
+
+                  StringBuilder r = new StringBuilder();
+                  r.append(String.format(
+                          Locale.US,
+                          "• Region map %d zones | neutral-reference zones %d | correction zones %d%n",
+                          GX*GY, e.validZones, e.correctionZones));
+                  r.append(String.format(
+                          Locale.US,
+                          "• Illuminant groups neutral %d | warm %d | cool %d | green %d | magenta %d%n",
+                          e.neutralZones, e.warmZones, e.coolZones,
+                          e.greenZones, e.magentaZones));
+                  r.append(String.format(
+                          Locale.US,
+                          "• Mixed-light evidence groups %d | gain spread %.4f | neutral error %.4f | regional gain step %.4f%n",
+                          e.distinctGroups, e.gainSpread,
+                          e.meanNeutralError, e.maxGridGainStep));
+                  r.append(String.format(
+                          Locale.US,
+                          "• Protections sky %s | warm-subject %s | foliage %s | saturated-colour ACTIVE%n",
+                          sky ? "ACTIVE" : "standby",
+                          person ? "ACTIVE" : "standby",
+                          plant ? "ACTIVE" : "standby"));
+
+                  if (!plan.apply) {
+                      r.append("• Mixed-light colour WITHHELD — ")
+                              .append(plan.reason).append("\n");
+                      return new Outcome(mastered, before, false, r.toString());
+                  }
+
+                  RenderSummary m = new RenderSummary();
+                  Bitmap candidate = render(mastered, e, sky, person, plant, m);
+                  if (candidate == null) {
+                      r.append("• Mixed-light colour WITHHELD — candidate render unavailable\n");
+                      return new Outcome(mastered, before, false, r.toString());
+                  }
+
+                  PhotoAnalysis after = PhotoAnalysis.analyse(candidate);
+                  double afterError = measureTargetNeutralError(candidate, e);
+                  double meanDelta = m.deltaCount > 0 ? m.deltaSum / m.deltaCount : 0.0;
+
+                  MixedLightColourPolicy.QcResult qc =
+                          MixedLightColourPolicy.evaluateCandidate(
+                                  e.meanNeutralError, afterError,
+                                  before.detail, after.detail,
+                                  before.noise, after.noise,
+                                  before.flatChromaNoise, after.flatChromaNoise,
+                                  before.ringing, after.ringing,
+                                  before.avgSat, after.avgSat,
+                                  before.shadowClip, after.shadowClip,
+                                  before.highlightClip, after.highlightClip,
+                                  meanDelta, m.maxChannelDelta, e.maxGridGainStep);
+
+                  double improvement = e.meanNeutralError > 1e-9
+                          ? 100.0 * (e.meanNeutralError - afterError) / e.meanNeutralError
+                          : 0.0;
+
+                  r.append(String.format(
+                          Locale.US,
+                          "• Candidate neutral error %.4f -> %.4f | improvement %.1f%%%n",
+                          e.meanNeutralError, afterError, improvement));
+                  r.append(String.format(
+                          Locale.US,
+                          "• Regional correction cap ±%.1f%% | max applied gain %.2f%% | mean channel delta %.4f | max channel delta %.4f%n",
+                          MixedLightColourPolicy.MAX_GAIN_DEVIATION * 100.0,
+                          m.maxAppliedGainDeviation * 100.0,
+                          meanDelta, m.maxChannelDelta));
+
+                  if (!qc.accepted) {
+                      if (!candidate.isRecycled()) candidate.recycle();
+                      r.append("• Mixed-light colour ROLLED BACK — QC rejected: ")
+                              .append(qc.reason).append("\n");
+                      return new Outcome(mastered, before, false, r.toString());
+                  }
+
+                  r.append("• Mixed-light colour ACCEPTED — neutral/edge/colour/detail/clipping QC passed\n");
+                  return new Outcome(candidate, after, true, r.toString());
+              }
+
+              private static Evidence analyse(Bitmap source) {
+                  Evidence e = new Evidence();
+                  Bitmap work = analysisBitmap(source);
+                  boolean recycle = work != source;
+                  int w = work.getWidth(), h = work.getHeight();
+                  int[] px = new int[w*h];
+                  work.getPixels(px,0,w,0,0,w,h);
+
+                  for (int y=0; y<h; y++) {
+                      int gy = Math.min(GY-1, y*GY/h);
+                      for (int x=0; x<w; x++) {
+                          int gx = Math.min(GX-1, x*GX/w);
+                          Cell c = e.cells[gy][gx];
+                          int p = px[y*w+x];
+                          int rr=(p>>>16)&255, gg=(p>>>8)&255, bb=p&255;
+                          c.pixels++;
+                          if (!neutralReference(rr,gg,bb)) continue;
+                          c.neutral++;
+                          c.sumR += rr/255.0;
+                          c.sumG += gg/255.0;
+                          c.sumB += bb/255.0;
+                      }
+                  }
+
+                  double targetErrorSum = 0.0;
+                  int targetErrorCount = 0;
+
+                  for (int y=0; y<GY; y++) for (int x=0; x<GX; x++) {
+                      Cell c = e.cells[y][x];
+                      long required = Math.max(48L, Math.round(c.pixels*0.015));
+                      if (c.neutral < required) continue;
+
+                      c.valid = true;
+                      e.validZones++;
+                      c.meanR=c.sumR/c.neutral; c.meanG=c.sumG/c.neutral; c.meanB=c.sumB/c.neutral;
+                      double mx=Math.max(c.meanR,Math.max(c.meanG,c.meanB));
+                      double mn=Math.min(c.meanR,Math.min(c.meanG,c.meanB));
+                      double mean=(c.meanR+c.meanG+c.meanB)/3.0;
+                      c.error=(mx-mn)/Math.max(0.15,mean);
+
+                      if (c.error < 0.012) {
+                          c.group=0; e.neutralZones++; continue;
+                      }
+
+                      double target=mean;
+                      double cap=MixedLightColourPolicy.MAX_GAIN_DEVIATION;
+                      c.gainR=clamp(target/Math.max(0.03,c.meanR),1.0-cap,1.0+cap);
+                      c.gainG=clamp(target/Math.max(0.03,c.meanG),1.0-cap,1.0+cap);
+                      c.gainB=clamp(target/Math.max(0.03,c.meanB),1.0-cap,1.0+cap);
+
+                      double share=c.neutral/(double)Math.max(1L,c.pixels);
+                      double sample=clamp01((share-0.015)/0.10);
+                      double errConf=clamp01((c.error-0.012)/0.075);
+                      c.confidence=sample*errConf;
+                      c.correctable=c.confidence>=0.12;
+                      if (c.correctable) {
+                          e.correctionZones++;
+                          targetErrorSum += c.error;
+                          targetErrorCount++;
+                      }
+
+                      c.group=classify(c.meanR,c.meanG,c.meanB);
+                      if (c.group==1) e.warmZones++;
+                      else if (c.group==2) e.coolZones++;
+                      else if (c.group==3) e.greenZones++;
+                      else if (c.group==4) e.magentaZones++;
+                      else e.neutralZones++;
+                  }
+
+                  e.meanNeutralError = targetErrorCount>0 ? targetErrorSum/targetErrorCount : 0.0;
+                  e.gainSpread = gainSpread(e);
+                  e.maxGridGainStep = maxGridGainStep(e);
+
+                  int groups=0;
+                  if (e.neutralZones>0) groups++;
+                  if (e.warmZones>0) groups++;
+                  if (e.coolZones>0) groups++;
+                  if (e.greenZones>0) groups++;
+                  if (e.magentaZones>0) groups++;
+                  e.distinctGroups=groups;
+
+                  if (recycle && !work.isRecycled()) work.recycle();
+                  return e;
+              }
+
+              private static double measureTargetNeutralError(Bitmap source, Evidence reference) {
+                  Bitmap work = analysisBitmap(source);
+                  boolean recycle = work != source;
+                  int w=work.getWidth(), h=work.getHeight();
+                  int[] px=new int[w*h];
+                  work.getPixels(px,0,w,0,0,w,h);
+
+                  double[][] sr=new double[GY][GX], sg=new double[GY][GX], sb=new double[GY][GX];
+                  long[][] n=new long[GY][GX];
+
+                  for (int y=0; y<h; y++) {
+                      int gy=Math.min(GY-1,y*GY/h);
+                      for (int x=0; x<w; x++) {
+                          int gx=Math.min(GX-1,x*GX/w);
+                          if (!reference.cells[gy][gx].correctable) continue;
+                          int p=px[y*w+x];
+                          int rr=(p>>>16)&255, gg=(p>>>8)&255, bb=p&255;
+                          if (!neutralReference(rr,gg,bb)) continue;
+                          n[gy][gx]++;
+                          sr[gy][gx]+=rr/255.0; sg[gy][gx]+=gg/255.0; sb[gy][gx]+=bb/255.0;
+                      }
+                  }
+
+                  double sum=0.0; int count=0;
+                  for (int y=0; y<GY; y++) for (int x=0; x<GX; x++) {
+                      Cell ref=reference.cells[y][x];
+                      if (!ref.correctable) continue;
+                      if (n[y][x] < 24) {
+                          sum += ref.error; count++; continue;
+                      }
+                      double rr=sr[y][x]/n[y][x], gg=sg[y][x]/n[y][x], bb=sb[y][x]/n[y][x];
+                      double mx=Math.max(rr,Math.max(gg,bb)), mn=Math.min(rr,Math.min(gg,bb));
+                      double mean=(rr+gg+bb)/3.0;
+                      sum += (mx-mn)/Math.max(0.15,mean);
+                      count++;
+                  }
+
+                  if (recycle && !work.isRecycled()) work.recycle();
+                  return count>0 ? sum/count : reference.meanNeutralError;
+              }
+
+              private static Bitmap render(
+                      Bitmap src, Evidence e,
+                      boolean sky, boolean person, boolean plant,
+                      RenderSummary m) {
+
+                  int w=src.getWidth(), h=src.getHeight();
+                  if (w<=0 || h<=0) return null;
+                  Bitmap out=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);
+
+                  for (int y0=0; y0<h; y0+=CHUNK) {
+                      int y1=Math.min(h,y0+CHUNK), rows=y1-y0;
+                      int[] px=new int[w*rows], dst=new int[w*rows];
+                      src.getPixels(px,0,w,0,y0,w,rows);
+
+                      for (int yy=0; yy<rows; yy++) {
+                          int y=y0+yy;
+                          for (int x=0; x<w; x++) {
+                              int c=px[yy*w+x], a=(c>>>24)&255;
+                              int rr=(c>>>16)&255, gg=(c>>>8)&255, bb=c&255;
+                              double lum=luma(rr,gg,bb);
+
+                              double cr=interp(e,x,y,w,h,0);
+                              double cg=interp(e,x,y,w,h,1);
+                              double cb=interp(e,x,y,w,h,2);
+                              double protect=protection(rr,gg,bb,lum,sky,person,plant);
+                              cr*=protect; cg*=protect; cb*=protect;
+
+                              m.maxAppliedGainDeviation=Math.max(
+                                      m.maxAppliedGainDeviation,
+                                      Math.max(Math.abs(cr),Math.max(Math.abs(cg),Math.abs(cb))));
+
+                              double nr=rr*(1.0+cr), ng=gg*(1.0+cg), nb=bb*(1.0+cb);
+                              double nl=luma(nr,ng,nb);
+                              if (lum>1e-6 && nl>1e-6) {
+                                  double preserve=clamp(lum/nl,0.96,1.04);
+                                  nr*=preserve; ng*=preserve; nb*=preserve;
+                              }
+
+                              int ir=c255((int)Math.round(nr));
+                              int ig=c255((int)Math.round(ng));
+                              int ib=c255((int)Math.round(nb));
+
+                              double dr=Math.abs(ir-rr)/255.0;
+                              double dg=Math.abs(ig-gg)/255.0;
+                              double db=Math.abs(ib-bb)/255.0;
+                              m.deltaSum+=(dr+dg+db)/3.0; m.deltaCount++;
+                              m.maxChannelDelta=Math.max(
+                                      m.maxChannelDelta,
+                                      Math.max(dr,Math.max(dg,db)));
+
+                              dst[yy*w+x]=(a<<24)|(ir<<16)|(ig<<8)|ib;
+                          }
+                      }
+                      out.setPixels(dst,0,w,0,y0,w,rows);
+                  }
+                  return out;
+              }
+
+              private static double interp(Evidence e,int x,int y,int w,int h,int channel) {
+                  double gx=w>1 ? x*(GX-1.0)/(w-1.0) : 0.0;
+                  double gy=h>1 ? y*(GY-1.0)/(h-1.0) : 0.0;
+                  int x0=Math.max(0,Math.min(GX-1,(int)Math.floor(gx)));
+                  int y0=Math.max(0,Math.min(GY-1,(int)Math.floor(gy)));
+                  int x1=Math.min(GX-1,x0+1), y1=Math.min(GY-1,y0+1);
+                  double tx=gx-x0, ty=gy-y0;
+                  double a=corr(e.cells[y0][x0],channel), b=corr(e.cells[y0][x1],channel);
+                  double c=corr(e.cells[y1][x0],channel), d=corr(e.cells[y1][x1],channel);
+                  double top=a+(b-a)*tx, bot=c+(d-c)*tx;
+                  return top+(bot-top)*ty;
+              }
+
+              private static double corr(Cell c,int channel) {
+                  if (!c.correctable || c.confidence<=0.0) return 0.0;
+                  double g=channel==0 ? c.gainR : (channel==1 ? c.gainG : c.gainB);
+                  return (g-1.0)*c.confidence;
+              }
+
+              private static double protection(
+                      int r,int g,int b,double lum,
+                      boolean sky,boolean person,boolean plant) {
+                  int mx=Math.max(r,Math.max(g,b)), mn=Math.min(r,Math.min(g,b));
+                  double sat=mx>0 ? (mx-mn)/(double)mx : 0.0;
+                  double w=1.0;
+                  if (lum<0.05) w*=0.10; else if (lum<0.10) w*=0.35;
+                  if (lum>0.94) w*=0.15; else if (lum>0.88) w*=0.55;
+                  if (sat>0.60) w*=0.12; else if (sat>0.42) w*=0.30; else if (sat>0.24) w*=0.65;
+                  if (sky && blueSky(r,g,b,lum)) w*=0.25;
+                  if (plant && green(r,g,b)) w*=0.45;
+                  if (person && warm(r,g,b,lum)) w*=0.45;
+                  return clamp01(w);
+              }
+
+              private static Bitmap analysisBitmap(Bitmap src) {
+                  int sw=src.getWidth(), sh=src.getHeight(), max=Math.max(sw,sh);
+                  if (max<=MAX_EDGE) return src;
+                  double scale=MAX_EDGE/(double)max;
+                  int w=Math.max(64,(int)Math.round(sw*scale));
+                  int h=Math.max(64,(int)Math.round(sh*scale));
+                  return Bitmap.createScaledBitmap(src,w,h,true);
+              }
+
+              private static boolean neutralReference(int r,int g,int b) {
+                  int mx=Math.max(r,Math.max(g,b)), mn=Math.min(r,Math.min(g,b));
+                  double lum=luma(r,g,b);
+                  double sat=mx>0 ? (mx-mn)/(double)mx : 0.0;
+                  return lum>=0.16 && lum<=0.90 && mx>=30 && mx-mn<=42 && sat<=0.18;
+              }
+
+              private static double gainSpread(Evidence e) {
+                  double max=0.0;
+                  for (int y1=0;y1<GY;y1++) for (int x1=0;x1<GX;x1++) {
+                      Cell a=e.cells[y1][x1]; if (!a.valid) continue;
+                      for (int y2=y1;y2<GY;y2++) {
+                          int sx=y2==y1 ? x1+1 : 0;
+                          for (int x2=sx;x2<GX;x2++) {
+                              Cell b=e.cells[y2][x2]; if (!b.valid) continue;
+                              double d=Math.max(
+                                      Math.abs(a.gainR-b.gainR),
+                                      Math.max(Math.abs(a.gainG-b.gainG),Math.abs(a.gainB-b.gainB)));
+                              max=Math.max(max,d);
+                          }
+                      }
+                  }
+                  return max;
+              }
+
+              private static double maxGridGainStep(Evidence e) {
+                  double max=0.0;
+                  for (int y=0;y<GY;y++) for (int x=0;x<GX;x++) {
+                      Cell a=e.cells[y][x]; if (!a.valid) continue;
+                      if (x+1<GX) max=Math.max(max,step(a,e.cells[y][x+1]));
+                      if (y+1<GY) max=Math.max(max,step(a,e.cells[y+1][x]));
+                  }
+                  return max;
+              }
+
+              private static double step(Cell a,Cell b) {
+                  if (!a.valid || !b.valid) return 0.0;
+                  return Math.max(
+                          Math.abs(a.gainR-b.gainR),
+                          Math.max(Math.abs(a.gainG-b.gainG),Math.abs(a.gainB-b.gainB)));
+              }
+
+              private static int classify(double r,double g,double b) {
+                  double rb=(r+b)*0.5;
+                  if (g>rb+0.010) return 3;
+                  if (g<rb-0.010) return 4;
+                  if (r>b+0.010) return 1;
+                  if (b>r+0.010) return 2;
+                  return 0;
+              }
+
+              private static String extractTags(String report) {
+                  if (report==null || report.isEmpty()) return "";
+                  String l=report.toLowerCase(Locale.US), marker="ai scene tags:";
+                  int at=l.indexOf(marker); if (at<0) return "";
+                  int start=at+marker.length(), end=l.indexOf('\n',start);
+                  if (end<0) end=l.length();
+                  return l.substring(start,end).trim();
+              }
+
+              private static boolean blueSky(int r,int g,int b,double l) {
+                  return l>=0.30 && b>=g+8 && b>=r+18;
+              }
+              private static boolean green(int r,int g,int b) {
+                  return g>=r+12 && g>=b+8;
+              }
+              private static boolean warm(int r,int g,int b,double l) {
+                  return l>=0.28 && l<=0.82 && r>g && g>b && r-b>=22 && r-g<=80;
+              }
+              private static double luma(int r,int g,int b) {
+                  return (54.0*r+183.0*g+19.0*b)/(255.0*256.0);
+              }
+              private static double luma(double r,double g,double b) {
+                  return (54.0*r+183.0*g+19.0*b)/(255.0*256.0);
+              }
+              private static double clamp01(double v) { return clamp(v,0.0,1.0); }
+              private static double clamp(double v,double lo,double hi) {
+                  return Math.max(lo,Math.min(hi,v));
+              }
+              private static int c255(int v) { return Math.max(0,Math.min(255,v)); }
+          }
+          JAVA_ENGINE
+
+          cat > "$PROJECT/tools/MixedLightColourPolicyHostChecks.java" <<'JAVA_HOST'
+          package com.dennis.photomasterai;
+
+          public final class MixedLightColourPolicyHostChecks {
+              public static void main(String[] args) {
+                  MixedLightColourPolicy.Plan mixed =
+                          MixedLightColourPolicy.plan(14,8,3,0.026,0.041);
+                  req(mixed.apply,"strong mixed-light evidence should create a candidate");
+
+                  MixedLightColourPolicy.Plan uniform =
+                          MixedLightColourPolicy.plan(14,8,1,0.006,0.041);
+                  req(!uniform.apply,"uniform cast should be left to global correction");
+
+                  MixedLightColourPolicy.Plan weak =
+                          MixedLightColourPolicy.plan(14,8,2,0.020,0.009);
+                  req(!weak.apply,"low neutral error must remain unchanged");
+
+                  MixedLightColourPolicy.QcResult good =
+                          MixedLightColourPolicy.evaluateCandidate(
+                                  0.042,0.032,
+                                  0.050,0.049,
+                                  0.010,0.0105,
+                                  0.018,0.0185,
+                                  0.700,0.705,
+                                  0.240,0.246,
+                                  0.003,0.0035,
+                                  0.002,0.0025,
+                                  0.006,0.027,0.040);
+                  req(good.accepted,"safe candidate should pass");
+
+                  MixedLightColourPolicy.QcResult noBenefit =
+                          MixedLightColourPolicy.evaluateCandidate(
+                                  0.042,0.040,
+                                  0.050,0.050,
+                                  0.010,0.010,
+                                  0.018,0.018,
+                                  0.700,0.700,
+                                  0.240,0.240,
+                                  0.003,0.003,
+                                  0.002,0.002,
+                                  0.006,0.027,0.040);
+                  req(!noBenefit.accepted,"weak neutral improvement must fail");
+                  req(noBenefit.reason.contains("neutral error"),"reason must name neutral error");
+
+                  MixedLightColourPolicy.QcResult clip =
+                          MixedLightColourPolicy.evaluateCandidate(
+                                  0.042,0.030,
+                                  0.050,0.050,
+                                  0.010,0.010,
+                                  0.018,0.018,
+                                  0.700,0.700,
+                                  0.240,0.240,
+                                  0.003,0.006,
+                                  0.002,0.002,
+                                  0.006,0.027,0.040);
+                  req(!clip.accepted,"shadow clipping regression must fail");
+                  req(clip.reason.contains("shadow clip"),"reason must name shadow clip");
+
+                  System.out.println("MixedLightColourPolicyHostChecks passed");
+              }
+
+              private static void req(boolean condition,String message) {
+                  if (!condition) throw new AssertionError(message);
+              }
+          }
+          JAVA_HOST
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          project = Path(os.environ['PROJECT'])
+
+          build_file = project / 'app/build.gradle'
+          build = build_file.read_text()
+          if 'versionCode 36' not in build:
+              raise RuntimeError('v0.4.27 versionCode not found')
+          if "versionName '0.4.27'" not in build:
+              raise RuntimeError('v0.4.27 versionName not found')
+          build = build.replace('versionCode 36','versionCode 37',1)
+          build = build.replace("versionName '0.4.27'","versionName '0.4.28'",1)
+          build_file.write_text(build)
+
+          main_file = project/'app/src/main/java/com/dennis/photomasterai/MainActivity.java'
+          main = main_file.read_text()
+
+          pattern = re.compile(
+              r'(?ms)^'
+              r'(?P<i>[ \t]*)'
+              r'PhotoMasterEngine\.Result[ \t]+v0424ColourResult[ \t]*=[ \t\r\n]*'
+              r'applyColourSpaceGuard\([ \t\r\n]*'
+              r'v0426ToneResult[ \t]*,[ \t\r\n]*'
+              r'originalBitmap[ \t\r\n]*\);'
+          )
+          match = pattern.search(main)
+          if match is None:
+              at=main.find('v0426ToneResult')
+              if at>=0:
+                  print(main[max(0,at-900):at+2200])
+              raise RuntimeError('v0.4.27 local-tone -> colour flow not found')
+
+          i=match.group('i')
+          replacement=(
+              i+'PhotoMasterEngine.Result v0428MixedLightResult =\n'
+              +i+'        applyMixedLightColourIntelligence(\n'
+              +i+'                v0426ToneResult,\n'
+              +i+'                originalBitmap);\n\n'
+              +i+'PhotoMasterEngine.Result v0424ColourResult =\n'
+              +i+'        applyColourSpaceGuard(\n'
+              +i+'                v0428MixedLightResult,\n'
+              +i+'                originalBitmap);'
+          )
+          main,count=pattern.subn(lambda _:replacement,main,count=1)
+          if count!=1:
+              raise RuntimeError('Unexpected mixed-light pipeline replacement count')
+
+          anchor='    private PhotoMasterEngine.Result applyColourSpaceGuard('
+          if anchor not in main:
+              raise RuntimeError('Colour-space helper anchor not found')
+
+          helper=r'''    private PhotoMasterEngine.Result applyMixedLightColourIntelligence(
+                          PhotoMasterEngine.Result result,
+                          Bitmap authoritativeOriginal) {
+                      if (result == null || result.bitmap == null || result.bitmap.isRecycled()
+                              || authoritativeOriginal == null || authoritativeOriginal.isRecycled()) return result;
+                      MixedLightColourIntelligence.Outcome mixed = MixedLightColourIntelligence.process(
+                              result.bitmap, authoritativeOriginal, result.report);
+                      String report = insertMixedLightColourReport(result.report, mixed.report);
+                      if (mixed.analysis != null) report = replaceOutputQcMetrics(report, mixed.analysis);
+                      if (mixed.bitmap != result.bitmap) {
+                          Bitmap previous = result.bitmap;
+                          if (previous != authoritativeOriginal && !previous.isRecycled()) previous.recycle();
+                      }
+                      return new PhotoMasterEngine.Result(mixed.bitmap, report,
+                              mixed.analysis != null ? mixed.analysis : PhotoAnalysis.analyse(mixed.bitmap));
+                  }
+
+                  private String insertMixedLightColourReport(String sourceReport, String mixedLightReport) {
+                      String section = "\nMIXED-LIGHT COLOUR INTELLIGENCE\n" + mixedLightReport + "\n";
+                      if (sourceReport == null) return section.trim();
+                      String marker = "\nOUTPUT QC\n";
+                      int at = sourceReport.indexOf(marker);
+                      if (at < 0) return sourceReport + section;
+                      return sourceReport.substring(0, at) + section + sourceReport.substring(at);
+                  }
+
+          '''
+          main=main.replace(anchor,helper+anchor,1)
+          main_file.write_text(main)
+
+          print('v0.4.28 pipeline applied: Local Tone -> Mixed-Light Colour -> Colour Management -> Geometry')
+          PY
+
+          grep -q "versionCode 37" "$PROJECT/app/build.gradle"
+          grep -q "versionName '0.4.28'" "$PROJECT/app/build.gradle"
+          grep -q "class MixedLightColourPolicy" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourPolicy.java"
+          grep -q "class MixedLightColourIntelligence" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourIntelligence.java"
+          grep -q "MAX_GAIN_DEVIATION = 0.035" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourPolicy.java"
+          grep -q "applyMixedLightColourIntelligence" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+          grep -q "MIXED-LIGHT COLOUR INTELLIGENCE" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+          grep -q "maxEdgeLumaDelta=0.045" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/LocalToneIntelligence.java"
+          grep -q "symmetricOpposingOverride" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/GeometryPolicy.java"
+
+      - name: Fetch pinned NAFNet-SIDD model
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${{ steps.source.outputs.project }}"
+          ASSETS="$PROJECT/app/src/main/assets"
+          MODEL="$ASSETS/nafnet_sidd_width32_fp16.tflite"
+          mkdir -p "$ASSETS"
+          URL='https://huggingface.co/litert-community/NAFNet-SIDD-width32-LiteRT/resolve/main/nafnet_sidd_width32_fp16.tflite?download=true'
+          curl --fail --location --retry 5 --retry-all-errors \
+            --connect-timeout 30 --output "$MODEL.tmp" "$URL"
+          mv "$MODEL.tmp" "$MODEL"
+          test "$(stat -c%s "$MODEL")" -eq 62454048 || {
+            echo "::error::Unexpected NAFNet model size"
+            exit 1
+          }
+          echo 'f8fbaa422411683c53e802cf7cc7cf9be0a0de00886ad4af057232e26b172a0c  '"$MODEL" \
+            | sha256sum -c -
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Run all safety host checks
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf host-checks
+          mkdir host-checks
+          javac -d host-checks \
+            app/src/main/java/com/dennis/photomasterai/DeepPixelRepair.java \
+            app/src/main/java/com/dennis/photomasterai/RepairSafetyPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/SocialSourcePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralIntegrityPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/OpticalFringePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/VignettingPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/PersonEvidencePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/HighRingFinishingPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/GeometryPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/LocalTonePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/MixedLightColourPolicy.java \
+            tools/DeepPixelRepairHostChecks.java \
+            tools/RepairSafetyPolicyHostChecks.java \
+            tools/NeuralDenoisePolicyHostChecks.java \
+            tools/SocialSourcePolicyHostChecks.java \
+            tools/SmoothSurfaceGuardHostChecks.java \
+            tools/NeuralIntegrityPolicyHostChecks.java \
+            tools/OpticalFringePolicyHostChecks.java \
+            tools/VignettingPolicyHostChecks.java \
+            tools/PersonEvidencePolicyHostChecks.java \
+            tools/HighBlendDetailGuardHostChecks.java \
+            tools/HighRingFinishingPolicyHostChecks.java \
+            tools/GeometryPolicyHostChecks.java \
+            tools/LocalTonePolicyHostChecks.java \
+            tools/MixedLightColourPolicyHostChecks.java
+
+          for C in \
+            DeepPixelRepairHostChecks \
+            RepairSafetyPolicyHostChecks \
+            NeuralDenoisePolicyHostChecks \
+            SocialSourcePolicyHostChecks \
+            SmoothSurfaceGuardHostChecks \
+            NeuralIntegrityPolicyHostChecks \
+            OpticalFringePolicyHostChecks \
+            VignettingPolicyHostChecks \
+            PersonEvidencePolicyHostChecks \
+            HighBlendDetailGuardHostChecks \
+            HighRingFinishingPolicyHostChecks \
+            GeometryPolicyHostChecks \
+            LocalTonePolicyHostChecks \
+            MixedLightColourPolicyHostChecks
+          do
+            java -cp host-checks "com.dennis.photomasterai.$C"
+          done
+
+      - name: Restore stable Photo Master debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: photo-master-ai-debug-keystore-v1
+
+      - name: Create signing key on first build
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Photo Master AI,O=Dennis Photo Master,C=AU" \
+              -keyalg RSA -keysize 2048 -validity 10000 -noprompt
+          fi
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Configure Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(
+              find "$SDK/cmdline-tools" -type f -name 'sdkmanager' \
+                | sort -V | tail -n 1
+            )"
+          fi
+          test -n "$SDKMANAGER" || {
+            echo "::error::sdkmanager not found"
+            exit 1
+          }
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Build v0.4.28 APK
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :app:assembleDebug --stacktrace
+
+      - name: Verify package and prepare artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${{ steps.source.outputs.project }}"
+          APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK" || {
+            echo "::error::APK not found"
+            exit 1
+          }
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          AAPT="$SDK/build-tools/35.0.0/aapt"
+          BADGING="$("$AAPT" dump badging "$APK" | head -n 1)"
+          echo "$BADGING"
+          echo "$BADGING" | grep -q "package: name='com.dennis.photomasterai'"
+          echo "$BADGING" | grep -q "versionCode='37'"
+          echo "$BADGING" | grep -q "versionName='0.4.28'"
+          unzip -l "$APK" | grep -q 'assets/nafnet_sidd_width32_fp16.tflite'
+
+          rm -rf artifact
+          mkdir artifact
+          OUT="artifact/PhotoMasterAI-v0.4.28-MIXED-LIGHT-COLOUR.apk"
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" \
+            > "artifact/PhotoMasterAI-v0.4.28-MIXED-LIGHT-COLOUR-SHA256.txt"
+
+          cat > "artifact/PhotoMasterAI-v0.4.28-Notes.txt" <<'EOF'
+          Photo Master AI — v0.4.28 Mixed-Light Colour Intelligence
+          Version: 0.4.28
+          versionCode: 37
+
+          BASELINE
+          Exact successful v0.4.27 source / run 37596737088.
+          v0.4.27 remains the frozen known-good fallback.
+
+          NEW
+          - 8x8 / 64-zone neutral-reference colour analysis
+          - regional neutral / warm / cool / green / magenta evidence
+          - mixed-light candidate only when colour evidence is genuinely regional
+          - uniform global casts left to existing global colour correction
+          - regional channel gains capped at +/-3.5%
+          - luminance-preserving colour correction
+          - bilinear regional blending: no hard zone boundaries
+          - deep-shadow / highlight / saturated-colour protection
+          - sky protection from AI tags or sky-rich scene evidence
+          - foliage protection from plant/flower/field/foliage evidence
+          - warm-subject protection when person scene evidence exists
+          - exact QC rejection reasons and full rollback
+          - candidate must measurably reduce neutral-reference error
+
+          PIPELINE
+          existing master
+            -> v0.4.27 Local Tone
+            -> v0.4.28 Mixed-Light Colour
+            -> preserve-source Colour Management
+            -> Geometry Intelligence
+            -> final QC
+
+          RETAINED
+          - Local Tone 0.050 edge QC / 0.045 edge transform cap
+          - v0.4.25 structural keystone override
+          - preserve-source sRGB / Display P3
+          - high-ring finishing guard
+          - NAFNet-SIDD safeguards
+          - optics / vignetting / shadow-integrity safeguards
+          - background and screen-off processing
+          - JPEG quality 100
+
+          FIRST TESTS
+          1. Indoor room: strongest normal mixed-light candidate.
+          2. Night scooter: blacks must remain black; no colour-noise lift.
+          3. Aircraft: daylight should normally be withheld unless real
+             regional neutral evidence supports a correction.
+          4. Flower: saturated petals and foliage must remain protected.
+          5. Chinchilla building: validated 1.3% keystone must remain.
+          6. Any LED + tungsten + daylight photo is the strongest positive test.
+          EOF
+
+      - name: Upload APK and continuation notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoMasterAI-v0.4.28-MIXED-LIGHT-COLOUR
+          path: |
+            artifact/PhotoMasterAI-v0.4.28-MIXED-LIGHT-COLOUR.apk
+            artifact/PhotoMasterAI-v0.4.28-MIXED-LIGHT-COLOUR-SHA256.txt
+            artifact/PhotoMasterAI-v0.4.28-Notes.txt
+          if-no-files-found: error
+          retention-days: 30
