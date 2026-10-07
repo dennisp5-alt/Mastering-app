@@ -231,11 +231,6 @@ jobs:
 
           # =====================================================
           # COMPLETE v0.4.20 OPTICAL POLICY
-          #
-          # No whitespace-sensitive patching.
-          #
-          # New rule:
-          # isolated fringe excess may NOT increase.
           # =====================================================
 
           cat > \
@@ -341,14 +336,8 @@ jobs:
                    *
                    * Overall fringe area is not sufficient.
                    *
-                   * The isolated fringe severity must also
-                   * stay flat or improve.
-                   *
-                   * Waterfall reference:
-                   * 8.7 -> 9.1 must reject.
-                   *
-                   * Good reference:
-                   * 8.2 -> 7.9 remains eligible.
+                   * Isolated fringe severity must also stay
+                   * flat or improve.
                    */
                   boolean excessSafe =
                           meanExcessAfter
@@ -432,14 +421,6 @@ jobs:
 
           # =====================================================
           # COMPLETE v0.4.20 OPTICAL REPAIR
-          #
-          # Includes:
-          # - v0.4.19 optical logic
-          # - 10/255 maximum channel correction
-          # - 1.50% correction-density guard
-          # - temporary ARGB_8888 normalization
-          # - source/checkpoint preservation
-          # - strict v0.4.20 optical QC
           # =====================================================
 
           cat > \
@@ -560,18 +541,6 @@ jobs:
                               "• CA/fringe scan unavailable");
                   }
 
-                  /*
-                   * v0.4.20:
-                   *
-                   * Optics must be able to operate on working
-                   * bitmaps such as RGBA_F16.
-                   *
-                   * Do NOT replace the authoritative source.
-                   *
-                   * Create an immutable ARGB_8888 analysis copy,
-                   * generate any correction candidate from that,
-                   * and retain source on every rejected path.
-                   */
                   Bitmap opticsSource =
                           source;
 
@@ -673,19 +642,13 @@ jobs:
                       int sampleStep;
 
                       if (pixelCount > 8_000_000) {
-
-                          sampleStep =
-                                  3;
+                          sampleStep = 3;
 
                       } else if (pixelCount > 3_000_000) {
-
-                          sampleStep =
-                                  2;
+                          sampleStep = 2;
 
                       } else {
-
-                          sampleStep =
-                                  1;
+                          sampleStep = 1;
                       }
 
                       FringeStats before =
@@ -762,7 +725,6 @@ jobs:
 
                               if (excess
                                       < MIN_ISOLATED_EXCESS) {
-
                                   continue;
                               }
 
@@ -790,20 +752,16 @@ jobs:
                                               index + width];
 
                               int yLeft =
-                                      luminance(
-                                              left);
+                                      luminance(left);
 
                               int yRight =
-                                      luminance(
-                                              right);
+                                      luminance(right);
 
                               int yUp =
-                                      luminance(
-                                              up);
+                                      luminance(up);
 
                               int yDown =
-                                      luminance(
-                                              down);
+                                      luminance(down);
 
                               int gx =
                                       Math.abs(
@@ -816,24 +774,15 @@ jobs:
                                                       - yUp);
 
                               int sideA;
-
                               int sideB;
 
                               if (gx >= gy) {
-
-                                  sideA =
-                                          left;
-
-                                  sideB =
-                                          right;
+                                  sideA = left;
+                                  sideB = right;
 
                               } else {
-
-                                  sideA =
-                                          up;
-
-                                  sideB =
-                                          down;
+                                  sideA = up;
+                                  sideB = down;
                               }
 
                               int currentY =
@@ -906,11 +855,6 @@ jobs:
                                           + formatNote);
                       }
 
-                      /*
-                       * v0.4.19 density protection retained.
-                       *
-                       * Broad colour regions are not optical fringe.
-                       */
                       double correctedFraction =
                               correctedPixels
                                       / (double) pixelCount;
@@ -1086,23 +1030,18 @@ jobs:
 
                           int gx =
                                   Math.abs(
-                                          luminance(
-                                                  right)
-                                                  - luminance(
-                                                          left));
+                                          luminance(right)
+                                                  - luminance(left));
 
                           int gy =
                                   Math.abs(
-                                          luminance(
-                                                  down)
-                                                  - luminance(
-                                                          up));
+                                          luminance(down)
+                                                  - luminance(up));
 
                           if (Math.max(
                                   gx,
                                   gy)
                                   < EDGE_THRESHOLD) {
-
                               continue;
                           }
 
@@ -1120,9 +1059,7 @@ jobs:
                                   >= MIN_ISOLATED_EXCESS) {
 
                               fringeSamples++;
-
-                              excessSum +=
-                                      excess;
+                              excessSum += excess;
                           }
                       }
                   }
@@ -1177,20 +1114,16 @@ jobs:
                                   index + width];
 
                   int yLeft =
-                          luminance(
-                                  left);
+                          luminance(left);
 
                   int yRight =
-                          luminance(
-                                  right);
+                          luminance(right);
 
                   int yUp =
-                          luminance(
-                                  up);
+                          luminance(up);
 
                   int yDown =
-                          luminance(
-                                  down);
+                          luminance(down);
 
                   int gx =
                           Math.abs(
@@ -1209,7 +1142,6 @@ jobs:
 
                   if (edgeStrength
                           < EDGE_THRESHOLD) {
-
                       return 0.0;
                   }
 
@@ -1222,7 +1154,6 @@ jobs:
 
                   if (radius
                           < MIN_RADIUS) {
-
                       return 0.0;
                   }
 
@@ -1245,29 +1176,19 @@ jobs:
 
                   if (score
                           < threshold) {
-
                       return 0.0;
                   }
 
                   int sideA;
-
                   int sideB;
 
                   if (gx >= gy) {
-
-                      sideA =
-                              left;
-
-                      sideB =
-                              right;
+                      sideA = left;
+                      sideB = right;
 
                   } else {
-
-                      sideA =
-                              up;
-
-                      sideB =
-                              down;
+                      sideA = up;
+                      sideB = down;
                   }
 
                   double neighbourAxis =
@@ -1602,7 +1523,7 @@ jobs:
           JAVA
 
           # =====================================================
-          # BACKGROUND KEEP-ALIVE FOREGROUND SERVICE
+          # BACKGROUND KEEP-ALIVE SERVICE
           # =====================================================
 
           cat > \
@@ -1632,10 +1553,6 @@ jobs:
               private static final int NOTIFICATION_ID =
                       42020;
 
-              /*
-               * Longer than any current neural hard limit,
-               * but finite so a stale service cannot remain.
-               */
               private static final long MAX_RUNTIME_MS =
                       12L
                               * 60L
@@ -1677,13 +1594,6 @@ jobs:
                       }
 
                   } catch (RuntimeException ignored) {
-
-                      /*
-                       * Background support is fail-soft.
-                       *
-                       * A platform/service startup failure must
-                       * never prevent normal photo mastering.
-                       */
                   }
               }
 
@@ -1702,11 +1612,6 @@ jobs:
                                       ProcessingKeepAliveService.class));
 
                   } catch (RuntimeException ignored) {
-
-                      /*
-                       * Core output must not fail because Android
-                       * already stopped the keep-alive service.
-                       */
                   }
               }
 
@@ -1744,7 +1649,6 @@ jobs:
 
                   if (wakeLock != null
                           && wakeLock.isHeld()) {
-
                       return;
                   }
 
@@ -1773,7 +1677,6 @@ jobs:
 
                   if (Build.VERSION.SDK_INT
                           < Build.VERSION_CODES.O) {
-
                       return;
                   }
 
@@ -1973,18 +1876,6 @@ jobs:
 
           # =====================================================
           # MAIN ACTIVITY BACKGROUND INTEGRATION
-          #
-          # Robust structural patch.
-          #
-          # Find the executor lambda which contains
-          # PhotoMasterEngine.master(...).
-          #
-          # Start foreground service immediately before it.
-          #
-          # Wrap the ENTIRE executor body in try/finally so
-          # service always stops on success, early return or error.
-          #
-          # No dependency on masterBitmap variable names.
           # =====================================================
 
           python3 - <<'PY'
@@ -2183,10 +2074,9 @@ jobs:
               "",
           ])
 
-          /*
-           * Apply insertions from highest source offset to lowest
-           * so original indices remain valid.
-           */
+          # Apply insertions from highest source offset to lowest
+          # so original indices remain valid.
+
           source = (
               source[:close_line_start]
               + finally_block
@@ -2245,7 +2135,7 @@ jobs:
           PY
 
           # =====================================================
-          # REPLACE OPTICAL HOST CHECK
+          # OPTICAL HOST CHECK
           # =====================================================
 
           cat > \
@@ -2274,13 +2164,6 @@ jobs:
                                   0.003),
                           "weak fringe evidence should remain off");
 
-                  /*
-                   * Waterfall-style regression:
-                   * total fringe ratio improves,
-                   * but isolated severity gets worse.
-                   *
-                   * v0.4.20 MUST reject.
-                   */
                   boolean waterfallLike =
                           OpticalFringePolicy.outputSafe(
                                   0.0190,
@@ -2309,13 +2192,6 @@ jobs:
                           "increased isolated fringe excess "
                                   + "must reject candidate");
 
-                  /*
-                   * Good observed result:
-                   * 1.53% -> 0.45%
-                   * 8.2 -> 7.9
-                   *
-                   * Must remain eligible.
-                   */
                   boolean goodResult =
                           OpticalFringePolicy.outputSafe(
                                   0.0153,
@@ -2343,9 +2219,6 @@ jobs:
                           goodResult,
                           "valid fringe reduction should pass");
 
-                  /*
-                   * Detail damage must still reject.
-                   */
                   boolean detailDamage =
                           OpticalFringePolicy.outputSafe(
                                   0.015,
@@ -2549,7 +2422,6 @@ jobs:
           set -euo pipefail
 
           rm -rf host-checks
-
           mkdir host-checks
 
           javac \
@@ -2568,32 +2440,25 @@ jobs:
             tools/NeuralIntegrityPolicyHostChecks.java \
             tools/OpticalFringePolicyHostChecks.java
 
-          java \
-            -cp host-checks \
+          java -cp host-checks \
             com.dennis.photomasterai.DeepPixelRepairHostChecks
 
-          java \
-            -cp host-checks \
+          java -cp host-checks \
             com.dennis.photomasterai.RepairSafetyPolicyHostChecks
 
-          java \
-            -cp host-checks \
+          java -cp host-checks \
             com.dennis.photomasterai.NeuralDenoisePolicyHostChecks
 
-          java \
-            -cp host-checks \
+          java -cp host-checks \
             com.dennis.photomasterai.SocialSourcePolicyHostChecks
 
-          java \
-            -cp host-checks \
+          java -cp host-checks \
             com.dennis.photomasterai.SmoothSurfaceGuardHostChecks
 
-          java \
-            -cp host-checks \
+          java -cp host-checks \
             com.dennis.photomasterai.NeuralIntegrityPolicyHostChecks
 
-          java \
-            -cp host-checks \
+          java -cp host-checks \
             com.dennis.photomasterai.OpticalFringePolicyHostChecks
 
       - name: Restore stable Photo Master debug signing key
@@ -2607,8 +2472,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          mkdir -p \
-            "$HOME/.android"
+          mkdir -p "$HOME/.android"
 
           if [ ! -f "$HOME/.android/debug.keystore" ]; then
 
@@ -2638,13 +2502,8 @@ jobs:
 
           SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
 
-          echo \
-            "ANDROID_HOME=$SDK" \
-            >> "$GITHUB_ENV"
-
-          echo \
-            "ANDROID_SDK_ROOT=$SDK" \
-            >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
 
           SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
 
@@ -2712,30 +2571,24 @@ jobs:
           echo "$BADGING"
 
           echo "$BADGING" \
-            | grep -q \
-              "package: name='com.dennis.photomasterai'"
+            | grep -q "package: name='com.dennis.photomasterai'"
 
           echo "$BADGING" \
-            | grep -q \
-              "versionCode='29'"
+            | grep -q "versionCode='29'"
 
           echo "$BADGING" \
-            | grep -q \
-              "versionName='0.4.20'"
+            | grep -q "versionName='0.4.20'"
 
           unzip -l "$APK" \
             | grep -q \
               'assets/nafnet_sidd_width32_fp16.tflite'
 
           rm -rf artifact
-
           mkdir artifact
 
           OUT="artifact/PhotoMasterAI-v0.4.20-OPTICS-SAFETY-BACKGROUND.apk"
 
-          cp \
-            "$APK" \
-            "$OUT"
+          cp "$APK" "$OUT"
 
           sha256sum \
             "$OUT" \
@@ -2780,150 +2633,75 @@ jobs:
           - v0.4.19 optics maximum channel delta 10/255
           - v0.4.19 optics correction-density ceiling 1.50%
 
-          FAILED FIRST v0.4.20 RUN
+          v0.4.20 OPTICS SAFETY
 
-          Run:
-          37551202546
+          Isolated fringe severity must not increase.
 
-          Failure occurred before compilation.
-
-          Cause:
-          whitespace-sensitive source patch expected old Java
-          indentation.
-
-          Error:
-          Optical excess-safety insertion anchor not found
-
-          CURRENT v0.4.20 FIX
-
-          Complete OpticalFringePolicy.java is generated directly.
-
-          Complete OpticalDefectRepair.java is generated directly.
-
-          No whitespace-sensitive optics insertion remains.
-
-          OPTICS SAFETY CHANGE
-
-          Overall fringe evidence must improve.
-
-          In addition, isolated fringe excess may not increase:
+          New requirement:
 
           after.meanExcess <= before.meanExcess
 
           Waterfall reference:
 
-          fringe:
           1.90% -> 0.93%
+          excess 8.7 -> 9.1
 
-          isolated excess:
-          8.7 -> 9.1
-
-          Expected v0.4.20:
-          OPTICAL QC ROLLBACK
+          Expected:
+          optics candidate ROLLBACK
 
           Good reference:
 
-          fringe:
           1.53% -> 0.45%
-
-          isolated excess:
-          8.2 -> 7.9
+          excess 8.2 -> 7.9
 
           Expected:
-          remains eligible if every other QC measurement is safe.
+          remains eligible if all other QC measurements pass.
 
           NON-ARGB_8888 FIX
 
-          v0.4.19 sometimes reported:
-
-          CA/fringe correction withheld —
-          working bitmap is not ARGB_8888
-
-          v0.4.20 now creates a temporary immutable ARGB_8888
-          optics analysis bitmap.
+          Non-ARGB working images now use a temporary
+          immutable ARGB_8888 optics bitmap.
 
           The authoritative source/checkpoint remains untouched.
 
           Rejected optics:
-          temporary copy discarded and original source retained.
+          source retained.
 
           Accepted optics:
-          safe ARGB_8888 corrected candidate retained.
+          corrected candidate retained.
 
           BACKGROUND PROCESSING
 
-          Foreground dataSync service added.
+          Foreground dataSync service.
 
-          PARTIAL_WAKE_LOCK added.
+          PARTIAL_WAKE_LOCK.
 
-          The service starts while MainActivity is visible,
-          immediately before the processing executor begins.
+          12-minute failsafe.
 
-          The entire long processing executor is wrapped in
-          try/finally.
+          Designed to allow processing while:
+          - Home is pressed
+          - another app is open
+          - screen is off
+          - phone is locked
 
-          The service is therefore stopped whether processing:
-          - succeeds
-          - returns early
-          - throws an exception
+          Force-stop still terminates the app.
 
-          12-minute service/wake-lock failsafe.
+          TESTS
 
-          android:stopWithTask=false.
+          1. Non-ARGB landscape
+          2. Waterfall regression
+          3. Good fringe image
+          4. Duck regression
+          5. Background Home test
+          6. Background screen-lock test
 
-          Expected supported usage:
-
-          - press Home while processing
-          - switch to another application
-          - turn screen off / lock phone
-          - return after processing has completed
-
-          Android FORCE STOP will still terminate the app.
-
-          FIRST v0.4.20 DEVICE TESTS
-
-          1. Non-ARGB landscape:
-             should no longer withhold optics because of bitmap config.
-
-          Look for:
-          Optics analysis used temporary ARGB_8888 working copy;
-          source checkpoint preserved
-
-          2. Waterfall:
-             neural local-integrity rejection must remain.
-             optics must reject any candidate where isolated
-             excess increases.
-
-          3. Good fringe image:
-             1.53% -> 0.45%
-             8.2 -> 7.9
-             should remain eligible.
-
-          4. Duck:
-             known-good smooth-scene 5% neural result must remain.
-
-          5. Background:
-             start processing,
-             press Home,
-             wait at least two minutes,
-             return to Photo Master AI.
-
-             Repeat with phone screen locked.
-
-          EXPECT:
-          Photo Master AI processing notification visible while
-          processing is active and job completes rather than
-          restarting.
-
-          NEXT AFTER v0.4.20 VALIDATION
+          NEXT AFTER VALIDATION
 
           Measured vignetting correction.
-
-          Geometric barrel/pincushion correction later.
+          Geometric distortion later.
           EOF
 
-          echo \
-            "v0.4.20 APK and continuation notes prepared"
+          echo "v0.4.20 APK and continuation notes prepared"
 
       - name: Upload APK and continuation notes
         uses: actions/upload-artifact@v4
