@@ -7,7 +7,7 @@ on:
       - '.github/workflows/build-photo-master-ai-v0.4.33-night-light-qc-accounting.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -915,6 +915,59 @@ jobs:
           - background / screen-off processing
           - JPEG quality 100
           EOF
+
+      - name: Validate APK installability
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APK="artifact/PhotoMasterAI-v0.4.33-NIGHT-LIGHT-QC-ACCOUNTING.apk"
+          BT="$ANDROID_SDK_ROOT/build-tools/35.0.0"
+
+          test -f "$APK"
+
+          echo "Testing APK ZIP/container integrity"
+          unzip -t "$APK"
+
+          echo "Checking 4-byte ZIP alignment"
+          "$BT/zipalign" -c -v 4 "$APK"
+
+          echo "Checking Android APK signature"
+          "$BT/apksigner" verify \
+            --verbose \
+            --print-certs \
+            "$APK"
+
+          echo "APK passed container, alignment and signature verification"
+
+      - name: Publish raw APK GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          TAG="photo-master-ai-v0.4.33-r1"
+          APK="artifact/PhotoMasterAI-v0.4.33-NIGHT-LIGHT-QC-ACCOUNTING.apk"
+          SHA="artifact/PhotoMasterAI-v0.4.33-NIGHT-LIGHT-QC-ACCOUNTING-SHA256.txt"
+          NOTES="artifact/PhotoMasterAI-v0.4.33-Notes.txt"
+
+          if gh release view "$TAG" \
+            --repo "${{ github.repository }}" >/dev/null 2>&1
+          then
+            gh release upload "$TAG" \
+              --repo "${{ github.repository }}" \
+              --clobber \
+              "$APK" "$SHA" "$NOTES"
+          else
+            gh release create "$TAG" \
+              --repo "${{ github.repository }}" \
+              --title "Photo Master AI v0.4.33" \
+              --notes "Raw APK release. APK container, ZIP alignment and signing are verified in GitHub Actions before publishing." \
+              "$APK" "$SHA" "$NOTES"
+          fi
+
+          echo "Raw installable APK published to GitHub Releases"
 
       - name: Upload APK and continuation notes
         uses: actions/upload-artifact@v4
