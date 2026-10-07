@@ -28,6 +28,15 @@ jobs:
           ZIP="$(find . -maxdepth 1 -type f -name 'S23U_AI_Camera_v0.1.0*.zip' -printf '%f\n' | sort -V | tail -n 1 || true)"
           test -n "$ZIP" || { echo "::error::No S23U_AI_Camera_v0.1.0 source ZIP found"; exit 1; }
           echo "Using: $ZIP"
+          # v0.2.0 was committed through the Git data API one trailing NUL short.
+          # Repair only that exact known case, then verify against the original local SHA-256.
+          if [ "$ZIP" = "S23U_AI_Camera_v0.1.0-12.zip" ] && [ "$(stat -c%s "$ZIP")" = "33627" ]; then
+            printf '\0' >> "$ZIP"
+            echo "Repaired one trailing byte in v0.2.0 source ZIP."
+          fi
+          if [ "$ZIP" = "S23U_AI_Camera_v0.1.0-12.zip" ]; then
+            echo "3421713b8ff7aa2d5cb48d32f407bf831cf120d6d68e70d802faeef335115497  $ZIP" | sha256sum -c -
+          fi
           unzip -t "$ZIP"
           rm -rf s23u-ai-build
           mkdir s23u-ai-build
