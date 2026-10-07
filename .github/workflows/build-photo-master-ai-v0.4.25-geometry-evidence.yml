@@ -309,37 +309,6 @@ jobs:
               )
           policy_file.write_text(policy)
 
-          # Make accepted keystone reports state which evidence path fired.
-          geometry_file = project / (
-              'app/src/main/java/com/dennis/photomasterai/'
-              'GeometryIntelligence.java'
-          )
-          geometry = geometry_file.read_text()
-
-          applied_pattern = re.compile(
-              r'"• Keystone correction APPLIED \| %s edge expansion '
-              r'%.1f%% \| geometry QC ACCEPTED\\n",\s*'
-              r'keystoneDecision\.topNarrow \? "top" : "bottom",\s*'
-              r'keystone\.insetFraction \* 100\.0\)\);',
-              re.DOTALL
-          )
-
-          applied_replacement = '''"• Keystone correction APPLIED | %s edge expansion %.1f%% | evidence %s | geometry QC ACCEPTED\\n",
-                                  keystoneDecision.topNarrow ? "top" : "bottom",
-                                  keystone.insetFraction * 100.0,
-                                  keystoneDecision.reason));'''
-
-          geometry, report_count = applied_pattern.subn(
-              applied_replacement,
-              geometry,
-              count=1
-          )
-          if report_count != 1:
-              raise RuntimeError(
-                  'v0.4.24 keystone accepted-report anchor not found'
-              )
-          geometry_file.write_text(geometry)
-
           # Regression tests from the actual v0.4.24 field results.
           host_file = project / 'tools/GeometryPolicyHostChecks.java'
           host = host_file.read_text()
@@ -431,8 +400,6 @@ jobs:
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/GeometryPolicy.java"
           grep -q "structural override" \
             "$PROJECT/tools/GeometryPolicyHostChecks.java"
-          grep -q "evidence %s" \
-            "$PROJECT/app/src/main/java/com/dennis/photomasterai/GeometryIntelligence.java"
           grep -q "class ColorSpaceGuard" \
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/ColorSpaceGuard.java"
           grep -q "class ProcessingKeepAliveService" \
@@ -658,7 +625,8 @@ jobs:
           Re-run the Chinchilla Cultural Precinct building photo.
           Expected:
           - perspective candidate should now be generated
-          - report should identify structural override evidence
+          - perspective report should still show ~5%/5%, 6/6 + 6/6 evidence
+          - correction should now proceed to candidate/QC instead of confidence withholding
           - correction is retained only if geometry QC accepts it
 
           Then re-run:
