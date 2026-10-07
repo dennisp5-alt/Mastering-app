@@ -638,7 +638,7 @@ jobs:
           flow_pattern = re.compile(
               r'(?ms)^(?P<indent>[ \t]*)'
               r'(?P<final>final[ \t]+)?PhotoMasterEngine\.Result[ \t]+'
-              r'(?P<var>[A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*'
+              r'(?P<var>[A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t\r\n]*'
               r'applyVignettingIntelligence\([ \t\r\n]*'
               r'(?P<input>[A-Za-z_][A-Za-z0-9_]*)[ \t]*,[ \t\r\n]*'
               r'originalBitmap[ \t\r\n]*\);'
