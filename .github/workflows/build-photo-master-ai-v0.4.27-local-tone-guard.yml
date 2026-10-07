@@ -575,6 +575,10 @@ jobs:
 
           # -------------------------------------------------------------
           # LOCAL TONE ENGINE REFINEMENT
+          #
+          # IMPORTANT:
+          # v0.4.26 intentionally writes compact Java. Match that exact
+          # successful source shape rather than assuming pretty formatting.
           # -------------------------------------------------------------
           engine_file = project / (
               'app/src/main/java/com/dennis/photomasterai/'
@@ -582,229 +586,141 @@ jobs:
           )
           engine = engine_file.read_text()
 
-          old_has_sky = '''                  boolean hasSky =
-                          tags.contains("sky");'''
+          # Existing successful v0.4.26 source:
+          # boolean sky=tags.contains("sky"), person=..., plant=...;
+          sky_old = (
+              'boolean sky=tags.contains("sky"), '
+              'person=tags.contains("person"), '
+              'plant=tags.contains("plant")'
+              '||tags.contains("flower")'
+              '||tags.contains("field")'
+              '||tags.contains("foliage");'
+          )
 
-          new_has_sky = '''                  boolean hasSky =
-                          tags.contains("sky")
-                                  || containsSceneDescriptor(
-                                          sourceReport,
-                                          "sky-rich");'''
+          sky_new = (
+              'boolean sky=tags.contains("sky")'
+              '||(sourceReport!=null'
+              '&&sourceReport.toLowerCase(Locale.US).contains("sky-rich")), '
+              'person=tags.contains("person"), '
+              'plant=tags.contains("plant")'
+              '||tags.contains("flower")'
+              '||tags.contains("field")'
+              '||tags.contains("foliage");'
+          )
 
-          if old_has_sky not in engine:
-              raise RuntimeError('v0.4.26 hasSky block not found')
+          if sky_old not in engine:
+              raise RuntimeError(
+                  'Exact successful v0.4.26 compact sky line not found'
+              )
 
           engine = engine.replace(
-              old_has_sky,
-              new_has_sky,
+              sky_old,
+              sky_new,
               1
           )
 
-          # Replace boolean safeCandidate call with diagnostic QcResult.
+          # Replace compact boolean safeCandidate(...) with diagnostic QcResult.
           safe_pattern = re.compile(
-              r'(?ms)^([ \t]*)boolean safe =\s*'
-              r'LocalTonePolicy\.safeCandidate\((.*?)\);'
+              r'boolean safe=LocalTonePolicy\.safeCandidate\(([^;]+)\);'
           )
 
           safe_match = safe_pattern.search(engine)
 
           if safe_match is None:
               raise RuntimeError(
-                  'v0.4.26 safeCandidate call not found'
+                  'Exact successful v0.4.26 safeCandidate call not found'
               )
 
-          indent = safe_match.group(1)
-          args = safe_match.group(2)
-
-          qc_call = (
-              indent
-              + 'LocalTonePolicy.QcResult qc =\n'
-              + indent
-              + '        LocalTonePolicy.evaluateCandidate('
-              + args
-              + ');'
-          )
+          safe_args = safe_match.group(1)
 
           engine = (
               engine[:safe_match.start()]
-              + qc_call
+              + 'LocalTonePolicy.QcResult qc='
+              + 'LocalTonePolicy.evaluateCandidate('
+              + safe_args
+              + ');'
               + engine[safe_match.end():]
           )
 
-          if 'if (!safe) {' not in engine:
+          rollback_old = (
+              'if(!safe){ if(!cand.isRecycled())cand.recycle(); '
+              'r.append("• Local tone ROLLED BACK — '
+              'improvement/safety QC did not confirm a safe benefit\\n"); '
+              'return new Outcome(mastered,before,false,r.toString()); }'
+          )
+
+          rollback_new = (
+              'if(!qc.accepted){ '
+              'if(!cand.isRecycled())cand.recycle(); '
+              'r.append("• Local tone ROLLED BACK — QC rejected: ")'
+              '.append(qc.reason).append("\\n"); '
+              'return new Outcome(mastered,before,false,r.toString()); }'
+          )
+
+          if rollback_old not in engine:
               raise RuntimeError(
-                  'v0.4.26 safe rollback branch not found'
+                  'Exact successful v0.4.26 rollback branch not found'
               )
 
           engine = engine.replace(
-              'if (!safe) {',
-              'if (!qc.accepted) {',
+              rollback_old,
+              rollback_new,
               1
           )
 
-          old_rollback = '''                      report.append(
-                              "• Local tone ROLLED BACK — improvement/safety QC did not confirm a safe benefit\\n");'''
+          # v0.4.26 compact EV line.
+          ev_old = (
+              'double sev=p.shadowEv*sw*edge, '
+              'hev=p.highlightEv*hw*edge, '
+              'ev=clamp(sev+hev,-0.10,0.16), '
+              'ratio=Math.pow(2.0,ev);'
+          )
 
-          new_rollback = '''                      report.append(
-                              "• Local tone ROLLED BACK — QC rejected: ")
-                              .append(qc.reason)
-                              .append("\\n");'''
+          ev_new = (
+              'double sev=p.shadowEv*sw*edge, '
+              'hev=p.highlightEv*hw*edge; '
+              'double ev=clamp(sev+hev,-0.10,0.16); '
+              'ev=capEdgeToneDelta(lum,ev,grad); '
+              'double ratio=Math.pow(2.0,ev);'
+          )
 
-          if old_rollback not in engine:
+          if ev_old not in engine:
               raise RuntimeError(
-                  'v0.4.26 generic rollback report not found'
+                  'Exact successful v0.4.26 compact EV line not found'
               )
 
           engine = engine.replace(
-              old_rollback,
-              new_rollback,
+              ev_old,
+              ev_new,
               1
           )
 
-          # Cap actual edge luminance movement before RGB quantisation.
-          # QC is 0.050; transform cap is 0.045 to leave ~1 RGB-code margin.
-          old_ev = '''                              double ev =
-                                      clamp(
-                                              shadowEv
-                                                      + highlightEv,
-                                              -0.10,
-                                              0.16);
-
-                              double ratio ='''
-
-          new_ev = '''                              double ev =
-                                      clamp(
-                                              shadowEv
-                                                      + highlightEv,
-                                              -0.10,
-                                              0.16);
-
-                              ev =
-                                      capEdgeToneDelta(
-                                              lum,
-                                              ev,
-                                              gradient);
-
-                              double ratio ='''
-
-          if old_ev not in engine:
-              raise RuntimeError(
-                  'v0.4.26 EV block not found'
-              )
-
-          engine = engine.replace(
-              old_ev,
-              new_ev,
-              1
+          helper_anchor = (
+              'private static String extractTags(String report){'
           )
-
-          helper_anchor = '''              private static String extractAiSceneTags(
-                      String report) {'''
 
           if helper_anchor not in engine:
               raise RuntimeError(
-                  'Local tone helper anchor not found'
+                  'Exact successful v0.4.26 extractTags anchor not found'
               )
 
-          helpers = r'''              private static boolean containsSceneDescriptor(
-                      String report,
-                      String descriptor) {
-
-                  if (report == null
-                          || report.isEmpty()
-                          || descriptor == null
-                          || descriptor.isEmpty()) {
-                      return false;
+          edge_helper = r'''private static double capEdgeToneDelta(double lum,double ev,double grad){
+                  if(grad<0.08||Math.abs(ev)<1.0e-9||lum<=1.0e-6)return ev;
+                  final double maxEdgeLumaDelta=0.045;
+                  if(ev>0.0){
+                      double target=Math.min(0.995,lum+maxEdgeLumaDelta);
+                      double maxEv=Math.log(target/lum)/Math.log(2.0);
+                      return Math.min(ev,maxEv);
                   }
-
-                  String lower =
-                          report.toLowerCase(
-                                  Locale.US);
-
-                  int sceneAt =
-                          lower.indexOf(
-                                  "\nscene\n");
-
-                  if (sceneAt < 0) {
-                      sceneAt =
-                              lower.indexOf(
-                                      "scene\n");
-                  }
-
-                  if (sceneAt < 0) {
-                      return false;
-                  }
-
-                  int nextSection =
-                          lower.indexOf(
-                                  "\n\n",
-                                  sceneAt);
-
-                  String sceneBlock =
-                          nextSection > sceneAt
-                                  ? lower.substring(
-                                          sceneAt,
-                                          nextSection)
-                                  : lower.substring(
-                                          sceneAt);
-
-                  return sceneBlock.contains(
-                          descriptor.toLowerCase(
-                                  Locale.US));
+                  double target=Math.max(0.001,lum-maxEdgeLumaDelta);
+                  double minEv=Math.log(target/lum)/Math.log(2.0);
+                  return Math.max(ev,minEv);
               }
-
-              private static double capEdgeToneDelta(
-                      double lum,
-                      double ev,
-                      double gradient) {
-
-                  if (gradient < 0.08
-                          || Math.abs(ev) < 1.0e-9
-                          || lum <= 1.0e-6) {
-                      return ev;
-                  }
-
-                  final double maxEdgeLumaDelta =
-                          0.045;
-
-                  if (ev > 0.0) {
-                      double targetLum =
-                              Math.min(
-                                      0.995,
-                                      lum
-                                              + maxEdgeLumaDelta);
-
-                      double maxEv =
-                              Math.log(
-                                      targetLum / lum)
-                                      / Math.log(2.0);
-
-                      return Math.min(
-                              ev,
-                              maxEv);
-                  }
-
-                  double targetLum =
-                          Math.max(
-                                  0.001,
-                                  lum
-                                          - maxEdgeLumaDelta);
-
-                  double minEv =
-                          Math.log(
-                                  targetLum / lum)
-                                  / Math.log(2.0);
-
-                  return Math.max(
-                          ev,
-                          minEv);
-              }
-
-          '''
+              '''
 
           engine = engine.replace(
               helper_anchor,
-              helpers + helper_anchor,
+              edge_helper + helper_anchor,
               1
           )
 
@@ -1023,6 +939,8 @@ jobs:
           grep -q "0.0500" \
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/LocalTonePolicy.java"
           grep -q "capEdgeToneDelta" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/LocalToneIntelligence.java"
+          grep -q "maxEdgeLumaDelta=0.045" \
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/LocalToneIntelligence.java"
           grep -q "sky-rich" \
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/LocalToneIntelligence.java"
