@@ -1,0 +1,805 @@
+name: Build Photo Master AI v0.4.29 Mixed-Light Continuity Guard
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-photo-master-ai-v0.4.29-mixed-light-continuity.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Photo Master AI v0.4.29 Mixed-Light Continuity Guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository with history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Recover exact successful v0.4.28 source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          V0428_COMMIT="993410e5d761a2ee0e4f0e0230c74f396d8c271a"
+
+          git cat-file -e "${V0428_COMMIT}^{commit}" || {
+            echo "::error::Successful v0.4.28 commit unavailable"
+            exit 1
+          }
+
+          git show \
+            "${V0428_COMMIT}:.github/workflows/build-photo-master-ai-v0.4.28-mixed-light-colour.yml" \
+            > /tmp/v0428.yml
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          lines = Path('/tmp/v0428.yml').read_text().splitlines()
+
+          def extract_step(name, destination):
+              step = None
+
+              for i, line in enumerate(lines):
+                  if line.strip() == '- name: ' + name:
+                      step = i
+                      break
+
+              if step is None:
+                  raise RuntimeError(
+                      'Workflow step not found: ' + name
+                  )
+
+              run = None
+
+              for i in range(step, len(lines)):
+                  if lines[i].strip() == 'run: |':
+                      run = i
+                      break
+
+                  if (
+                      i > step
+                      and lines[i].startswith('      - name:')
+                  ):
+                      break
+
+              if run is None:
+                  raise RuntimeError(
+                      'Run block not found: ' + name
+                  )
+
+              body = []
+
+              for line in lines[run + 1:]:
+                  if line.startswith('      - name:'):
+                      break
+
+                  if not line.strip():
+                      body.append('')
+                  elif line.startswith('          '):
+                      body.append(line[10:])
+                  else:
+                      raise RuntimeError(
+                          'Unexpected indentation while extracting: '
+                          + name
+                      )
+
+              Path(destination).write_text(
+                  '\n'.join(body) + '\n'
+              )
+
+          extract_step(
+              'Recover exact successful v0.4.27 source',
+              '/tmp/recover-v0427.sh'
+          )
+
+          extract_step(
+              'Apply v0.4.28 Mixed-Light Colour Intelligence',
+              '/tmp/apply-v0428.sh'
+          )
+          PY
+
+          bash /tmp/recover-v0427.sh
+
+          PROJECT="$(
+            find photomaster-v044-build \
+              -type f \
+              \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \) \
+              -printf '%h\n' \
+              | head -n 1
+          )"
+
+          test -n "$PROJECT" || {
+            echo "::error::Recovered project not found"
+            exit 1
+          }
+
+          export PROJECT
+
+          bash /tmp/apply-v0428.sh
+
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+
+          grep -q "versionCode 37" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q "versionName '0.4.28'" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q "class MixedLightColourIntelligence" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourIntelligence.java"
+
+          grep -q "MAX_GAIN_DEVIATION = 0.035" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourPolicy.java"
+
+          grep -q "maxEdgeLumaDelta=0.045" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/LocalToneIntelligence.java"
+
+          grep -q "symmetricOpposingOverride" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/GeometryPolicy.java"
+
+          echo "Exact successful v0.4.28 source recovered"
+
+      - name: Apply v0.4.29 Mixed-Light Continuity Guard
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+
+          project = Path(
+              os.environ['PROJECT']
+          )
+
+          # -------------------------------------------------------------
+          # VERSION
+          # -------------------------------------------------------------
+
+          build_file = project / 'app/build.gradle'
+
+          build = build_file.read_text()
+
+          if 'versionCode 37' not in build:
+              raise RuntimeError(
+                  'v0.4.28 versionCode not found'
+              )
+
+          if "versionName '0.4.28'" not in build:
+              raise RuntimeError(
+                  'v0.4.28 versionName not found'
+              )
+
+          build = build.replace(
+              'versionCode 37',
+              'versionCode 38',
+              1
+          )
+
+          build = build.replace(
+              "versionName '0.4.28'",
+              "versionName '0.4.29'",
+              1
+          )
+
+          build_file.write_text(
+              build
+          )
+
+          # -------------------------------------------------------------
+          # MIXED-LIGHT POLICY
+          #
+          # Keep max final channel QC at 0.040.
+          # Tighten regional continuity QC from 0.060 to 0.050.
+          # -------------------------------------------------------------
+
+          policy_file = project / (
+              'app/src/main/java/com/dennis/photomasterai/'
+              'MixedLightColourPolicy.java'
+          )
+
+          policy = policy_file.read_text()
+
+          if 'maxGridGainStep > 0.060' not in policy:
+              raise RuntimeError(
+                  'v0.4.28 regional gain QC anchor not found'
+              )
+
+          policy = policy.replace(
+              'maxGridGainStep > 0.060',
+              'maxGridGainStep > 0.050',
+              1
+          )
+
+          if (
+              'regional gain step %.4f > 0.0600'
+              not in policy
+          ):
+              raise RuntimeError(
+                  'v0.4.28 regional gain report anchor not found'
+              )
+
+          policy = policy.replace(
+              'regional gain step %.4f > 0.0600',
+              'regional gain step %.4f > 0.0500',
+              1
+          )
+
+          policy_file.write_text(
+              policy
+          )
+
+          # -------------------------------------------------------------
+          # MIXED-LIGHT ENGINE
+          # -------------------------------------------------------------
+
+          engine_file = project / (
+              'app/src/main/java/com/dennis/photomasterai/'
+              'MixedLightColourIntelligence.java'
+          )
+
+          engine = engine_file.read_text()
+
+          constants_old = (
+              'private static final int GX = 8, GY = 8, '
+              'MAX_EDGE = 640, CHUNK = 128;'
+          )
+
+          constants_new = (
+              constants_old
+              + '\n              private static final double '
+              + 'MAX_ADJACENT_GAIN_STEP = 0.045;'
+              + '\n              private static final int '
+              + 'MAX_FINAL_CHANNEL_CODE_DELTA = 9;'
+          )
+
+          if constants_old not in engine:
+              raise RuntimeError(
+                  'v0.4.28 engine constants anchor not found'
+              )
+
+          engine = engine.replace(
+              constants_old,
+              constants_new,
+              1
+          )
+
+          field_old = (
+              'double meanNeutralError, '
+              'gainSpread, maxGridGainStep;'
+          )
+
+          field_new = (
+              'double meanNeutralError, gainSpread, '
+              'maxGridGainStep, continuityScale = 1.0;'
+          )
+
+          if field_old not in engine:
+              raise RuntimeError(
+                  'v0.4.28 Evidence field anchor not found'
+              )
+
+          engine = engine.replace(
+              field_old,
+              field_new,
+              1
+          )
+
+          analysis_old = '''                  e.meanNeutralError = targetErrorCount>0 ? targetErrorSum/targetErrorCount : 0.0;
+                  e.gainSpread = gainSpread(e);
+                  e.maxGridGainStep = maxGridGainStep(e);'''
+
+          analysis_new = '''                  e.meanNeutralError = targetErrorCount>0 ? targetErrorSum/targetErrorCount : 0.0;
+                  enforceContinuity(e);
+                  e.gainSpread = gainSpread(e);
+                  e.maxGridGainStep = maxGridGainStep(e);'''
+
+          if analysis_old not in engine:
+              raise RuntimeError(
+                  'v0.4.28 analysis continuity anchor not found'
+              )
+
+          engine = engine.replace(
+              analysis_old,
+              analysis_new,
+              1
+          )
+
+          helper_anchor = (
+              '              private static double '
+              'gainSpread(Evidence e) {'
+          )
+
+          if helper_anchor not in engine:
+              raise RuntimeError(
+                  'v0.4.28 gainSpread helper anchor not found'
+              )
+
+          helper = '''              private static void enforceContinuity(Evidence e) {
+                  double rawStep=maxGridGainStep(e);
+
+                  if (rawStep<=MAX_ADJACENT_GAIN_STEP || rawStep<=1e-9) {
+                      e.continuityScale=1.0;
+                      return;
+                  }
+
+                  double scale=
+                          MAX_ADJACENT_GAIN_STEP/rawStep;
+
+                  for (int y=0;y<GY;y++) {
+                      for (int x=0;x<GX;x++) {
+                          Cell c=e.cells[y][x];
+
+                          if (!c.valid) {
+                              continue;
+                          }
+
+                          c.gainR=
+                                  1.0+(c.gainR-1.0)*scale;
+
+                          c.gainG=
+                                  1.0+(c.gainG-1.0)*scale;
+
+                          c.gainB=
+                                  1.0+(c.gainB-1.0)*scale;
+                      }
+                  }
+
+                  e.continuityScale=scale;
+              }
+
+'''
+
+          engine = engine.replace(
+              helper_anchor,
+              helper + helper_anchor,
+              1
+          )
+
+          render_old = '''                              if (lum>1e-6 && nl>1e-6) {
+                                  double preserve=clamp(lum/nl,0.96,1.04);
+                                  nr*=preserve; ng*=preserve; nb*=preserve;
+                              }
+
+                              int ir=c255((int)Math.round(nr));'''
+
+          render_new = '''                              if (lum>1e-6 && nl>1e-6) {
+                                  double preserve=clamp(lum/nl,0.96,1.04);
+                                  nr*=preserve; ng*=preserve; nb*=preserve;
+                              }
+
+                              // Final post-luminance RGB safety clamp.
+                              // 9 / 255 = 0.0353, leaving margin below
+                              // the unchanged 0.0400 QC limit.
+                              nr=clamp(
+                                      nr,
+                                      rr-MAX_FINAL_CHANNEL_CODE_DELTA,
+                                      rr+MAX_FINAL_CHANNEL_CODE_DELTA);
+
+                              ng=clamp(
+                                      ng,
+                                      gg-MAX_FINAL_CHANNEL_CODE_DELTA,
+                                      gg+MAX_FINAL_CHANNEL_CODE_DELTA);
+
+                              nb=clamp(
+                                      nb,
+                                      bb-MAX_FINAL_CHANNEL_CODE_DELTA,
+                                      bb+MAX_FINAL_CHANNEL_CODE_DELTA);
+
+                              int ir=c255((int)Math.round(nr));'''
+
+          if render_old not in engine:
+              raise RuntimeError(
+                  'v0.4.28 post-luminance render anchor not found'
+              )
+
+          engine = engine.replace(
+              render_old,
+              render_new,
+              1
+          )
+
+          # Report the continuity guard so regression testing can
+          # distinguish field normalization from ordinary correction.
+
+          report_marker = (
+              '                  if (!plan.apply) {'
+          )
+
+          if report_marker not in engine:
+              raise RuntimeError(
+                  'v0.4.28 report marker not found'
+              )
+
+          report_add = '''                  r.append(String.format(
+                          Locale.US,
+                          "• Continuity guard field scale %.1f%% | adjacent gain cap %.4f | final channel cap %d/255%n",
+                          e.continuityScale*100.0,
+                          MAX_ADJACENT_GAIN_STEP,
+                          MAX_FINAL_CHANNEL_CODE_DELTA));
+
+'''
+
+          engine = engine.replace(
+              report_marker,
+              report_add + report_marker,
+              1
+          )
+
+          engine_file.write_text(
+              engine
+          )
+
+          # -------------------------------------------------------------
+          # EXTEND HOST CHECKS
+          # -------------------------------------------------------------
+
+          host_file = project / (
+              'tools/MixedLightColourPolicyHostChecks.java'
+          )
+
+          host = host_file.read_text()
+
+          marker = (
+              '                  System.out.println('
+              '"MixedLightColourPolicyHostChecks passed");'
+          )
+
+          if marker not in host:
+              raise RuntimeError(
+                  'Mixed-Light host check marker not found'
+              )
+
+          extra = '''                  MixedLightColourPolicy.QcResult stepFail =
+                          MixedLightColourPolicy.evaluateCandidate(
+                                  0.042,0.030,
+                                  0.050,0.050,
+                                  0.010,0.010,
+                                  0.018,0.018,
+                                  0.700,0.700,
+                                  0.240,0.240,
+                                  0.003,0.003,
+                                  0.002,0.002,
+                                  0.006,0.027,0.051);
+
+                  req(
+                          !stepFail.accepted,
+                          "regional step above 0.050 must fail");
+
+                  req(
+                          stepFail.reason.contains(
+                                  "regional gain step"),
+                          "reason must name regional gain step");
+
+'''
+
+          host = host.replace(
+              marker,
+              extra + marker,
+              1
+          )
+
+          host_file.write_text(
+              host
+          )
+
+          print(
+              'v0.4.29 Mixed-Light Continuity Guard applied'
+          )
+
+          print(
+              'Adjacent regional gain field normalized to <= 0.045'
+          )
+
+          print(
+              'Final channel movement capped to 9/255 (~0.0353)'
+          )
+
+          print(
+              'Max-channel QC remains 0.040; '
+              'regional continuity QC tightened to 0.050'
+          )
+          PY
+
+          grep -q "versionCode 38" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q "versionName '0.4.29'" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q "MAX_ADJACENT_GAIN_STEP = 0.045" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourIntelligence.java"
+
+          grep -q "MAX_FINAL_CHANNEL_CODE_DELTA = 9" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourIntelligence.java"
+
+          grep -q "maxGridGainStep > 0.050" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourPolicy.java"
+
+          grep -q "maxEdgeLumaDelta=0.045" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/LocalToneIntelligence.java"
+
+          grep -q "symmetricOpposingOverride" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/GeometryPolicy.java"
+
+      - name: Fetch pinned NAFNet-SIDD model
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+
+          ASSETS="$PROJECT/app/src/main/assets"
+          MODEL="$ASSETS/nafnet_sidd_width32_fp16.tflite"
+
+          mkdir -p "$ASSETS"
+
+          URL='https://huggingface.co/litert-community/NAFNet-SIDD-width32-LiteRT/resolve/main/nafnet_sidd_width32_fp16.tflite?download=true'
+
+          curl \
+            --fail \
+            --location \
+            --retry 5 \
+            --retry-all-errors \
+            --connect-timeout 30 \
+            --output "$MODEL.tmp" \
+            "$URL"
+
+          mv "$MODEL.tmp" "$MODEL"
+
+          test "$(stat -c%s "$MODEL")" -eq 62454048 || {
+            echo "::error::Unexpected NAFNet model size"
+            exit 1
+          }
+
+          echo \
+            'f8fbaa422411683c53e802cf7cc7cf9be0a0de00886ad4af057232e26b172a0c  '"$MODEL" \
+            | sha256sum -c -
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Run all safety host checks
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf host-checks
+          mkdir host-checks
+
+          javac -d host-checks \
+            app/src/main/java/com/dennis/photomasterai/DeepPixelRepair.java \
+            app/src/main/java/com/dennis/photomasterai/RepairSafetyPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/SocialSourcePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralIntegrityPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/OpticalFringePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/VignettingPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/PersonEvidencePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/HighRingFinishingPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/GeometryPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/LocalTonePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/MixedLightColourPolicy.java \
+            tools/DeepPixelRepairHostChecks.java \
+            tools/RepairSafetyPolicyHostChecks.java \
+            tools/NeuralDenoisePolicyHostChecks.java \
+            tools/SocialSourcePolicyHostChecks.java \
+            tools/SmoothSurfaceGuardHostChecks.java \
+            tools/NeuralIntegrityPolicyHostChecks.java \
+            tools/OpticalFringePolicyHostChecks.java \
+            tools/VignettingPolicyHostChecks.java \
+            tools/PersonEvidencePolicyHostChecks.java \
+            tools/HighBlendDetailGuardHostChecks.java \
+            tools/HighRingFinishingPolicyHostChecks.java \
+            tools/GeometryPolicyHostChecks.java \
+            tools/LocalTonePolicyHostChecks.java \
+            tools/MixedLightColourPolicyHostChecks.java
+
+          for C in \
+            DeepPixelRepairHostChecks \
+            RepairSafetyPolicyHostChecks \
+            NeuralDenoisePolicyHostChecks \
+            SocialSourcePolicyHostChecks \
+            SmoothSurfaceGuardHostChecks \
+            NeuralIntegrityPolicyHostChecks \
+            OpticalFringePolicyHostChecks \
+            VignettingPolicyHostChecks \
+            PersonEvidencePolicyHostChecks \
+            HighBlendDetailGuardHostChecks \
+            HighRingFinishingPolicyHostChecks \
+            GeometryPolicyHostChecks \
+            LocalTonePolicyHostChecks \
+            MixedLightColourPolicyHostChecks
+          do
+            java \
+              -cp host-checks \
+              "com.dennis.photomasterai.$C"
+          done
+
+      - name: Restore stable Photo Master debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: photo-master-ai-debug-keystore-v1
+
+      - name: Create signing key on first build
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$HOME/.android"
+
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool \
+              -genkeypair \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Photo Master AI,O=Dennis Photo Master,C=AU" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -noprompt
+          fi
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Configure Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(
+              find "$SDK/cmdline-tools" \
+                -type f \
+                -name 'sdkmanager' \
+                | sort -V \
+                | tail -n 1
+            )"
+          fi
+
+          test -n "$SDKMANAGER" || {
+            echo "::error::sdkmanager not found"
+            exit 1
+          }
+
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Build v0.4.29 APK
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :app:assembleDebug --stacktrace
+
+      - name: Verify package and prepare artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+
+          APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
+
+          test -f "$APK" || {
+            echo "::error::APK not found"
+            exit 1
+          }
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          AAPT="$SDK/build-tools/35.0.0/aapt"
+
+          BADGING="$(
+            "$AAPT" dump badging "$APK" \
+              | head -n 1
+          )"
+
+          echo "$BADGING"
+
+          echo "$BADGING" \
+            | grep -q "package: name='com.dennis.photomasterai'"
+
+          echo "$BADGING" \
+            | grep -q "versionCode='38'"
+
+          echo "$BADGING" \
+            | grep -q "versionName='0.4.29'"
+
+          unzip -l "$APK" \
+            | grep -q 'assets/nafnet_sidd_width32_fp16.tflite'
+
+          rm -rf artifact
+          mkdir artifact
+
+          OUT="artifact/PhotoMasterAI-v0.4.29-MIXED-LIGHT-CONTINUITY.apk"
+
+          cp "$APK" "$OUT"
+
+          sha256sum "$OUT" \
+            > "artifact/PhotoMasterAI-v0.4.29-MIXED-LIGHT-CONTINUITY-SHA256.txt"
+
+          cat > "artifact/PhotoMasterAI-v0.4.29-Notes.txt" <<'EOF'
+          Photo Master AI — v0.4.29 Mixed-Light Continuity Guard
+
+          Version: 0.4.29
+          versionCode: 38
+
+          BASELINE
+          Exact successful v0.4.28 source reconstructed from run 37602511410.
+          v0.4.27 remains the frozen pre-Mixed-Light fallback.
+
+          NEW
+          - Adjacent Mixed-Light regional gain field capped at 0.045
+          - Final post-luminance RGB movement capped at 9/255 (~0.0353)
+          - Max-channel QC remains 0.0400
+          - Regional gain-step QC tightened to 0.0500
+          - Existing +/-3.5% Mixed-Light correction envelope retained
+          - Exact rollback diagnostics retained
+
+          GOAL
+          Preserve useful Mixed-Light improvements that v0.4.28 measured
+          but rolled back because isolated pixels or adjacent regions
+          exceeded the final output safety limits.
+
+          REGRESSION TARGETS
+          Indoor room:
+          v0.4.28 neutral error improved 19% but max channel reached 0.0471.
+
+          Night scooter:
+          v0.4.28 neutral error improved 27% but max channel reached 0.0549
+          and regional gain step reached 0.0700.
+
+          Flower:
+          v0.4.28 neutral error improved 30.8% but max channel reached 0.0510.
+
+          RETAINED
+          - v0.4.27 Local Tone safeguards
+          - v0.4.25 geometry structural override
+          - preserve-source sRGB / Display P3
+          - high-ring guard
+          - neural denoise safeguards
+          - optics/vignetting/shadow-integrity safeguards
+          - background processing
+          - JPEG quality 100
+          EOF
+
+      - name: Upload APK and continuation notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoMasterAI-v0.4.29-MIXED-LIGHT-CONTINUITY
+          path: |
+            artifact/PhotoMasterAI-v0.4.29-MIXED-LIGHT-CONTINUITY.apk
+            artifact/PhotoMasterAI-v0.4.29-MIXED-LIGHT-CONTINUITY-SHA256.txt
+            artifact/PhotoMasterAI-v0.4.29-Notes.txt
+          if-no-files-found: error
+          retention-days: 30
