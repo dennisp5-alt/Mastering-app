@@ -635,22 +635,49 @@ jobs:
           )
           main = main_file.read_text()
 
-          old_flow = '''                final PhotoMasterEngine.Result result =
-                        applyVignettingIntelligence(
-                                opticsResult,
-                                originalBitmap);'''
-          new_flow = '''                PhotoMasterEngine.Result vignetteResult =
-                        applyVignettingIntelligence(
-                                opticsResult,
-                                originalBitmap);
+          flow_pattern = re.compile(
+              r'(?ms)^(?P<indent>[ \t]*)'
+              r'(?P<final>final[ \t]+)?PhotoMasterEngine\.Result[ \t]+'
+              r'(?P<var>[A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t]*'
+              r'applyVignettingIntelligence\([ \t\r\n]*'
+              r'(?P<input>[A-Za-z_][A-Za-z0-9_]*)[ \t]*,[ \t\r\n]*'
+              r'originalBitmap[ \t\r\n]*\);'
+          )
 
-                final PhotoMasterEngine.Result result =
-                        applyColourSpaceGuard(
-                                vignetteResult,
-                                originalBitmap);'''
-          if old_flow not in main:
-              raise RuntimeError('v0.4.22 final vignetting result flow not found')
-          main = main.replace(old_flow, new_flow, 1)
+          flow_match = flow_pattern.search(main)
+          if flow_match is None:
+              # Emit the real source neighborhood if this ever drifts again.
+              call_at = main.find('applyVignettingIntelligence(')
+              if call_at >= 0:
+                  print(main[max(0, call_at - 500):call_at + 900])
+              raise RuntimeError(
+                  'v0.4.22 vignetting assignment not found by structural matcher'
+              )
+
+          indent = flow_match.group('indent')
+          final_kw = flow_match.group('final') or ''
+          result_var = flow_match.group('var')
+          input_var = flow_match.group('input')
+
+          new_flow = (
+              indent + 'PhotoMasterEngine.Result v0423VignetteResult =\n'
+              + indent + '        applyVignettingIntelligence(\n'
+              + indent + '                ' + input_var + ',\n'
+              + indent + '                originalBitmap);\n\n'
+              + indent + final_kw + 'PhotoMasterEngine.Result '
+              + result_var + ' =\n'
+              + indent + '        applyColourSpaceGuard(\n'
+              + indent + '                v0423VignetteResult,\n'
+              + indent + '                originalBitmap);'
+          )
+
+          main, flow_count = flow_pattern.subn(
+              lambda m: new_flow,
+              main,
+              count=1
+          )
+          if flow_count != 1:
+              raise RuntimeError('Unexpected v0.4.22 vignetting assignment count')
 
           helper_anchor = (
               '    private PhotoMasterEngine.Result '
