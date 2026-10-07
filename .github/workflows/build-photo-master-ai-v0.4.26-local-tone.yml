@@ -1,0 +1,421 @@
+name: Build Photo Master AI v0.4.26 Local Tone Intelligence
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-photo-master-ai-v0.4.26-local-tone.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Photo Master AI v0.4.26 Local Tone Intelligence
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository with history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Recover exact successful v0.4.25 source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          V0425_COMMIT="b26b019d17e691c72daeba0c8e81b430ef96c702"
+          git cat-file -e "${V0425_COMMIT}^{commit}" || { echo "::error::Successful v0.4.25 commit unavailable"; exit 1; }
+          git show "${V0425_COMMIT}:.github/workflows/build-photo-master-ai-v0.4.25-geometry-evidence.yml" > /tmp/v0425.yml
+          python3 - <<'PYRECOVER'
+          from pathlib import Path
+          lines = Path('/tmp/v0425.yml').read_text().splitlines()
+          def extract_step(name, destination):
+              step = next((i for i,l in enumerate(lines) if l.strip() == '- name: ' + name), None)
+              if step is None: raise RuntimeError('Workflow step not found: ' + name)
+              run = None
+              for i in range(step, len(lines)):
+                  if lines[i].strip() == 'run: |': run=i; break
+                  if i > step and lines[i].startswith('      - name:'): break
+              if run is None: raise RuntimeError('Run block not found: ' + name)
+              body=[]
+              for line in lines[run+1:]:
+                  if line.startswith('      - name:'): break
+                  if not line.strip(): body.append('')
+                  elif line.startswith('          '): body.append(line[10:])
+                  else: raise RuntimeError('Unexpected indentation: ' + name)
+              Path(destination).write_text('\n'.join(body)+'\n')
+          extract_step('Recover exact successful v0.4.24 source','/tmp/recover-v0424.sh')
+          extract_step('Apply v0.4.25 opposing-convergence evidence refinement','/tmp/apply-v0425.sh')
+          PYRECOVER
+          bash /tmp/recover-v0424.sh
+          PROJECT="$(find photomaster-v044-build -type f \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \) -printf '%h\n' | head -n 1)"
+          test -n "$PROJECT" || { echo "::error::Recovered project not found"; exit 1; }
+          export PROJECT
+          bash /tmp/apply-v0425.sh
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+          grep -q "versionCode 34" "$PROJECT/app/build.gradle"
+          grep -q "versionName '0.4.25'" "$PROJECT/app/build.gradle"
+          grep -q "symmetricOpposingOverride" "$PROJECT/app/src/main/java/com/dennis/photomasterai/GeometryPolicy.java"
+          echo "Exact successful v0.4.25 source recovered"
+
+      - name: Apply v0.4.26 Local Tone Intelligence
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+          cat > "$PROJECT/app/src/main/java/com/dennis/photomasterai/LocalTonePolicy.java" <<'JAVA_POLICY'
+          package com.dennis.photomasterai;
+          
+          public final class LocalTonePolicy {
+              private LocalTonePolicy() {}
+              public static final class Plan {
+                  public final boolean apply; public final double shadowEv; public final double highlightEv; public final boolean brightSubjectDarkBackground; public final String reason;
+                  Plan(boolean apply,double shadowEv,double highlightEv,boolean brightSubjectDarkBackground,String reason){this.apply=apply;this.shadowEv=shadowEv;this.highlightEv=highlightEv;this.brightSubjectDarkBackground=brightSubjectDarkBackground;this.reason=reason;}
+              }
+              public static Plan plan(double median,double p10,double p90,double darkFraction,double brightFraction,double highlightFraction,int recoverableShadowZones,int protectedHighlightZones,boolean hasSky,boolean hasPerson,boolean hasPlant){
+                  double dynamicRange=Math.max(0.0,p90-p10);
+                  boolean brightSubjectDarkBackground=median<0.30 && brightFraction>=0.10 && p90>=0.78;
+                  double shadowEv=0.0, highlightEv=0.0;
+                  if(recoverableShadowZones>0){
+                      if(brightSubjectDarkBackground) shadowEv=0.06;
+                      else if(median<0.42 && dynamicRange>=0.45) shadowEv=0.14;
+                      else if(median<0.58) shadowEv=0.10;
+                      else shadowEv=0.06;
+                      if(hasSky) shadowEv=Math.min(shadowEv,0.12);
+                      if(hasPerson) shadowEv=Math.min(shadowEv,0.12);
+                      if(hasPlant && brightSubjectDarkBackground) shadowEv=Math.min(shadowEv,0.06);
+                  }
+                  if(protectedHighlightZones>0 || highlightFraction>=0.004){
+                      highlightEv=highlightFraction>=0.015 ? -0.08 : -0.05;
+                      if(brightSubjectDarkBackground) highlightEv=Math.min(highlightEv,-0.07);
+                  }
+                  shadowEv=clamp(shadowEv,0.0,0.16); highlightEv=clamp(highlightEv,-0.10,0.0);
+                  boolean apply=shadowEv>0.0 || highlightEv<0.0;
+                  String reason;
+                  if(!apply) reason="no recoverable local tone imbalance measured";
+                  else if(brightSubjectDarkBackground) reason="bright-subject/dark-background protection";
+                  else if(shadowEv>0.0 && highlightEv<0.0) reason="local shadow recovery plus highlight containment";
+                  else if(shadowEv>0.0) reason="local shadow recovery";
+                  else reason="local highlight containment";
+                  return new Plan(apply,shadowEv,highlightEv,brightSubjectDarkBackground,reason);
+              }
+              public static boolean safeCandidate(double beforeDetail,double afterDetail,double beforeNoise,double afterNoise,double beforeChroma,double afterChroma,double beforeRinging,double afterRinging,double beforeMedian,double afterMedian,double beforeSat,double afterSat,double beforeShadowClip,double afterShadowClip,double beforeHighlightClip,double afterHighlightClip,double shadowTargetGain,double highlightTargetGain,double meanAbsoluteToneDelta,double maxAbsoluteToneDelta,double maxEdgeToneDelta){
+                  double detailRetention=afterDetail/Math.max(1.0e-9,beforeDetail);
+                  boolean measurableBenefit=shadowTargetGain>=0.0025 || highlightTargetGain>=0.0015;
+                  return measurableBenefit && detailRetention>=0.94 && afterNoise<=beforeNoise+0.0015 && afterChroma<=beforeChroma+0.0015 && afterRinging<=Math.min(1.0,beforeRinging+0.012) && Math.abs(afterMedian-beforeMedian)<=0.035 && Math.abs(afterSat-beforeSat)<=0.015 && afterShadowClip<=beforeShadowClip+0.002 && afterHighlightClip<=beforeHighlightClip+0.002 && meanAbsoluteToneDelta<=0.035 && maxAbsoluteToneDelta<=0.075 && maxEdgeToneDelta<=0.055;
+              }
+              private static double clamp(double v,double lo,double hi){return Math.max(lo,Math.min(hi,v));}
+          }
+          JAVA_POLICY
+          cat > "$PROJECT/app/src/main/java/com/dennis/photomasterai/LocalToneIntelligence.java" <<'JAVA_ENGINE'
+          package com.dennis.photomasterai;
+          
+          import android.graphics.Bitmap;
+          import java.util.Locale;
+          
+          public final class LocalToneIntelligence {
+              private static final int GX=10, GY=10, MAX_EDGE=640, CHUNK=128;
+              private LocalToneIntelligence() {}
+          
+              public static final class Outcome {
+                  public final Bitmap bitmap; public final PhotoAnalysis analysis; public final boolean changed; public final String report;
+                  Outcome(Bitmap b, PhotoAnalysis a, boolean c, String r){bitmap=b;analysis=a;changed=c;report=r;}
+              }
+              private static final class Stats {
+                  double p10,median,p90,darkFrac,brightFrac,highlightFrac; int shadowZones,highlightZones; final double[][] grid=new double[GY][GX];
+              }
+              private static final class Summary {
+                  double shB,shA,hiB,hiA,absSum,maxDelta,maxEdge,maxShadowEv,maxHighlightEv; long shN,hiN,n;
+              }
+          
+              public static Outcome process(Bitmap mastered, Bitmap authoritativeOriginal, String sourceReport){
+                  if(mastered==null || mastered.isRecycled() || authoritativeOriginal==null || authoritativeOriginal.isRecycled())
+                      return new Outcome(mastered, mastered==null||mastered.isRecycled()?null:PhotoAnalysis.analyse(mastered), false, "• Local tone stage skipped — invalid bitmap input");
+                  PhotoAnalysis before=PhotoAnalysis.analyse(mastered);
+                  Stats s=analyse(mastered);
+                  String tags=extractTags(sourceReport);
+                  boolean sky=tags.contains("sky"), person=tags.contains("person"), plant=tags.contains("plant")||tags.contains("flower")||tags.contains("field")||tags.contains("foliage");
+                  LocalTonePolicy.Plan p=LocalTonePolicy.plan(s.median,s.p10,s.p90,s.darkFrac,s.brightFrac,s.highlightFrac,s.shadowZones,s.highlightZones,sky,person,plant);
+                  StringBuilder r=new StringBuilder();
+                  r.append(String.format(Locale.US,"• Region map %d zones | recoverable shadow zones %d | protected highlight zones %d\n",GX*GY,s.shadowZones,s.highlightZones));
+                  r.append(String.format(Locale.US,"• Tone distribution P10 %.2f | median %.2f | P90 %.2f | dark %.1f%% | bright %.1f%% | near-clip highlights %.2f%%\n",s.p10,s.median,s.p90,s.darkFrac*100.0,s.brightFrac*100.0,s.highlightFrac*100.0));
+                  if(!tags.isEmpty()) r.append("• AI scene guidance: ").append(tags).append("\n");
+                  if(p.brightSubjectDarkBackground) r.append("• Bright-subject/dark-background pattern detected — global shadow lift suppressed\n");
+                  if(!p.apply){ r.append("• Local tone withheld — ").append(p.reason).append("\n"); return new Outcome(mastered,before,false,r.toString()); }
+                  Summary m=new Summary();
+                  Bitmap cand=render(mastered,s,p,sky,person,plant,m);
+                  if(cand==null){r.append("• Local tone withheld — candidate render unavailable\n"); return new Outcome(mastered,before,false,r.toString());}
+                  PhotoAnalysis after=PhotoAnalysis.analyse(cand);
+                  double shGain=m.shN>0?(m.shA-m.shB)/m.shN:0.0;
+                  double hiGain=m.hiN>0?(m.hiB-m.hiA)/m.hiN:0.0;
+                  double meanDelta=m.n>0?m.absSum/m.n:0.0;
+                  boolean safe=LocalTonePolicy.safeCandidate(before.detail,after.detail,before.noise,after.noise,before.flatChromaNoise,after.flatChromaNoise,before.ringing,after.ringing,before.medianLum,after.medianLum,before.avgSat,after.avgSat,before.shadowClip,after.shadowClip,before.highlightClip,after.highlightClip,shGain,hiGain,meanDelta,m.maxDelta,m.maxEdge);
+                  r.append(String.format(Locale.US,"• Candidate local shadow recovery +%.2f EV max | highlight containment %.2f EV max\n",m.maxShadowEv,m.maxHighlightEv));
+                  r.append(String.format(Locale.US,"• Target response shadow +%.4f | highlight headroom +%.4f | mean tone delta %.4f | max %.4f\n",shGain,hiGain,meanDelta,m.maxDelta));
+                  r.append(String.format(Locale.US,"• Edge-aware protection max edge delta %.4f | sky %s | warm-subject %s | foliage %s\n",m.maxEdge,sky?"ACTIVE":"standby",person?"ACTIVE":"standby",plant?"ACTIVE":"standby"));
+                  if(!safe){ if(!cand.isRecycled())cand.recycle(); r.append("• Local tone ROLLED BACK — improvement/safety QC did not confirm a safe benefit\n"); return new Outcome(mastered,before,false,r.toString()); }
+                  r.append("• Local tone ACCEPTED — edge/colour/detail/clipping QC passed\n");
+                  return new Outcome(cand,after,true,r.toString());
+              }
+          
+              private static Bitmap render(Bitmap src, Stats s, LocalTonePolicy.Plan p, boolean sky, boolean person, boolean plant, Summary m){
+                  int w=src.getWidth(), h=src.getHeight(); if(w<=0||h<=0)return null;
+                  Bitmap out=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);
+                  for(int y0=0;y0<h;y0+=CHUNK){
+                      int y1=Math.min(h,y0+CHUNK), top=Math.max(0,y0-1), bottom=Math.min(h,y1+1), rows=bottom-top;
+                      int[] px=new int[w*rows]; src.getPixels(px,0,w,0,top,w,rows); int[] dst=new int[w*(y1-y0)];
+                      for(int y=y0;y<y1;y++){
+                          int ly=y-top, oy=y-y0;
+                          for(int x=0;x<w;x++){
+                              int c=px[ly*w+x], a=(c>>>24)&255, rr=(c>>>16)&255, gg=(c>>>8)&255, bb=c&255;
+                              double lum=luma(rr,gg,bb), local=grid(s.grid,x,y,w,h), grad=gradient(px,w,rows,x,ly);
+                              double edge=1.0-0.55*smooth(0.08,0.24,grad);
+                              double sw=clamp01((0.46-lum)/0.34)*clamp01((0.46-local)/0.28);
+                              if(lum<0.035)sw*=0.10; else if(lum<0.065)sw*=0.35;
+                              if(p.brightSubjectDarkBackground && local<0.14)sw*=0.30;
+                              if(sky && blueSky(rr,gg,bb,lum))sw*=0.15;
+                              if(plant && green(rr,gg,bb))sw*=0.65;
+                              if(person && warm(rr,gg,bb,lum))sw*=0.55;
+                              double hw=Math.max(smooth(0.76,0.97,lum),0.55*smooth(0.68,0.88,local));
+                              if(specular(rr,gg,bb,lum))hw=Math.max(hw,0.85);
+                              if(sky && blueSky(rr,gg,bb,lum))hw*=0.70;
+                              double sev=p.shadowEv*sw*edge, hev=p.highlightEv*hw*edge, ev=clamp(sev+hev,-0.10,0.16), ratio=Math.pow(2.0,ev);
+                              int maxc=Math.max(rr,Math.max(gg,bb)); if(ratio>1.0 && maxc>0) ratio=Math.min(ratio,252.0/maxc);
+                              double nl=clamp(lum*ratio,0.0,0.995), ar=lum>1e-6?nl/lum:1.0;
+                              int nr=c255((int)Math.round(rr*ar)), ng=c255((int)Math.round(gg*ar)), nb=c255((int)Math.round(bb*ar));
+                              double ml=luma(nr,ng,nb), d=Math.abs(ml-lum); m.absSum+=d; m.n++; m.maxDelta=Math.max(m.maxDelta,d); if(grad>=0.08)m.maxEdge=Math.max(m.maxEdge,d); m.maxShadowEv=Math.max(m.maxShadowEv,sev); m.maxHighlightEv=Math.min(m.maxHighlightEv,hev);
+                              if(sw>=0.15 && lum>=0.04 && lum<=0.42){m.shB+=lum;m.shA+=ml;m.shN++;}
+                              if(hw>=0.20 && lum>=0.76){m.hiB+=lum;m.hiA+=ml;m.hiN++;}
+                              dst[oy*w+x]=(a<<24)|(nr<<16)|(ng<<8)|nb;
+                          }
+                      }
+                      out.setPixels(dst,0,w,0,y0,w,y1-y0);
+                  }
+                  return out;
+              }
+          
+              private static Stats analyse(Bitmap src){
+                  Stats s=new Stats(); int sw=src.getWidth(), sh=src.getHeight(), max=Math.max(sw,sh); Bitmap work=src; boolean rec=false;
+                  if(max>MAX_EDGE){double scale=MAX_EDGE/(double)max; int w=Math.max(64,(int)Math.round(sw*scale)),h=Math.max(64,(int)Math.round(sh*scale));work=Bitmap.createScaledBitmap(src,w,h,true);rec=work!=src;}
+                  int w=work.getWidth(),h=work.getHeight(); int[] px=new int[w*h], hist=new int[256]; work.getPixels(px,0,w,0,0,w,h); double[][] sum=new double[GY][GX]; int[][] cnt=new int[GY][GX]; long dark=0,bright=0,hi=0;
+                  for(int y=0;y<h;y++){int gy=Math.min(GY-1,y*GY/h);for(int x=0;x<w;x++){int c=px[y*w+x],r=(c>>>16)&255,g=(c>>>8)&255,b=c&255;double l=luma(r,g,b);int bin=Math.max(0,Math.min(255,(int)Math.round(l*255)));hist[bin]++;if(l<0.18)dark++;if(l>0.78)bright++;if(l>0.93)hi++;int gx=Math.min(GX-1,x*GX/w);sum[gy][gx]+=l;cnt[gy][gx]++;}}
+                  s.p10=pct(hist,px.length,0.10);s.median=pct(hist,px.length,0.50);s.p90=pct(hist,px.length,0.90);s.darkFrac=dark/(double)px.length;s.brightFrac=bright/(double)px.length;s.highlightFrac=hi/(double)px.length;
+                  double[][] raw=new double[GY][GX]; for(int y=0;y<GY;y++)for(int x=0;x<GX;x++)raw[y][x]=cnt[y][x]>0?sum[y][x]/cnt[y][x]:s.median;
+                  for(int y=0;y<GY;y++)for(int x=0;x<GX;x++){double z=0;int n=0;for(int dy=-1;dy<=1;dy++){int yy=y+dy;if(yy<0||yy>=GY)continue;for(int dx=-1;dx<=1;dx++){int xx=x+dx;if(xx<0||xx>=GX)continue;z+=raw[yy][xx];n++;}}s.grid[y][x]=n>0?z/n:raw[y][x];double v=s.grid[y][x];if(v>=0.10&&v<=0.38)s.shadowZones++;if(v>=0.72)s.highlightZones++;}
+                  if(rec&&!work.isRecycled())work.recycle(); return s;
+              }
+          
+              private static double pct(int[] h,int n,double q){if(n<=0)return 0;int t=Math.max(1,(int)Math.ceil(n*q)),r=0;for(int i=0;i<h.length;i++){r+=h[i];if(r>=t)return i/255.0;}return 1.0;}
+              private static double grid(double[][] g,int x,int y,int w,int h){double gx=w>1?x*(GX-1.0)/(w-1):0, gy=h>1?y*(GY-1.0)/(h-1):0;int x0=Math.max(0,Math.min(GX-1,(int)Math.floor(gx))),y0=Math.max(0,Math.min(GY-1,(int)Math.floor(gy))),x1=Math.min(GX-1,x0+1),y1=Math.min(GY-1,y0+1);double tx=gx-x0,ty=gy-y0,top=g[y0][x0]+(g[y0][x1]-g[y0][x0])*tx,bot=g[y1][x0]+(g[y1][x1]-g[y1][x0])*tx;return top+(bot-top)*ty;}
+              private static double gradient(int[] p,int w,int rows,int x,int y){int lx=Math.max(0,x-1),rx=Math.min(w-1,x+1),ty=Math.max(0,y-1),by=Math.min(rows-1,y+1);return Math.max(Math.abs(luma(p[y*w+rx])-luma(p[y*w+lx])),Math.abs(luma(p[by*w+x])-luma(p[ty*w+x])));}
+              private static String extractTags(String report){if(report==null||report.isEmpty())return "";String l=report.toLowerCase(Locale.US),m="ai scene tags:";int a=l.indexOf(m);if(a<0)return "";int s=a+m.length(),e=l.indexOf('\n',s);if(e<0)e=l.length();return l.substring(s,e).trim();}
+              private static boolean blueSky(int r,int g,int b,double l){return l>=0.30&&b>=g+8&&b>=r+18;}
+              private static boolean green(int r,int g,int b){return g>=r+12&&g>=b+8;}
+              private static boolean warm(int r,int g,int b,double l){return l>=0.28&&l<=0.82&&r>g&&g>b&&r-b>=22&&r-g<=80;}
+              private static boolean specular(int r,int g,int b,double l){int mx=Math.max(r,Math.max(g,b)),mn=Math.min(r,Math.min(g,b));return l>=0.88&&mx-mn<=28;}
+              private static double luma(int c){return luma((c>>>16)&255,(c>>>8)&255,c&255);}
+              private static double luma(int r,int g,int b){return (54.0*r+183.0*g+19.0*b)/(255.0*256.0);}
+              private static double smooth(double e0,double e1,double x){if(e1<=e0)return x>=e1?1:0;double t=clamp01((x-e0)/(e1-e0));return t*t*(3-2*t);}
+              private static double clamp01(double v){return clamp(v,0,1);} private static double clamp(double v,double lo,double hi){return Math.max(lo,Math.min(hi,v));} private static int c255(int v){return Math.max(0,Math.min(255,v));}
+          }
+          JAVA_ENGINE
+          cat > "$PROJECT/tools/LocalTonePolicyHostChecks.java" <<'JAVA_HOST'
+          package com.dennis.photomasterai;
+          public final class LocalTonePolicyHostChecks {
+           public static void main(String[] args){
+            LocalTonePolicy.Plan flower=LocalTonePolicy.plan(0.17,0.03,0.94,0.58,0.20,0.02,44,18,false,false,true);
+            req(flower.apply,"flower should create candidate"); req(flower.brightSubjectDarkBackground,"flower protection"); req(flower.shadowEv<=0.0600001,"flower shadow cap"); req(flower.highlightEv<=-0.07,"flower highlight containment");
+            LocalTonePolicy.Plan room=LocalTonePolicy.plan(0.42,0.10,0.86,0.28,0.12,0.009,37,10,false,false,false); req(room.apply&&room.shadowEv>=0.09,"room shadow recovery");
+            LocalTonePolicy.Plan empty=LocalTonePolicy.plan(0.52,0.30,0.70,0.03,0.03,0.0,0,0,false,false,false); req(!empty.apply,"balanced no-op");
+            req(LocalTonePolicy.safeCandidate(0.050,0.049,0.010,0.0105,0.020,0.0205,0.72,0.73,0.45,0.462,0.25,0.252,0.002,0.002,0.003,0.003,0.008,0.003,0.012,0.035,0.030),"safe candidate");
+            req(!LocalTonePolicy.safeCandidate(0.050,0.043,0.010,0.010,0.020,0.020,0.72,0.72,0.45,0.46,0.25,0.25,0.002,0.002,0.003,0.003,0.008,0.003,0.010,0.030,0.025),"detail loss reject");
+            req(!LocalTonePolicy.safeCandidate(0.050,0.050,0.010,0.013,0.020,0.020,0.72,0.72,0.45,0.46,0.25,0.25,0.002,0.002,0.003,0.003,0.008,0.003,0.010,0.030,0.025),"noise reject");
+            req(!LocalTonePolicy.safeCandidate(0.050,0.050,0.010,0.010,0.020,0.020,0.72,0.72,0.45,0.45,0.25,0.25,0.002,0.002,0.003,0.003,0.0005,0.0003,0.001,0.010,0.008),"no-benefit reject");
+            req(!LocalTonePolicy.safeCandidate(0.050,0.050,0.010,0.010,0.020,0.020,0.72,0.72,0.45,0.46,0.25,0.25,0.002,0.002,0.003,0.003,0.008,0.003,0.020,0.090,0.060),"excess delta reject");
+            System.out.println("LocalTonePolicyHostChecks passed");
+           }
+           private static void req(boolean c,String m){if(!c)throw new AssertionError(m);}
+          }
+          JAVA_HOST
+          python3 - <<'PYPATCH'
+          from pathlib import Path
+          import os,re
+          project=Path(os.environ['PROJECT'])
+          bf=project/'app/build.gradle'; b=bf.read_text()
+          if 'versionCode 34' not in b or "versionName '0.4.25'" not in b:
+              raise RuntimeError('v0.4.25 version anchor missing')
+          b=b.replace('versionCode 34','versionCode 35',1).replace("versionName '0.4.25'","versionName '0.4.26'",1)
+          bf.write_text(b)
+          mainf=project/'app/src/main/java/com/dennis/photomasterai/MainActivity.java'; main=mainf.read_text()
+          pat=re.compile(r'(?ms)^(?P<i>[ \t]*)PhotoMasterEngine\.Result[ \t]+v0424ColourResult[ \t]*=[ \t\r\n]*applyColourSpaceGuard\([ \t\r\n]*(?P<input>[A-Za-z_][A-Za-z0-9_]*)[ \t]*,[ \t\r\n]*originalBitmap[ \t\r\n]*\);[ \t\r\n]*(?P<final>final[ \t]+)?PhotoMasterEngine\.Result[ \t]+(?P<var>[A-Za-z_][A-Za-z0-9_]*)[ \t]*=[ \t\r\n]*applyGeometryIntelligence\([ \t\r\n]*v0424ColourResult[ \t]*,[ \t\r\n]*originalBitmap[ \t\r\n]*\);')
+          m=pat.search(main)
+          if not m:
+              at=main.find('v0424ColourResult')
+              if at>=0: print(main[max(0,at-700):at+1700])
+              raise RuntimeError('v0.4.25 colour->geometry flow not found')
+          i=m.group('i'); inp=m.group('input'); fin=m.group('final') or ''; var=m.group('var')
+          new=(i+'PhotoMasterEngine.Result v0426ToneResult =\n'+i+'        applyLocalToneIntelligence(\n'+i+'                '+inp+',\n'+i+'                originalBitmap);\n\n'+i+'PhotoMasterEngine.Result v0424ColourResult =\n'+i+'        applyColourSpaceGuard(\n'+i+'                v0426ToneResult,\n'+i+'                originalBitmap);\n\n'+i+fin+'PhotoMasterEngine.Result '+var+' =\n'+i+'        applyGeometryIntelligence(\n'+i+'                v0424ColourResult,\n'+i+'                originalBitmap);')
+          main,n=pat.subn(lambda _:new,main,count=1)
+          if n!=1: raise RuntimeError('Unexpected pipeline replacement count')
+          anchor='    private PhotoMasterEngine.Result applyGeometryIntelligence('
+          if anchor not in main: raise RuntimeError('Geometry helper anchor missing')
+          helper="""    private PhotoMasterEngine.Result applyLocalToneIntelligence(
+                          PhotoMasterEngine.Result result,
+                          Bitmap authoritativeOriginal) {
+                      if (result == null || result.bitmap == null || result.bitmap.isRecycled()
+                              || authoritativeOriginal == null || authoritativeOriginal.isRecycled()) return result;
+                      LocalToneIntelligence.Outcome tone = LocalToneIntelligence.process(
+                              result.bitmap, authoritativeOriginal, result.report);
+                      String report = insertLocalToneReport(result.report, tone.report);
+                      if (tone.analysis != null) report = replaceOutputQcMetrics(report, tone.analysis);
+                      if (tone.bitmap != result.bitmap) {
+                          Bitmap previous = result.bitmap;
+                          if (previous != authoritativeOriginal && !previous.isRecycled()) previous.recycle();
+                      }
+                      return new PhotoMasterEngine.Result(tone.bitmap, report,
+                              tone.analysis != null ? tone.analysis : PhotoAnalysis.analyse(tone.bitmap));
+                  }
+          
+                  private String insertLocalToneReport(String sourceReport, String localToneReport) {
+                      String section = "\\nLOCAL TONE INTELLIGENCE\\n" + localToneReport + "\\n";
+                      if (sourceReport == null) return section.trim();
+                      String marker = "\\nOUTPUT QC\\n";
+                      int at = sourceReport.indexOf(marker);
+                      if (at < 0) return sourceReport + section;
+                      return sourceReport.substring(0, at) + section + sourceReport.substring(at);
+                  }
+          
+          """
+          main=main.replace(anchor,helper+anchor,1)
+          mainf.write_text(main)
+          print('v0.4.26 pipeline patch applied: local tone -> colour guard -> geometry')
+          PYPATCH
+          grep -q "versionCode 35" "$PROJECT/app/build.gradle"
+          grep -q "versionName '0.4.26'" "$PROJECT/app/build.gradle"
+          grep -q "class LocalTonePolicy" "$PROJECT/app/src/main/java/com/dennis/photomasterai/LocalTonePolicy.java"
+          grep -q "class LocalToneIntelligence" "$PROJECT/app/src/main/java/com/dennis/photomasterai/LocalToneIntelligence.java"
+          grep -q "applyLocalToneIntelligence" "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+          grep -q "LOCAL TONE INTELLIGENCE" "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+          grep -q "applyColourSpaceGuard" "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+          grep -q "applyGeometryIntelligence" "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+
+      - name: Fetch pinned NAFNet-SIDD model
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${{ steps.source.outputs.project }}"
+          ASSETS="$PROJECT/app/src/main/assets"; MODEL="$ASSETS/nafnet_sidd_width32_fp16.tflite"; mkdir -p "$ASSETS"
+          URL='https://huggingface.co/litert-community/NAFNet-SIDD-width32-LiteRT/resolve/main/nafnet_sidd_width32_fp16.tflite?download=true'
+          curl --fail --location --retry 5 --retry-all-errors --connect-timeout 30 --output "$MODEL.tmp" "$URL"
+          mv "$MODEL.tmp" "$MODEL"
+          test "$(stat -c%s "$MODEL")" -eq 62454048 || { echo "::error::Unexpected NAFNet model size"; exit 1; }
+          echo 'f8fbaa422411683c53e802cf7cc7cf9be0a0de00886ad4af057232e26b172a0c  '"$MODEL" | sha256sum -c -
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Run all safety host checks
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf host-checks; mkdir host-checks
+          javac -d host-checks \
+            app/src/main/java/com/dennis/photomasterai/DeepPixelRepair.java \
+            app/src/main/java/com/dennis/photomasterai/RepairSafetyPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/SocialSourcePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralIntegrityPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/OpticalFringePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/VignettingPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/PersonEvidencePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/HighRingFinishingPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/GeometryPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/LocalTonePolicy.java \
+            tools/DeepPixelRepairHostChecks.java tools/RepairSafetyPolicyHostChecks.java tools/NeuralDenoisePolicyHostChecks.java \
+            tools/SocialSourcePolicyHostChecks.java tools/SmoothSurfaceGuardHostChecks.java tools/NeuralIntegrityPolicyHostChecks.java \
+            tools/OpticalFringePolicyHostChecks.java tools/VignettingPolicyHostChecks.java tools/PersonEvidencePolicyHostChecks.java \
+            tools/HighBlendDetailGuardHostChecks.java tools/HighRingFinishingPolicyHostChecks.java tools/GeometryPolicyHostChecks.java \
+            tools/LocalTonePolicyHostChecks.java
+          for C in DeepPixelRepairHostChecks RepairSafetyPolicyHostChecks NeuralDenoisePolicyHostChecks SocialSourcePolicyHostChecks SmoothSurfaceGuardHostChecks NeuralIntegrityPolicyHostChecks OpticalFringePolicyHostChecks VignettingPolicyHostChecks PersonEvidencePolicyHostChecks HighBlendDetailGuardHostChecks HighRingFinishingPolicyHostChecks GeometryPolicyHostChecks LocalTonePolicyHostChecks; do
+            java -cp host-checks "com.dennis.photomasterai.$C"
+          done
+
+      - name: Restore stable Photo Master debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: photo-master-ai-debug-keystore-v1
+
+      - name: Create signing key on first build
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -dname "CN=Photo Master AI,O=Dennis Photo Master,C=AU" -keyalg RSA -keysize 2048 -validity 10000 -noprompt
+          fi
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Configure Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"; echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(find "$SDK/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"; fi
+          test -n "$SDKMANAGER" || { echo "::error::sdkmanager not found"; exit 1; }
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Build v0.4.26 APK
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :app:assembleDebug --stacktrace
+
+      - name: Verify package and prepare artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${{ steps.source.outputs.project }}"; APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK" || { echo "::error::APK not found"; exit 1; }
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"; AAPT="$SDK/build-tools/35.0.0/aapt"
+          BADGING="$("$AAPT" dump badging "$APK" | head -n 1)"; echo "$BADGING"
+          echo "$BADGING" | grep -q "package: name='com.dennis.photomasterai'"
+          echo "$BADGING" | grep -q "versionCode='35'"; echo "$BADGING" | grep -q "versionName='0.4.26'"
+          unzip -l "$APK" | grep -q 'assets/nafnet_sidd_width32_fp16.tflite'
+          rm -rf artifact; mkdir artifact
+          OUT="artifact/PhotoMasterAI-v0.4.26-LOCAL-TONE.apk"; cp "$APK" "$OUT"
+          sha256sum "$OUT" > artifact/PhotoMasterAI-v0.4.26-LOCAL-TONE-SHA256.txt
+          cat > artifact/PhotoMasterAI-v0.4.26-Notes.txt <<'EOF'
+          Photo Master AI v0.4.26 — Local Tone Intelligence
+          Baseline: exact successful v0.4.25 / run 37586025982.
+          New: 10x10 feathered luminance map; edge-aware local shadow recovery; local highlight containment; bright-subject/dark-background guard; deep-black protection; AI-tag-guided sky/foliage/warm-subject protection; neutral-specular protection; target-response measurement and full rollback QC.
+          Pipeline: local tone runs immediately before preserve-source ColorSpaceGuard, then validated v0.4.25 Geometry Intelligence.
+          Retained: Display P3/sRGB handling, high-ring guard, NAFNet/OpenCL, neural/person/smooth-surface/local-integrity guards, shadow rollback, CA/fringe QC, vignetting intelligence, background processing, JPEG 100.
+          First tests: flower; indoor room; night scooter; Chinchilla building; balanced daylight.
+          EOF
+
+      - name: Upload APK and continuation notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoMasterAI-v0.4.26-LOCAL-TONE
+          path: |
+            artifact/PhotoMasterAI-v0.4.26-LOCAL-TONE.apk
+            artifact/PhotoMasterAI-v0.4.26-LOCAL-TONE-SHA256.txt
+            artifact/PhotoMasterAI-v0.4.26-Notes.txt
+          if-no-files-found: error
+          retention-days: 30
