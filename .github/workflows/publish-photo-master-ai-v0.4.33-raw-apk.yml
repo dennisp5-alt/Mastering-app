@@ -148,3 +148,5 @@ jobs:
           fi
 
           echo "Raw APK release published"
+
+# trigger raw APK validation/release
