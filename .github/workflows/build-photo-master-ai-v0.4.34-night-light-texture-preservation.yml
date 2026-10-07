@@ -1,0 +1,853 @@
+name: Build Photo Master AI v0.4.34 Night Light Texture Preservation
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-photo-master-ai-v0.4.34-night-light-texture-preservation.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Photo Master AI v0.4.34 Night Light Texture Preservation
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository with history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Recover exact successful v0.4.33 source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          V0433_COMMIT="c070e496f68813306f2820bfbf6fc6cd185c73d0"
+
+          git cat-file -e "${V0433_COMMIT}^{commit}" || {
+            echo "::error::Successful v0.4.33 commit unavailable"
+            exit 1
+          }
+
+          git show             "${V0433_COMMIT}:.github/workflows/build-photo-master-ai-v0.4.33-night-light-qc-accounting.yml"             > /tmp/v0433.yml
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          lines = Path('/tmp/v0433.yml').read_text().splitlines()
+
+          def extract_step(name, destination):
+              start = None
+
+              for i, line in enumerate(lines):
+                  if line.strip() == '- name: ' + name:
+                      start = i
+                      break
+
+              if start is None:
+                  raise RuntimeError(
+                      'Workflow step not found: ' + name
+                  )
+
+              run = None
+
+              for i in range(start, len(lines)):
+                  if lines[i].strip() == 'run: |':
+                      run = i
+                      break
+
+                  if (
+                      i > start
+                      and lines[i].startswith('      - name:')
+                  ):
+                      break
+
+              if run is None:
+                  raise RuntimeError(
+                      'Run block not found: ' + name
+                  )
+
+              body = []
+
+              for line in lines[run + 1:]:
+                  if line.startswith('      - name:'):
+                      break
+
+                  if not line.strip():
+                      body.append('')
+
+                  elif line.startswith('          '):
+                      body.append(line[10:])
+
+                  else:
+                      raise RuntimeError(
+                          'Unexpected indentation while extracting: '
+                          + name
+                      )
+
+              Path(destination).write_text(
+                  '\n'.join(body) + '\n'
+              )
+
+          extract_step(
+              'Recover exact successful v0.4.32 source',
+              '/tmp/recover-v0432.sh'
+          )
+
+          extract_step(
+              'Apply v0.4.33 Night Light QC Accounting Fix',
+              '/tmp/apply-v0433.sh'
+          )
+          PY
+
+          bash /tmp/recover-v0432.sh
+
+          PROJECT="$(
+            find photomaster-v044-build               -type f               \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \)               -printf '%h\n'               | head -n 1
+          )"
+
+          test -n "$PROJECT" || {
+            echo "::error::Recovered project not found"
+            exit 1
+          }
+
+          export PROJECT
+
+          bash /tmp/apply-v0433.sh
+
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+
+          grep -q "versionCode 42"             "$PROJECT/app/build.gradle"
+
+          grep -q "versionName '0.4.33'"             "$PROJECT/app/build.gradle"
+
+          grep -q "globalMeanChannelDelta"             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+          grep -q "activeMeanChannelDelta"             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+          grep -q "edgeProtection"             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+          grep -q "localEdgeStrength"             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
+
+          grep -q "MAX_MEAN_CHANNEL_DELTA = 0.0080"             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+          echo "Exact successful v0.4.33 source recovered"
+
+      - name: Apply v0.4.34 Night Light Texture Preservation
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          project = Path(os.environ['PROJECT'])
+
+          build_file = project / 'app/build.gradle'
+          build = build_file.read_text()
+
+          if 'versionCode 42' not in build:
+              raise RuntimeError(
+                  'v0.4.33 versionCode not found'
+              )
+
+          if "versionName '0.4.33'" not in build:
+              raise RuntimeError(
+                  'v0.4.33 versionName not found'
+              )
+
+          build = build.replace(
+              'versionCode 42',
+              'versionCode 43',
+              1
+          )
+
+          build = build.replace(
+              "versionName '0.4.33'",
+              "versionName '0.4.34'",
+              1
+          )
+
+          build_file.write_text(build)
+
+          # -------------------------------------------------------
+          # POLICY: ADD FINE-TEXTURE PROTECTION
+          # -------------------------------------------------------
+
+          policy_file = project / (
+              'app/src/main/java/com/dennis/'
+              'photomasterai/NightLightControlPolicy.java'
+          )
+
+          policy = policy_file.read_text()
+
+          if 'MAX_MEAN_CHANNEL_DELTA = 0.0080' not in policy:
+              raise RuntimeError(
+                  'Night Light mean-channel safety limit changed unexpectedly'
+              )
+
+          if 'MAX_CHANNEL_DELTA = 0.0320' not in policy:
+              raise RuntimeError(
+                  'Night Light max-channel safety limit changed unexpectedly'
+              )
+
+          # High-ring night scenes receive a slightly lower ceiling.
+          # This is more conservative than v0.4.33 and does not relax QC.
+
+          old_high_ring = re.compile(
+              r'if\s*\(ringing\s*>=\s*0\.82\)\s*\{\s*'
+              r'cap\s*=\s*0\.240\s*;'
+          )
+
+          policy, high_ring_count = old_high_ring.subn(
+              'if (ringing >= 0.82) {\n\n'
+              '            cap = 0.225;',
+              policy,
+              count=1
+          )
+
+          if high_ring_count != 1:
+              raise RuntimeError(
+                  'High-ring Night Light strength anchor not found'
+              )
+
+          helper_anchor = '    private static void add('
+
+          if helper_anchor not in policy:
+              raise RuntimeError(
+                  'Night Light policy helper anchor not found'
+              )
+
+          texture_method = r'''
+              public static double textureProtection(
+                      double textureStrength) {
+
+                  /*
+                   * Protect low-contrast repeated texture that can
+                   * escape a pure edge detector: grass, concrete,
+                   * tyre tread, deck texture and fine mechanical
+                   * detail.
+                   *
+                   * Return value is an edit multiplier:
+                   * 1.0 = normal Night Light correction
+                   * lower = increasingly protected.
+                   */
+
+                  if (textureStrength >= 0.050)
+                      return 0.35;
+
+                  if (textureStrength >= 0.032)
+                      return 0.50;
+
+                  if (textureStrength >= 0.020)
+                      return 0.68;
+
+                  if (textureStrength >= 0.012)
+                      return 0.84;
+
+                  return 1.0;
+              }
+
+          '''
+
+          policy = policy.replace(
+              helper_anchor,
+              texture_method + helper_anchor,
+              1
+          )
+
+          policy_file.write_text(policy)
+
+          # -------------------------------------------------------
+          # ENGINE: TEXTURE-AWARE COMPRESSION
+          # -------------------------------------------------------
+
+          engine_file = project / (
+              'app/src/main/java/com/dennis/'
+              'photomasterai/NightLightControlIntelligence.java'
+          )
+
+          engine = engine_file.read_text()
+
+          field_anchor = 'long protectedEdgePixels;'
+
+          if field_anchor not in engine:
+              raise RuntimeError(
+                  'Night Light edge diagnostic field not found'
+              )
+
+          engine = engine.replace(
+              field_anchor,
+              field_anchor
+              + '\n'
+              + '        long protectedTexturePixels;'
+              + '\n'
+              + '        double textureStrengthSum;'
+              + '\n'
+              + '        long textureSampleCount;',
+              1
+          )
+
+          weight_pattern = re.compile(
+              r'weight\s*\*=\s*edgeProtection\s*;'
+          )
+
+          texture_guard = r'''double textureStrength =
+                                      localTextureStrength(
+                                              sourcePixels,
+                                              width,
+                                              rows,
+                                              localY,
+                                              x,
+                                              lum);
+
+                              double textureProtection =
+                                      NightLightControlPolicy.textureProtection(
+                                              textureStrength);
+
+                              summary.textureStrengthSum +=
+                                      textureStrength;
+
+                              summary.textureSampleCount++;
+
+                              if (textureProtection < 0.999) {
+
+                                  summary.protectedTexturePixels++;
+                              }
+
+                              double structureProtection =
+                                      Math.min(
+                                              edgeProtection,
+                                              textureProtection);
+
+                              weight *=
+                                      structureProtection;'''
+
+          engine, weight_count = weight_pattern.subn(
+              texture_guard,
+              engine,
+              count=1
+          )
+
+          if weight_count != 1:
+              raise RuntimeError(
+                  'Night Light edge-weight anchor not found'
+              )
+
+          # -------------------------------------------------------
+          # ENGINE: 3x3 LOW-CONTRAST TEXTURE ESTIMATOR
+          # -------------------------------------------------------
+
+          helper_anchor = (
+              '    private static double localEdgeStrength('
+          )
+
+          if helper_anchor not in engine:
+              raise RuntimeError(
+                  'Night Light local-edge helper anchor not found'
+              )
+
+          texture_helper = r'''    private static double localTextureStrength(
+                      int[] pixels,
+                      int width,
+                      int rows,
+                      int y,
+                      int x,
+                      double centreLuma) {
+
+                  double sumAbs = 0.0;
+                  double minLuma = centreLuma;
+                  double maxLuma = centreLuma;
+                  int count = 0;
+
+                  for (int dy = -1; dy <= 1; dy++) {
+
+                      int yy = y + dy;
+
+                      if (yy < 0 || yy >= rows)
+                          continue;
+
+                      for (int dx = -1; dx <= 1; dx++) {
+
+                          if (dx == 0 && dy == 0)
+                              continue;
+
+                          int xx = x + dx;
+
+                          if (xx < 0 || xx >= width)
+                              continue;
+
+                          double neighbour =
+                                  pixelLuma(
+                                          pixels[
+                                                  yy * width
+                                                          + xx]);
+
+                          sumAbs +=
+                                  Math.abs(
+                                          centreLuma
+                                                  - neighbour);
+
+                          minLuma =
+                                  Math.min(
+                                          minLuma,
+                                          neighbour);
+
+                          maxLuma =
+                                  Math.max(
+                                          maxLuma,
+                                          neighbour);
+
+                          count++;
+                      }
+                  }
+
+                  if (count <= 0)
+                      return 0.0;
+
+                  double meanAbs =
+                          sumAbs
+                                  / (double)
+                                  count;
+
+                  double localRange =
+                          maxLuma
+                                  - minLuma;
+
+                  /*
+                   * Mean absolute variation catches repeated micro-
+                   * texture. A reduced range contribution catches
+                   * sparse fine texture without treating a smooth
+                   * gradient as a hard edge.
+                   */
+
+                  return Math.max(
+                          meanAbs,
+                          localRange * 0.35);
+              }
+
+          '''
+
+          engine = engine.replace(
+              helper_anchor,
+              texture_helper + helper_anchor,
+              1
+          )
+
+          # -------------------------------------------------------
+          # REPORT TEXTURE-GUARD DIAGNOSTICS
+          # -------------------------------------------------------
+
+          rollback_anchor = (
+              '        if (!qc.accepted) {'
+          )
+
+          if rollback_anchor not in engine:
+              raise RuntimeError(
+                  'Night Light QC rollback anchor not found'
+              )
+
+          texture_report = r'''        report.append(
+                  String.format(
+                          Locale.US,
+                          "• Texture guard protected pixels %d | mean eligible texture %.4f%n",
+                          summary.protectedTexturePixels,
+                          summary.textureSampleCount > 0
+                                  ? summary.textureStrengthSum
+                                  / summary.textureSampleCount
+                                  : 0.0));
+
+'''
+
+          engine = engine.replace(
+              rollback_anchor,
+              texture_report + rollback_anchor,
+              1
+          )
+
+          engine_file.write_text(engine)
+
+          # -------------------------------------------------------
+          # HOST CHECKS
+          # -------------------------------------------------------
+
+          host_file = project / (
+              'tools/'
+              'NightLightTexturePreservationHostChecks.java'
+          )
+
+          host_file.write_text(r'''package com.dennis.photomasterai;
+
+          public final class NightLightTexturePreservationHostChecks {
+
+              public static void main(
+                      String[] args) {
+
+                  requireClose(
+                          NightLightControlPolicy.textureProtection(
+                                  0.005),
+                          1.0,
+                          "smooth spill should remain fully eligible");
+
+                  requireClose(
+                          NightLightControlPolicy.textureProtection(
+                                  0.015),
+                          0.84,
+                          "fine texture protection incorrect");
+
+                  requireClose(
+                          NightLightControlPolicy.textureProtection(
+                                  0.025),
+                          0.68,
+                          "medium texture protection incorrect");
+
+                  requireClose(
+                          NightLightControlPolicy.textureProtection(
+                                  0.040),
+                          0.50,
+                          "strong texture protection incorrect");
+
+                  requireClose(
+                          NightLightControlPolicy.textureProtection(
+                                  0.060),
+                          0.35,
+                          "very strong texture protection incorrect");
+
+                  double highRing =
+                          NightLightControlPolicy.effectiveStrength(
+                                  0.307,
+                                  0.84);
+
+                  requireClose(
+                          highRing,
+                          0.225,
+                          "high-ringing Night Light cap incorrect");
+
+                  require(
+                          NightLightControlPolicy
+                                  .MAX_MEAN_CHANNEL_DELTA
+                                  == 0.0080,
+                          "mean-channel QC ceiling changed");
+
+                  require(
+                          NightLightControlPolicy
+                                  .MAX_CHANNEL_DELTA
+                                  == 0.0320,
+                          "max-channel QC ceiling changed");
+
+                  NightLightControlPolicy.QcResult safe =
+                          NightLightControlPolicy.evaluateCandidate(
+                                  0.0400,
+                                  0.0396,
+                                  0.0080,
+                                  0.0080,
+                                  0.0170,
+                                  0.0170,
+                                  0.82,
+                                  0.81,
+                                  0.19,
+                                  0.19,
+                                  0.000,
+                                  0.000,
+                                  0.000,
+                                  0.000,
+                                  0.010,
+                                  0.000,
+                                  0.20,
+                                  0.004,
+                                  0.0314);
+
+                  require(
+                          safe.accepted,
+                          "safe texture-preserving candidate should pass unchanged QC");
+
+                  System.out.println(
+                          "NightLightTexturePreservationHostChecks passed");
+              }
+
+              private static void requireClose(
+                      double actual,
+                      double expected,
+                      String message) {
+
+                  if (
+                      Math.abs(
+                              actual - expected)
+                              > 0.0000001) {
+
+                      throw new AssertionError(
+                              message
+                                      + ": "
+                                      + actual
+                                      + " != "
+                                      + expected);
+                  }
+              }
+
+              private static void require(
+                      boolean condition,
+                      String message) {
+
+                  if (!condition)
+                      throw new AssertionError(
+                              message);
+              }
+          }
+          ''')
+
+          print(
+              'v0.4.34 applied: Night Light now preserves '
+              'low-contrast micro-texture in addition to hard edges; '
+              'high-ring strength is slightly more conservative; '
+              'all existing QC thresholds remain unchanged'
+          )
+          PY
+
+          grep -q "versionCode 43"             "$PROJECT/app/build.gradle"
+
+          grep -q "versionName '0.4.34'"             "$PROJECT/app/build.gradle"
+
+          grep -q "textureProtection"             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+          grep -q "cap = 0.225"             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+          grep -q "localTextureStrength"             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
+
+          grep -q "protectedTexturePixels"             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
+
+          grep -q "Texture guard protected pixels"             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
+
+          grep -q "MAX_MEAN_CHANNEL_DELTA = 0.0080"             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+          grep -q "MAX_CHANNEL_DELTA = 0.0320"             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+      - name: Fetch pinned NAFNet-SIDD model
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+          ASSETS="$PROJECT/app/src/main/assets"
+          MODEL="$ASSETS/nafnet_sidd_width32_fp16.tflite"
+
+          mkdir -p "$ASSETS"
+
+          URL='https://huggingface.co/litert-community/NAFNet-SIDD-width32-LiteRT/resolve/main/nafnet_sidd_width32_fp16.tflite?download=true'
+
+          curl             --fail             --location             --retry 5             --retry-all-errors             --connect-timeout 30             --output "$MODEL.tmp"             "$URL"
+
+          mv "$MODEL.tmp" "$MODEL"
+
+          test "$(stat -c%s "$MODEL")" -eq 62454048 || {
+            echo "::error::Unexpected NAFNet model size"
+            exit 1
+          }
+
+          echo             'f8fbaa422411683c53e802cf7cc7cf9be0a0de00886ad4af057232e26b172a0c  '"$MODEL"             | sha256sum -c -
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Run all safety host checks
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf host-checks
+          mkdir host-checks
+
+          javac -d host-checks             app/src/main/java/com/dennis/photomasterai/DeepPixelRepair.java             app/src/main/java/com/dennis/photomasterai/RepairSafetyPolicy.java             app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java             app/src/main/java/com/dennis/photomasterai/SocialSourcePolicy.java             app/src/main/java/com/dennis/photomasterai/NeuralIntegrityPolicy.java             app/src/main/java/com/dennis/photomasterai/OpticalFringePolicy.java             app/src/main/java/com/dennis/photomasterai/VignettingPolicy.java             app/src/main/java/com/dennis/photomasterai/PersonEvidencePolicy.java             app/src/main/java/com/dennis/photomasterai/HighRingFinishingPolicy.java             app/src/main/java/com/dennis/photomasterai/GeometryPolicy.java             app/src/main/java/com/dennis/photomasterai/LocalTonePolicy.java             app/src/main/java/com/dennis/photomasterai/MixedLightColourPolicy.java             app/src/main/java/com/dennis/photomasterai/PerceptualImprovementPolicy.java             app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java             tools/DeepPixelRepairHostChecks.java             tools/RepairSafetyPolicyHostChecks.java             tools/NeuralDenoisePolicyHostChecks.java             tools/SocialSourcePolicyHostChecks.java             tools/SmoothSurfaceGuardHostChecks.java             tools/NeuralIntegrityPolicyHostChecks.java             tools/OpticalFringePolicyHostChecks.java             tools/VignettingPolicyHostChecks.java             tools/PersonEvidencePolicyHostChecks.java             tools/HighBlendDetailGuardHostChecks.java             tools/HighRingFinishingPolicyHostChecks.java             tools/GeometryPolicyHostChecks.java             tools/LocalTonePolicyHostChecks.java             tools/MixedLightColourPolicyHostChecks.java             tools/MixedLightContinuityPolicyHostChecks.java             tools/PerceptualImprovementPolicyHostChecks.java             tools/NightLightControlPolicyHostChecks.java             tools/NightLightDetailGuardHostChecks.java             tools/NightLightQcAccountingHostChecks.java             tools/NightLightTexturePreservationHostChecks.java
+
+          for C in             DeepPixelRepairHostChecks             RepairSafetyPolicyHostChecks             NeuralDenoisePolicyHostChecks             SocialSourcePolicyHostChecks             SmoothSurfaceGuardHostChecks             NeuralIntegrityPolicyHostChecks             OpticalFringePolicyHostChecks             VignettingPolicyHostChecks             PersonEvidencePolicyHostChecks             HighBlendDetailGuardHostChecks             HighRingFinishingPolicyHostChecks             GeometryPolicyHostChecks             LocalTonePolicyHostChecks             MixedLightColourPolicyHostChecks             MixedLightContinuityPolicyHostChecks             PerceptualImprovementPolicyHostChecks             NightLightControlPolicyHostChecks             NightLightDetailGuardHostChecks             NightLightQcAccountingHostChecks             NightLightTexturePreservationHostChecks
+          do
+            java               -cp host-checks               "com.dennis.photomasterai.$C"
+          done
+
+      - name: Restore stable Photo Master debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: photo-master-ai-debug-keystore-v1
+
+      - name: Create signing key on first build
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$HOME/.android"
+
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool               -genkeypair               -keystore "$HOME/.android/debug.keystore"               -storepass android               -alias androiddebugkey               -keypass android               -dname "CN=Photo Master AI,O=Dennis Photo Master,C=AU"               -keyalg RSA               -keysize 2048               -validity 10000               -noprompt
+          fi
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Configure Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(
+              find "$SDK/cmdline-tools"                 -type f                 -name 'sdkmanager'                 | sort -V                 | tail -n 1
+            )"
+          fi
+
+          test -n "$SDKMANAGER" || {
+            echo "::error::sdkmanager not found"
+            exit 1
+          }
+
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+
+          "$SDKMANAGER"             "platform-tools"             "platforms;android-35"             "build-tools;35.0.0"
+
+      - name: Build v0.4.34 APK
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gradle             :app:assembleDebug             --stacktrace
+
+      - name: Verify package and prepare artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+          APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
+
+          test -f "$APK" || {
+            echo "::error::APK not found"
+            exit 1
+          }
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          AAPT="$SDK/build-tools/35.0.0/aapt"
+
+          BADGING="$(
+            "$AAPT" dump badging "$APK"               | head -n 1
+          )"
+
+          echo "$BADGING"
+
+          echo "$BADGING"             | grep -q             "package: name='com.dennis.photomasterai'"
+
+          echo "$BADGING"             | grep -q             "versionCode='43'"
+
+          echo "$BADGING"             | grep -q             "versionName='0.4.34'"
+
+          unzip -l "$APK"             | grep -q             'assets/nafnet_sidd_width32_fp16.tflite'
+
+          rm -rf artifact
+          mkdir artifact
+
+          OUT="artifact/PhotoMasterAI-v0.4.34-NIGHT-LIGHT-TEXTURE-PRESERVATION.apk"
+
+          cp "$APK" "$OUT"
+
+          sha256sum "$OUT"             > "artifact/PhotoMasterAI-v0.4.34-NIGHT-LIGHT-TEXTURE-PRESERVATION-SHA256.txt"
+
+          cat > "artifact/PhotoMasterAI-v0.4.34-Notes.txt" <<'EOF'
+          Photo Master AI — v0.4.34 Night Light Texture Preservation
+
+          Version: 0.4.34
+          versionCode: 43
+
+          BASELINE
+          Exact successful v0.4.33 source reconstructed from
+          commit c070e496f68813306f2820bfbf6fc6cd185c73d0.
+
+          PURPOSE
+          v0.4.33 corrected Night Light QC accounting successfully.
+          The remaining night-scooter rollback is a genuine detail-
+          retention failure, not an accounting failure.
+
+          CHANGES
+          - adds 3x3 low-contrast micro-texture detection
+          - protects grass, concrete, tyre/deck texture and fine detail
+            that can escape hard-edge-only detection
+          - combines hard-edge and micro-texture protection using the
+            more conservative multiplier
+          - high-ringing Night Light strength cap reduced from 0.240
+            to 0.225
+          - smooth bright flash spill remains fully eligible
+          - new texture protection diagnostics added to the report
+
+          UNCHANGED SAFETY
+          - detail retention requirement remains 98.5%
+          - global mean channel delta ceiling remains 0.0080
+          - max channel delta remains 0.0320
+          - 8/255 render channel cap remains unchanged
+          - dark-sky protection remains unchanged
+          - saturation/clipping/noise/chroma/ringing QC unchanged
+          - no QC threshold has been relaxed
+          EOF
+
+      - name: Validate APK installability
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APK="artifact/PhotoMasterAI-v0.4.34-NIGHT-LIGHT-TEXTURE-PRESERVATION.apk"
+          BT="$ANDROID_SDK_ROOT/build-tools/35.0.0"
+
+          unzip -t "$APK"
+
+          "$BT/zipalign" -c -v 4 "$APK"
+
+          "$BT/apksigner" verify             --verbose             --print-certs             "$APK"
+
+      - name: Publish raw APK GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          TAG="photo-master-ai-v0.4.34-r1"
+          APK="artifact/PhotoMasterAI-v0.4.34-NIGHT-LIGHT-TEXTURE-PRESERVATION.apk"
+          SHA="artifact/PhotoMasterAI-v0.4.34-NIGHT-LIGHT-TEXTURE-PRESERVATION-SHA256.txt"
+          NOTES="artifact/PhotoMasterAI-v0.4.34-Notes.txt"
+
+          if gh release view "$TAG"             --repo "${{ github.repository }}" >/dev/null 2>&1
+          then
+            gh release upload "$TAG"               --repo "${{ github.repository }}"               --clobber               "$APK" "$SHA" "$NOTES"
+          else
+            gh release create "$TAG"               --repo "${{ github.repository }}"               --title "Photo Master AI v0.4.34"               --notes "Night Light Texture Preservation. Raw APK verified for container integrity, alignment and signing before publication."               "$APK" "$SHA" "$NOTES"
+          fi
+
+      - name: Upload APK and continuation notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoMasterAI-v0.4.34-NIGHT-LIGHT-TEXTURE-PRESERVATION
+          path: |
+            artifact/PhotoMasterAI-v0.4.34-NIGHT-LIGHT-TEXTURE-PRESERVATION.apk
+            artifact/PhotoMasterAI-v0.4.34-NIGHT-LIGHT-TEXTURE-PRESERVATION-SHA256.txt
+            artifact/PhotoMasterAI-v0.4.34-Notes.txt
+          if-no-files-found: error
+          retention-days: 30
