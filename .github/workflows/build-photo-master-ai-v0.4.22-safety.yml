@@ -1,0 +1,539 @@
+name: Build Photo Master AI v0.4.22 Safety Refinement
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-photo-master-ai-v0.4.22-safety.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Photo Master AI v0.4.22 Safety Refinement
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+
+    steps:
+      - name: Checkout repository with history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Recover exact successful v0.4.21 source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          V0421_COMMIT="02dbde94de2d4b136832cb913a483e0b1a30eb2c"
+
+          git cat-file -e "${V0421_COMMIT}^{commit}" || {
+            echo "::error::Successful v0.4.21 commit unavailable"
+            exit 1
+          }
+
+          git show \
+            "${V0421_COMMIT}:.github/workflows/build-photo-master-ai-v0.4.21-vignetting.yml" \
+            > /tmp/v0421.yml
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          lines = Path('/tmp/v0421.yml').read_text().splitlines()
+
+          def extract_step(name, destination):
+              step = None
+              for i, line in enumerate(lines):
+                  if line.strip() == '- name: ' + name:
+                      step = i
+                      break
+              if step is None:
+                  raise RuntimeError('Workflow step not found: ' + name)
+
+              run = None
+              for i in range(step, len(lines)):
+                  if lines[i].strip() == 'run: |':
+                      run = i
+                      break
+                  if i > step and lines[i].startswith('      - name:'):
+                      break
+              if run is None:
+                  raise RuntimeError('Run block not found: ' + name)
+
+              body = []
+              for line in lines[run + 1:]:
+                  if line.startswith('      - name:'):
+                      break
+                  if not line.strip():
+                      body.append('')
+                  elif line.startswith('          '):
+                      body.append(line[10:])
+                  else:
+                      raise RuntimeError('Unexpected indentation while extracting: ' + name)
+
+              Path(destination).write_text('\n'.join(body) + '\n')
+
+          extract_step(
+              'Recover exact successful v0.4.20 source',
+              '/tmp/recover-v0420.sh'
+          )
+          extract_step(
+              'Apply v0.4.21 measured vignetting guard',
+              '/tmp/apply-v0421.sh'
+          )
+          PY
+
+          bash /tmp/recover-v0420.sh
+
+          PROJECT="$(
+            find photomaster-v044-build \
+              -type f \
+              \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \) \
+              -printf '%h\n' \
+              | head -n 1
+          )"
+
+          test -n "$PROJECT" || {
+            echo "::error::Recovered project not found"
+            exit 1
+          }
+
+          export PROJECT
+          bash /tmp/apply-v0421.sh
+
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+
+          grep -q "versionCode 30" "$PROJECT/app/build.gradle"
+          grep -q "versionName '0.4.21'" "$PROJECT/app/build.gradle"
+          grep -q "class VignettingPolicy" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/VignettingPolicy.java"
+          grep -q "Final shadow-integrity guard: ROLLBACK" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+          grep -q "class ProcessingKeepAliveService" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/ProcessingKeepAliveService.java"
+
+          echo "Exact successful v0.4.21 source recovered"
+
+      - name: Apply v0.4.22 person evidence and high-blend detail guards
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          project = Path(os.environ['PROJECT'])
+
+          # VERSION
+          build_file = project / 'app/build.gradle'
+          build = build_file.read_text()
+          if 'versionCode 30' not in build:
+              raise RuntimeError('v0.4.21 versionCode not found')
+          if "versionName '0.4.21'" not in build:
+              raise RuntimeError('v0.4.21 versionName not found')
+          build = build.replace('versionCode 30', 'versionCode 31', 1)
+          build = build.replace("versionName '0.4.21'", "versionName '0.4.22'", 1)
+          build_file.write_text(build)
+
+          # PERSON EVIDENCE POLICY
+          policy_file = project / 'app/src/main/java/com/dennis/photomasterai/PersonEvidencePolicy.java'
+          policy_file.write_text('''package com.dennis.photomasterai;
+          
+          public final class PersonEvidencePolicy {
+          
+              private PersonEvidencePolicy() {
+              }
+          
+              public static boolean shouldTrustPerson(
+            boolean faceDetected,
+            boolean personLabel,
+            boolean strongPersonLabel,
+            boolean strongObjectConflict,
+            double personMaskCoverage) {
+          
+                  if (faceDetected) {
+            return true;
+                  }
+          
+                  if (!personLabel) {
+            return false;
+                  }
+          
+                  if (!strongObjectConflict) {
+            return true;
+                  }
+          
+                  return strongPersonLabel
+                && personMaskCoverage >= 0.10;
+              }
+          }
+          ''')
+
+          ai_file = project / 'app/src/main/java/com/dennis/photomasterai/AiVisionAnalyzer.java'
+          ai = ai_file.read_text()
+
+          person_pattern = re.compile(
+              r'            boolean personLabel = hasAny\(labels, 0\.55f,\s*'
+              r'"person", "people", "human",\s*'
+              r'"portrait", "face", "selfie",\s*'
+              r'"skin", "smile"\);\s*'
+              r'            boolean person = !faces\.isEmpty\(\) \|\| personLabel;',
+              re.MULTILINE
+          )
+
+          person_replacement = '''            boolean personLabel = hasAny(labels, 0.55f,
+                    "person", "people", "human",
+                    "portrait", "face", "selfie",
+                    "skin", "smile");
+            boolean strongPersonLabel = hasAny(labels, 0.80f,
+                    "person", "people", "human",
+                    "portrait", "face", "selfie");
+            boolean strongObjectConflict = hasAny(labels, 0.80f,
+                    "airplane", "aircraft", "aviation", "vehicle",
+                    "car", "truck", "bus", "train",
+                    "boat", "ship", "motorcycle", "bicycle");
+            boolean person = PersonEvidencePolicy.shouldTrustPerson(
+                    !faces.isEmpty(),
+                    personLabel,
+                    strongPersonLabel,
+                    strongObjectConflict,
+                    coverage);'''
+
+          ai, person_count = person_pattern.subn(person_replacement, ai, count=1)
+          if person_count != 1:
+              raise RuntimeError('Person evidence anchor not found')
+          ai_file.write_text(ai)
+
+          # HIGH-BLEND DETAIL GUARD
+          neural_policy_file = project / 'app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java'
+          neural_policy = neural_policy_file.read_text()
+
+          evaluate_anchor = '    public static Quality evaluate('
+          if evaluate_anchor not in neural_policy:
+              raise RuntimeError('Neural evaluate anchor not found')
+
+          helper = '''    public static boolean highBlendDetailSafe(
+            double blend,
+            double beforeDetail,
+            double afterDetail,
+            boolean lowDetailRecoverySafe) {
+          
+                  if (blend <= 0.50 || lowDetailRecoverySafe) {
+            return true;
+                  }
+          
+                  double base = Math.max(1.0e-9, beforeDetail);
+                  double ratio = afterDetail / base;
+          
+                  return ratio >= 0.94;
+              }
+          
+          '''
+          neural_policy = neural_policy.replace(evaluate_anchor, helper + evaluate_anchor, 1)
+
+          detail_old = (
+              '        boolean detailSafe = detailRatio >= minDetail '
+              '|| lowDetailRecoverySafe;'
+          )
+          detail_new = (
+              '        boolean highBlendGuardSafe = highBlendDetailSafe(\n'
+              '                decision.blend,\n'
+              '                beforeDetail,\n'
+              '                afterDetail,\n'
+              '                lowDetailRecoverySafe);\n'
+              '        boolean detailSafe = (detailRatio >= minDetail '
+              '|| lowDetailRecoverySafe)\n'
+              '                && highBlendGuardSafe;'
+          )
+          if detail_old not in neural_policy:
+              raise RuntimeError('Neural detail QC anchor not found')
+          neural_policy = neural_policy.replace(detail_old, detail_new, 1)
+          neural_policy_file.write_text(neural_policy)
+
+          # HOST CHECKS
+          person_host = project / 'tools/PersonEvidencePolicyHostChecks.java'
+          person_host.write_text('''package com.dennis.photomasterai;
+          
+          public final class PersonEvidencePolicyHostChecks {
+          
+              public static void main(String[] args) {
+                  require(PersonEvidencePolicy.shouldTrustPerson(
+                true, false, false, true, 0.01),
+                "face evidence must remain authoritative");
+          
+                  require(PersonEvidencePolicy.shouldTrustPerson(
+                false, true, true, false, 0.03),
+                "ordinary strong person scene should remain trusted");
+          
+                  require(!PersonEvidencePolicy.shouldTrustPerson(
+                false, true, true, true, 0.086),
+                "aircraft-style conflicting object false person must be withheld");
+          
+                  require(PersonEvidencePolicy.shouldTrustPerson(
+                false, true, true, true, 0.15),
+                "well-supported person mask may override object conflict");
+          
+                  require(!PersonEvidencePolicy.shouldTrustPerson(
+                false, false, false, false, 0.40),
+                "segmentation alone must not create a person scene");
+          
+                  System.out.println("PersonEvidencePolicyHostChecks passed");
+              }
+          
+              private static void require(boolean condition, String message) {
+                  if (!condition) {
+            throw new AssertionError(message);
+                  }
+              }
+          }
+          ''')
+
+          neural_host = project / 'tools/HighBlendDetailGuardHostChecks.java'
+          neural_host.write_text('''package com.dennis.photomasterai;
+          
+          public final class HighBlendDetailGuardHostChecks {
+          
+              public static void main(String[] args) {
+                  require(NeuralDenoisePolicy.highBlendDetailSafe(
+                0.62, 0.037, 0.035, false),
+                "observed 62% blend / 94.6% detail retention should pass");
+          
+                  require(!NeuralDenoisePolicy.highBlendDetailSafe(
+                0.62, 0.037, 0.034, false),
+                "high blend with material detail loss must fail");
+          
+                  require(NeuralDenoisePolicy.highBlendDetailSafe(
+                0.45, 0.037, 0.033, false),
+                "guard must not alter <=50% blend policy");
+          
+                  require(NeuralDenoisePolicy.highBlendDetailSafe(
+                0.70, 0.014, 0.0129, true),
+                "existing low-detail absolute-loss recovery must remain valid");
+          
+                  System.out.println("HighBlendDetailGuardHostChecks passed");
+              }
+          
+              private static void require(boolean condition, String message) {
+                  if (!condition) {
+            throw new AssertionError(message);
+                  }
+              }
+          }
+          ''')
+
+          print('v0.4.22 safety refinement applied')
+          print('Person Evidence Guard: active')
+          print('High-blend detail retention guard: active at >50% blend')
+          print('v0.4.21 vignetting / optics / shadow / background logic unchanged')
+          PY
+
+          grep -q "versionCode 31" "$PROJECT/app/build.gradle"
+          grep -q "versionName '0.4.22'" "$PROJECT/app/build.gradle"
+          grep -q "class PersonEvidencePolicy" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PersonEvidencePolicy.java"
+          grep -q "strongObjectConflict" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/AiVisionAnalyzer.java"
+          grep -q "highBlendDetailSafe" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java"
+          grep -q "class VignettingPolicy" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/VignettingPolicy.java"
+          grep -q "Final shadow-integrity guard: ROLLBACK" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+          grep -q "class ProcessingKeepAliveService" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/ProcessingKeepAliveService.java"
+
+      - name: Fetch pinned NAFNet-SIDD model
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${{ steps.source.outputs.project }}"
+          ASSETS="$PROJECT/app/src/main/assets"
+          MODEL="$ASSETS/nafnet_sidd_width32_fp16.tflite"
+          mkdir -p "$ASSETS"
+          URL='https://huggingface.co/litert-community/NAFNet-SIDD-width32-LiteRT/resolve/main/nafnet_sidd_width32_fp16.tflite?download=true'
+          curl --fail --location --retry 5 --retry-all-errors --connect-timeout 30 --output "$MODEL.tmp" "$URL"
+          mv "$MODEL.tmp" "$MODEL"
+          test "$(stat -c%s "$MODEL")" -eq 62454048 || {
+            echo "::error::Unexpected NAFNet model size"
+            exit 1
+          }
+          echo 'f8fbaa422411683c53e802cf7cc7cf9be0a0de00886ad4af057232e26b172a0c  '"$MODEL" | sha256sum -c -
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Run all safety host checks
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf host-checks
+          mkdir host-checks
+          javac -d host-checks \
+            app/src/main/java/com/dennis/photomasterai/DeepPixelRepair.java \
+            app/src/main/java/com/dennis/photomasterai/RepairSafetyPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/SocialSourcePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralIntegrityPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/OpticalFringePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/VignettingPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/PersonEvidencePolicy.java \
+            tools/DeepPixelRepairHostChecks.java \
+            tools/RepairSafetyPolicyHostChecks.java \
+            tools/NeuralDenoisePolicyHostChecks.java \
+            tools/SocialSourcePolicyHostChecks.java \
+            tools/SmoothSurfaceGuardHostChecks.java \
+            tools/NeuralIntegrityPolicyHostChecks.java \
+            tools/OpticalFringePolicyHostChecks.java \
+            tools/VignettingPolicyHostChecks.java \
+            tools/PersonEvidencePolicyHostChecks.java \
+            tools/HighBlendDetailGuardHostChecks.java
+          java -cp host-checks com.dennis.photomasterai.DeepPixelRepairHostChecks
+          java -cp host-checks com.dennis.photomasterai.RepairSafetyPolicyHostChecks
+          java -cp host-checks com.dennis.photomasterai.NeuralDenoisePolicyHostChecks
+          java -cp host-checks com.dennis.photomasterai.SocialSourcePolicyHostChecks
+          java -cp host-checks com.dennis.photomasterai.SmoothSurfaceGuardHostChecks
+          java -cp host-checks com.dennis.photomasterai.NeuralIntegrityPolicyHostChecks
+          java -cp host-checks com.dennis.photomasterai.OpticalFringePolicyHostChecks
+          java -cp host-checks com.dennis.photomasterai.VignettingPolicyHostChecks
+          java -cp host-checks com.dennis.photomasterai.PersonEvidencePolicyHostChecks
+          java -cp host-checks com.dennis.photomasterai.HighBlendDetailGuardHostChecks
+
+      - name: Restore stable Photo Master debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: photo-master-ai-debug-keystore-v1
+
+      - name: Create signing key on first build
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Photo Master AI,O=Dennis Photo Master,C=AU" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -noprompt
+          fi
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Configure Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$SDK/cmdline-tools" -type f -name 'sdkmanager' | sort -V | tail -n 1)"
+          fi
+          test -n "$SDKMANAGER" || { echo "::error::sdkmanager not found"; exit 1; }
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Build v0.4.22 APK
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :app:assembleDebug --stacktrace
+
+      - name: Verify package and prepare artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${{ steps.source.outputs.project }}"
+          APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK" || { echo "::error::APK not found"; exit 1; }
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          AAPT="$SDK/build-tools/35.0.0/aapt"
+          BADGING="$("$AAPT" dump badging "$APK" | head -n 1)"
+          echo "$BADGING"
+          echo "$BADGING" | grep -q "package: name='com.dennis.photomasterai'"
+          echo "$BADGING" | grep -q "versionCode='31'"
+          echo "$BADGING" | grep -q "versionName='0.4.22'"
+          unzip -l "$APK" | grep -q 'assets/nafnet_sidd_width32_fp16.tflite'
+          rm -rf artifact
+          mkdir artifact
+          OUT="artifact/PhotoMasterAI-v0.4.22-SAFETY-REFINEMENT.apk"
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" > "artifact/PhotoMasterAI-v0.4.22-SAFETY-REFINEMENT-SHA256.txt"
+          cat > "artifact/PhotoMasterAI-v0.4.22-Notes.txt" <<'EOF'
+          Photo Master AI — v0.4.22 Safety Refinement
+
+          Version: 0.4.22
+          versionCode: 31
+
+          BASELINE
+          Exact successful v0.4.21 source / run 37564535687.
+
+          RETAINED UNCHANGED
+          - NAFNet-SIDD width32 / Classic LiteRT OpenCL GPU / FP32
+          - no CPU neural fallback
+          - adaptive neural blend recovery
+          - smooth-surface protection
+          - local neural integrity guard
+          - final shadow-integrity rollback
+          - chromatic-aberration/fringe QC and rollback
+          - v0.4.21 measured vignetting intelligence and thresholds
+          - background and screen-off processing
+          - full-resolution output / JPEG quality 100
+
+          NEW 1 — PERSON EVIDENCE GUARD
+          Person labels no longer automatically authorize person-mask relighting
+          when a strong vehicle/aircraft-type object conflict is present.
+          Face evidence remains authoritative.
+          With strong object conflict and no face, person-specific finishing
+          requires a strong person label plus at least 10% person-mask coverage.
+          Regression reference:
+          airplane image: Person 100%, Aircraft/Airplane ~98%, mask 8.6%
+          => person-specific relighting MUST be withheld.
+
+          NEW 2 — HIGH-BLEND DETAIL RETENTION GUARD
+          For neural blend >50%, accepted normal-detail candidates must retain
+          at least 94% of measured source detail.
+          Existing very-low-detail absolute-loss recovery remains available.
+          A failed high-blend candidate can use the existing adaptive blend
+          recovery path at a lower blend instead of weakening the denoiser globally.
+
+          FIRST TESTS
+          1. Aircraft regression: person-mask finishing must be withheld.
+          2. Genuine portrait: person finishing must still activate.
+          3. Playground regression: ~62% blend with ~94.6% detail retention should pass.
+          4. Duck / water regression.
+          5. Waterfall regression.
+          6. Samsung daylight landscape.
+          7. Background / screen-off processing.
+          EOF
+
+      - name: Upload APK and continuation notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoMasterAI-v0.4.22-SAFETY-REFINEMENT
+          path: |
+            artifact/PhotoMasterAI-v0.4.22-SAFETY-REFINEMENT.apk
+            artifact/PhotoMasterAI-v0.4.22-SAFETY-REFINEMENT-SHA256.txt
+            artifact/PhotoMasterAI-v0.4.22-Notes.txt
+          if-no-files-found: error
+          retention-days: 30
