@@ -296,7 +296,9 @@ jobs:
 
           engine = engine_file.read_text()
 
-          # Add detail-guard diagnostics.
+          # -------------------------------------------------------
+          # DETAIL-GUARD DIAGNOSTICS
+          # -------------------------------------------------------
 
           field_anchor = (
               'long protectedSaturatedPixels;'
@@ -346,8 +348,6 @@ jobs:
               + report_anchor,
               1
           )
-
-          # Add diagnostic line after standard classification report.
 
           classification_line = (
               '"• Night classification requires dark-upper + '
@@ -460,10 +460,9 @@ jobs:
                   'Night Light chunk-copy anchor not found'
               )
 
-          # Always sample the original unmodified chunk.
-          #
-          # Use whitespace-independent matching because the generated
-          # Java formatting can vary between reconstruction steps.
+          # -------------------------------------------------------
+          # SOURCE PIXEL — WHITESPACE-SAFE
+          # -------------------------------------------------------
 
           pixel_pattern = re.compile(
               r'int[ \t]+pixel[ \t]*=[ \t\r\n]*'
@@ -484,10 +483,6 @@ jobs:
 
           # -------------------------------------------------------
           # NARROW FLASH-SPILL TARGET
-          #
-          # v0.4.31 started spill correction at luma 0.62.
-          # Raise this to 0.68 so grass/texture and bright midtones
-          # are less likely to be modified.
           # -------------------------------------------------------
 
           if '&& lum > 0.62' not in engine:
@@ -503,18 +498,15 @@ jobs:
 
           # -------------------------------------------------------
           # EDGE/TEXTURE DETAIL GUARD
+          #
+          # Whitespace-independent matching.
           # -------------------------------------------------------
 
-          compression_anchor = (
-              'double compression =\n'
-              '                        plan.strength\n'
-              '                                * weight;'
+          compression_pattern = re.compile(
+              r'double[ \t]+compression[ \t]*=[ \t\r\n]*'
+              r'plan\.strength[ \t\r\n]*'
+              r'\*[ \t]*weight;'
           )
-
-          if compression_anchor not in engine:
-              raise RuntimeError(
-                  'v0.4.31 compression anchor not found'
-              )
 
           guarded_compression = r'''double edgeStrength =
                                       localEdgeStrength(
@@ -562,17 +554,19 @@ jobs:
                                       effectiveStrength
                                               * weight;'''
 
-          engine = engine.replace(
-              compression_anchor,
+          engine, count = compression_pattern.subn(
               guarded_compression,
-              1
+              engine,
+              count=1
           )
+
+          if count != 1:
+              raise RuntimeError(
+                  'Night Light compression replacement failed'
+              )
 
           # -------------------------------------------------------
           # GENTLER HIGHLIGHT PIVOT
-          #
-          # Only compress the amount above 0.60 instead of 0.55.
-          # This preserves lower-highlight texture.
           # -------------------------------------------------------
 
           if 'lum - 0.55' not in engine:
@@ -741,7 +735,7 @@ jobs:
           engine_file.write_text(engine)
 
           # -------------------------------------------------------
-          # NEW HOST CHECKS
+          # DETAIL-GUARD HOST CHECKS
           # -------------------------------------------------------
 
           host_file = project / (
@@ -856,6 +850,9 @@ jobs:
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
 
           grep -q "sourcePixels\[index\]" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
+
+          grep -q "effectiveStrength" \
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
 
           grep -q "lum > 0.68" \
@@ -1138,6 +1135,8 @@ jobs:
           - existing 98.5% detail-retention QC remains unchanged
           - dark-sky, noise, chroma, ringing, saturation and clipping
             safeguards remain unchanged
+          - workflow source-pixel and compression patches now use
+            whitespace-independent matching
 
           TARGET
           Night scooter:
