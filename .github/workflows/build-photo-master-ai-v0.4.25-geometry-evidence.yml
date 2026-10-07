@@ -1,0 +1,678 @@
+name: Build Photo Master AI v0.4.25 Geometry Evidence Refinement
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-photo-master-ai-v0.4.25-geometry-evidence.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Photo Master AI v0.4.25 Geometry Evidence Refinement
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository with history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Recover exact successful v0.4.24 source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          V0424_COMMIT="51e356cb1bf15967a3586935cfc048a5b293dcec"
+
+          git cat-file -e "${V0424_COMMIT}^{commit}" || {
+            echo "::error::Successful v0.4.24 commit unavailable"
+            exit 1
+          }
+
+          git show \
+            "${V0424_COMMIT}:.github/workflows/build-photo-master-ai-v0.4.24-geometry.yml" \
+            > /tmp/v0424.yml
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          lines = Path('/tmp/v0424.yml').read_text().splitlines()
+
+          def extract_step(name, destination):
+              step = None
+              for i, line in enumerate(lines):
+                  if line.strip() == '- name: ' + name:
+                      step = i
+                      break
+              if step is None:
+                  raise RuntimeError('Workflow step not found: ' + name)
+
+              run = None
+              for i in range(step, len(lines)):
+                  if lines[i].strip() == 'run: |':
+                      run = i
+                      break
+                  if i > step and lines[i].startswith('      - name:'):
+                      break
+              if run is None:
+                  raise RuntimeError('Run block not found: ' + name)
+
+              body = []
+              for line in lines[run + 1:]:
+                  if line.startswith('      - name:'):
+                      break
+                  if not line.strip():
+                      body.append('')
+                  elif line.startswith('          '):
+                      body.append(line[10:])
+                  else:
+                      raise RuntimeError(
+                          'Unexpected indentation while extracting: ' + name
+                      )
+
+              Path(destination).write_text('\n'.join(body) + '\n')
+
+          extract_step(
+              'Recover exact successful v0.4.23 source',
+              '/tmp/recover-v0423.sh'
+          )
+          extract_step(
+              'Apply v0.4.24 Geometry Intelligence',
+              '/tmp/apply-v0424.sh'
+          )
+          PY
+
+          bash /tmp/recover-v0423.sh
+
+          PROJECT="$(
+            find photomaster-v044-build \
+              -type f \
+              \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \) \
+              -printf '%h\n' \
+              | head -n 1
+          )"
+
+          test -n "$PROJECT" || {
+            echo "::error::Recovered project not found"
+            exit 1
+          }
+
+          export PROJECT
+          bash /tmp/apply-v0424.sh
+
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+
+          grep -q "versionCode 33" "$PROJECT/app/build.gradle"
+          grep -q "versionName '0.4.24'" "$PROJECT/app/build.gradle"
+          grep -q "class GeometryPolicy" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/GeometryPolicy.java"
+          grep -q "class GeometryIntelligence" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/GeometryIntelligence.java"
+          grep -q "class ColorSpaceGuard" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/ColorSpaceGuard.java"
+          grep -q "class HighRingFinishingPolicy" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/HighRingFinishingPolicy.java"
+          grep -q "class PersonEvidencePolicy" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/PersonEvidencePolicy.java"
+          grep -q "class ProcessingKeepAliveService" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/ProcessingKeepAliveService.java"
+
+          echo "Exact successful v0.4.24 source recovered"
+
+      - name: Apply v0.4.25 opposing-convergence evidence refinement
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          project = Path(os.environ['PROJECT'])
+
+          # VERSION
+          build_file = project / 'app/build.gradle'
+          build = build_file.read_text()
+          if 'versionCode 33' not in build:
+              raise RuntimeError('v0.4.24 versionCode not found')
+          if "versionName '0.4.24'" not in build:
+              raise RuntimeError('v0.4.24 versionName not found')
+          build = build.replace('versionCode 33', 'versionCode 34', 1)
+          build = build.replace(
+              "versionName '0.4.24'",
+              "versionName '0.4.25'",
+              1
+          )
+          build_file.write_text(build)
+
+          # -------------------------------------------------------------
+          # KEYSTONE EVIDENCE POLICY
+          #
+          # v0.4.24 correctly found the building regression at:
+          #   left +0.98 / right -0.99
+          #   6/6 vertical span on both sides
+          # but raw peak-bin confidence was only ~5% per side.
+          #
+          # v0.4.25 keeps the normal 18% confidence route unchanged,
+          # and adds a very narrow structural override requiring:
+          #   - true opposing signs
+          #   - both sides 0.65..2.50 degrees
+          #   - >=5/6 vertical span on both sides
+          #   - >=4.5% raw peak share on both sides
+          #   - left/right magnitude ratio <=1.35
+          #   - edge expansion 0.4..1.8%
+          #
+          # Truck/aircraft examples remain rejected by strength/sign/span.
+          # -------------------------------------------------------------
+          policy_file = project / (
+              'app/src/main/java/com/dennis/photomasterai/'
+              'GeometryPolicy.java'
+          )
+          policy = policy_file.read_text()
+
+          method_pattern = re.compile(
+              r'    public static KeystoneDecision keystone\(.*?'
+              r'\n    \}\n\n'
+              r'    public static DistortionDecision distortion\(',
+              re.DOTALL
+          )
+
+          replacement = r'''    public static KeystoneDecision keystone(
+                  double leftDeviationDeg,
+                  double rightDeviationDeg,
+                  double leftPeakShare,
+                  double rightPeakShare,
+                  int leftYCoverage,
+                  int rightYCoverage,
+                  double insetFraction) {
+
+              if (leftDeviationDeg * rightDeviationDeg >= 0.0) {
+                  return new KeystoneDecision(
+                          false,
+                          false,
+                          "vertical-line evidence does not show opposing convergence");
+              }
+
+              double leftAbs = Math.abs(leftDeviationDeg);
+              double rightAbs = Math.abs(rightDeviationDeg);
+              double strength = 0.5 * (leftAbs + rightAbs);
+
+              if (strength < 0.75) {
+                  return new KeystoneDecision(
+                          false,
+                          false,
+                          "keystone below correction threshold");
+              }
+              if (strength > 3.00) {
+                  return new KeystoneDecision(
+                          false,
+                          false,
+                          "keystone exceeds conservative auto-correction range");
+              }
+
+              double smaller =
+                      Math.max(
+                              0.001,
+                              Math.min(leftAbs, rightAbs));
+              double larger =
+                      Math.max(leftAbs, rightAbs);
+              double symmetryRatio =
+                      larger / smaller;
+
+              boolean standardEvidence =
+                      leftPeakShare >= 0.18
+                              && rightPeakShare >= 0.18
+                              && leftYCoverage >= 4
+                              && rightYCoverage >= 4
+                              && symmetryRatio <= 2.0;
+
+              boolean symmetricOpposingOverride =
+                      leftPeakShare >= 0.045
+                              && rightPeakShare >= 0.045
+                              && leftYCoverage >= 5
+                              && rightYCoverage >= 5
+                              && leftAbs >= 0.65
+                              && rightAbs >= 0.65
+                              && leftAbs <= 2.50
+                              && rightAbs <= 2.50
+                              && symmetryRatio <= 1.35
+                              && insetFraction >= 0.004
+                              && insetFraction <= 0.018;
+
+              if (!standardEvidence
+                      && !symmetricOpposingOverride) {
+
+                  if (leftYCoverage < 4
+                          || rightYCoverage < 4) {
+                      return new KeystoneDecision(
+                              false,
+                              false,
+                              "vertical evidence does not span enough image height");
+                  }
+
+                  if (symmetryRatio > 2.0) {
+                      return new KeystoneDecision(
+                              false,
+                              false,
+                              "left/right convergence is too asymmetric");
+                  }
+
+                  return new KeystoneDecision(
+                          false,
+                          false,
+                          "vertical-line confidence too low");
+              }
+
+              if (insetFraction < 0.004) {
+                  return new KeystoneDecision(
+                          false,
+                          false,
+                          "perspective correction would be negligible");
+              }
+              if (insetFraction > 0.022) {
+                  return new KeystoneDecision(
+                          false,
+                          false,
+                          "perspective crop exceeds 2.2% edge ceiling");
+              }
+
+              boolean topNarrow =
+                      leftDeviationDeg < 0.0
+                              && rightDeviationDeg > 0.0;
+
+              return new KeystoneDecision(
+                      true,
+                      topNarrow,
+                      symmetricOpposingOverride
+                              ? "symmetric opposing-convergence structural override"
+                              : "strong opposing vertical-line convergence");
+          }
+
+          public static DistortionDecision distortion('''
+
+          policy, count = method_pattern.subn(
+              replacement,
+              policy,
+              count=1
+          )
+          if count != 1:
+              raise RuntimeError(
+                  'v0.4.24 GeometryPolicy.keystone method not found'
+              )
+          policy_file.write_text(policy)
+
+          # Make accepted keystone reports state which evidence path fired.
+          geometry_file = project / (
+              'app/src/main/java/com/dennis/photomasterai/'
+              'GeometryIntelligence.java'
+          )
+          geometry = geometry_file.read_text()
+
+          applied_pattern = re.compile(
+              r'"• Keystone correction APPLIED \| %s edge expansion '
+              r'%.1f%% \| geometry QC ACCEPTED\\n",\s*'
+              r'keystoneDecision\.topNarrow \? "top" : "bottom",\s*'
+              r'keystone\.insetFraction \* 100\.0\)\);',
+              re.DOTALL
+          )
+
+          applied_replacement = '''"• Keystone correction APPLIED | %s edge expansion %.1f%% | evidence %s | geometry QC ACCEPTED\\n",
+                                  keystoneDecision.topNarrow ? "top" : "bottom",
+                                  keystone.insetFraction * 100.0,
+                                  keystoneDecision.reason));'''
+
+          geometry, report_count = applied_pattern.subn(
+              applied_replacement,
+              geometry,
+              count=1
+          )
+          if report_count != 1:
+              raise RuntimeError(
+                  'v0.4.24 keystone accepted-report anchor not found'
+              )
+          geometry_file.write_text(geometry)
+
+          # Regression tests from the actual v0.4.24 field results.
+          host_file = project / 'tools/GeometryPolicyHostChecks.java'
+          host = host_file.read_text()
+
+          marker = (
+              '        System.out.println('
+              '"GeometryPolicyHostChecks passed");'
+          )
+          if marker not in host:
+              raise RuntimeError(
+                  'GeometryPolicyHostChecks completion marker not found'
+              )
+
+          regression_tests = r'''
+              GeometryPolicy.KeystoneDecision buildingRegression =
+                      GeometryPolicy.keystone(
+                              0.98, -0.99,
+                              0.05, 0.05,
+                              6, 6,
+                              0.0126);
+              require(
+                      buildingRegression.apply,
+                      "building +0.98/-0.99 with 6/6 span must produce a candidate");
+              require(
+                      buildingRegression.reason.contains("structural override"),
+                      "building regression must use narrow structural override");
+
+              require(!GeometryPolicy.keystone(
+                      -0.01, 0.06,
+                      0.09, 0.09,
+                      4, 4,
+                      0.0005).apply,
+                      "truck near-zero perspective must remain untouched");
+
+              require(!GeometryPolicy.keystone(
+                      3.00, 0.00,
+                      0.06, 0.05,
+                      3, 4,
+                      0.020).apply,
+                      "aircraft non-opposing perspective must remain untouched");
+
+              require(!GeometryPolicy.keystone(
+                      0.80, -1.60,
+                      0.05, 0.05,
+                      6, 6,
+                      0.012).apply,
+                      "low-confidence asymmetric convergence must not use override");
+
+              require(!GeometryPolicy.keystone(
+                      0.98, -0.99,
+                      0.05, 0.05,
+                      4, 6,
+                      0.0126).apply,
+                      "low-confidence override requires broad span on both sides");
+
+              require(!GeometryPolicy.keystone(
+                      0.98, -0.99,
+                      0.03, 0.03,
+                      6, 6,
+                      0.0126).apply,
+                      "very weak peak evidence must remain withheld");
+
+          '''
+
+          host = host.replace(
+              marker,
+              regression_tests + marker,
+              1
+          )
+          host_file.write_text(host)
+
+          print('v0.4.25 Geometry Evidence Refinement applied')
+          print(
+              'Building regression: +0.98/-0.99, 5%/5%, '
+              '6/6+6/6 can qualify via structural override'
+          )
+          print(
+              'Truck/aircraft negative controls remain explicitly tested'
+          )
+          print(
+              'All v0.4.24 horizon, radial distortion, crop, QC, '
+              'colour and neural safeguards retained'
+          )
+          PY
+
+          grep -q "versionCode 34" "$PROJECT/app/build.gradle"
+          grep -q "versionName '0.4.25'" "$PROJECT/app/build.gradle"
+          grep -q "symmetricOpposingOverride" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/GeometryPolicy.java"
+          grep -q "structural override" \
+            "$PROJECT/tools/GeometryPolicyHostChecks.java"
+          grep -q "evidence %s" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/GeometryIntelligence.java"
+          grep -q "class ColorSpaceGuard" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/ColorSpaceGuard.java"
+          grep -q "class ProcessingKeepAliveService" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/ProcessingKeepAliveService.java"
+
+      - name: Fetch pinned NAFNet-SIDD model
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${{ steps.source.outputs.project }}"
+          ASSETS="$PROJECT/app/src/main/assets"
+          MODEL="$ASSETS/nafnet_sidd_width32_fp16.tflite"
+          mkdir -p "$ASSETS"
+          URL='https://huggingface.co/litert-community/NAFNet-SIDD-width32-LiteRT/resolve/main/nafnet_sidd_width32_fp16.tflite?download=true'
+          curl --fail --location --retry 5 --retry-all-errors \
+            --connect-timeout 30 \
+            --output "$MODEL.tmp" \
+            "$URL"
+          mv "$MODEL.tmp" "$MODEL"
+          test "$(stat -c%s "$MODEL")" -eq 62454048 || {
+            echo "::error::Unexpected NAFNet model size"
+            exit 1
+          }
+          echo 'f8fbaa422411683c53e802cf7cc7cf9be0a0de00886ad4af057232e26b172a0c  '"$MODEL" \
+            | sha256sum -c -
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Run all safety host checks
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf host-checks
+          mkdir host-checks
+          javac -d host-checks \
+            app/src/main/java/com/dennis/photomasterai/DeepPixelRepair.java \
+            app/src/main/java/com/dennis/photomasterai/RepairSafetyPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/SocialSourcePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralIntegrityPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/OpticalFringePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/VignettingPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/PersonEvidencePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/HighRingFinishingPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/GeometryPolicy.java \
+            tools/DeepPixelRepairHostChecks.java \
+            tools/RepairSafetyPolicyHostChecks.java \
+            tools/NeuralDenoisePolicyHostChecks.java \
+            tools/SocialSourcePolicyHostChecks.java \
+            tools/SmoothSurfaceGuardHostChecks.java \
+            tools/NeuralIntegrityPolicyHostChecks.java \
+            tools/OpticalFringePolicyHostChecks.java \
+            tools/VignettingPolicyHostChecks.java \
+            tools/PersonEvidencePolicyHostChecks.java \
+            tools/HighBlendDetailGuardHostChecks.java \
+            tools/HighRingFinishingPolicyHostChecks.java \
+            tools/GeometryPolicyHostChecks.java
+          java -cp host-checks com.dennis.photomasterai.DeepPixelRepairHostChecks
+          java -cp host-checks com.dennis.photomasterai.RepairSafetyPolicyHostChecks
+          java -cp host-checks com.dennis.photomasterai.NeuralDenoisePolicyHostChecks
+          java -cp host-checks com.dennis.photomasterai.SocialSourcePolicyHostChecks
+          java -cp host-checks com.dennis.photomasterai.SmoothSurfaceGuardHostChecks
+          java -cp host-checks com.dennis.photomasterai.NeuralIntegrityPolicyHostChecks
+          java -cp host-checks com.dennis.photomasterai.OpticalFringePolicyHostChecks
+          java -cp host-checks com.dennis.photomasterai.VignettingPolicyHostChecks
+          java -cp host-checks com.dennis.photomasterai.PersonEvidencePolicyHostChecks
+          java -cp host-checks com.dennis.photomasterai.HighBlendDetailGuardHostChecks
+          java -cp host-checks com.dennis.photomasterai.HighRingFinishingPolicyHostChecks
+          java -cp host-checks com.dennis.photomasterai.GeometryPolicyHostChecks
+
+      - name: Restore stable Photo Master debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: photo-master-ai-debug-keystore-v1
+
+      - name: Create signing key on first build
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Photo Master AI,O=Dennis Photo Master,C=AU" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -noprompt
+          fi
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Configure Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(
+              find "$SDK/cmdline-tools" \
+                -type f \
+                -name 'sdkmanager' \
+                | sort -V \
+                | tail -n 1
+            )"
+          fi
+          test -n "$SDKMANAGER" || {
+            echo "::error::sdkmanager not found"
+            exit 1
+          }
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Build v0.4.25 APK
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :app:assembleDebug --stacktrace
+
+      - name: Verify package and prepare artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${{ steps.source.outputs.project }}"
+          APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK" || {
+            echo "::error::APK not found"
+            exit 1
+          }
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          AAPT="$SDK/build-tools/35.0.0/aapt"
+
+          BADGING="$("$AAPT" dump badging "$APK" | head -n 1)"
+          echo "$BADGING"
+          echo "$BADGING" | grep -q "package: name='com.dennis.photomasterai'"
+          echo "$BADGING" | grep -q "versionCode='34'"
+          echo "$BADGING" | grep -q "versionName='0.4.25'"
+
+          unzip -l "$APK" \
+            | grep -q 'assets/nafnet_sidd_width32_fp16.tflite'
+
+          rm -rf artifact
+          mkdir artifact
+
+          OUT="artifact/PhotoMasterAI-v0.4.25-GEOMETRY-EVIDENCE.apk"
+          cp "$APK" "$OUT"
+
+          sha256sum "$OUT" \
+            > "artifact/PhotoMasterAI-v0.4.25-GEOMETRY-EVIDENCE-SHA256.txt"
+
+          cat > "artifact/PhotoMasterAI-v0.4.25-Notes.txt" <<'EOF'
+          Photo Master AI — v0.4.25 Geometry Evidence Refinement
+
+          Version: 0.4.25
+          versionCode: 34
+
+          BASELINE
+          Exact successful v0.4.24 source / run 37583259468.
+
+          RETAINED UNCHANGED
+          - v0.4.24 horizon/level intelligence
+          - v0.4.24 radial lens-distortion intelligence
+          - geometry rollback QC and cumulative crop ceiling
+          - sRGB / Display P3 preserve-source colour management
+          - wide-gamut preview path
+          - high-ring finishing guard
+          - NAFNet-SIDD width32 / OpenCL GPU / FP32
+          - adaptive neural blend recovery
+          - person evidence guard
+          - smooth-surface protection
+          - local neural integrity guard
+          - final shadow-integrity rollback
+          - CA/fringe QC and rollback
+          - measured vignetting intelligence
+          - background and screen-off processing
+          - full-resolution JPEG quality 100
+
+          NEW — OPPOSING-CONVERGENCE STRUCTURAL OVERRIDE
+          v0.4.24 building regression:
+            left +0.98 degrees / right -0.99 degrees
+            raw confidence 5% / 5%
+            vertical span 6/6 / 6/6
+
+          That pattern can now produce a mild keystone candidate when ALL
+          structural requirements agree:
+          - opposing left/right signs
+          - each side 0.65 to 2.50 degrees
+          - at least 5/6 vertical span on both sides
+          - at least 4.5% peak evidence on both sides
+          - left/right magnitude ratio <= 1.35
+          - proposed edge expansion 0.4% to 1.8%
+
+          The existing normal >=18% confidence path remains unchanged.
+          Every accepted candidate must still pass full geometry rollback QC.
+
+          NEGATIVE REGRESSIONS RETAINED
+          - Truck: -0.01 / +0.06 remains below keystone threshold.
+          - Aircraft: +3.00 / 0.00 remains non-opposing and withheld.
+          - Asymmetric low-confidence convergence remains withheld.
+          - Weak-span or very-low-confidence convergence remains withheld.
+
+          FIRST TEST
+          Re-run the Chinchilla Cultural Precinct building photo.
+          Expected:
+          - perspective candidate should now be generated
+          - report should identify structural override evidence
+          - correction is retained only if geometry QC accepts it
+
+          Then re-run:
+          - truck: must remain untouched geometrically
+          - aircraft: must remain untouched geometrically
+          EOF
+
+      - name: Upload APK and continuation notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoMasterAI-v0.4.25-GEOMETRY-EVIDENCE
+          path: |
+            artifact/PhotoMasterAI-v0.4.25-GEOMETRY-EVIDENCE.apk
+            artifact/PhotoMasterAI-v0.4.25-GEOMETRY-EVIDENCE-SHA256.txt
+            artifact/PhotoMasterAI-v0.4.25-Notes.txt
+          if-no-files-found: error
+          retention-days: 30
