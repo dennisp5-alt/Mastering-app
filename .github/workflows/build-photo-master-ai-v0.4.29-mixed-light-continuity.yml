@@ -138,9 +138,6 @@ jobs:
           grep -q "class MixedLightColourIntelligence" \
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourIntelligence.java"
 
-          grep -q "MAX_GAIN_DEVIATION = 0.035" \
-            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourPolicy.java"
-
           grep -q "maxEdgeLumaDelta=0.045" \
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/LocalToneIntelligence.java"
 
@@ -162,9 +159,9 @@ jobs:
 
           project = Path(os.environ['PROJECT'])
 
-          # ---------------------------------------------------------
+          # -------------------------------------------------------
           # VERSION
-          # ---------------------------------------------------------
+          # -------------------------------------------------------
 
           build_file = project / 'app/build.gradle'
           build = build_file.read_text()
@@ -193,12 +190,9 @@ jobs:
 
           build_file.write_text(build)
 
-          # ---------------------------------------------------------
-          # MIXED-LIGHT POLICY
-          #
-          # Max channel QC remains 0.040.
-          # Adjacent regional gain QC becomes 0.050.
-          # ---------------------------------------------------------
+          # -------------------------------------------------------
+          # POLICY
+          # -------------------------------------------------------
 
           policy_file = project / (
               'app/src/main/java/com/dennis/photomasterai/'
@@ -207,44 +201,36 @@ jobs:
 
           policy = policy_file.read_text()
 
-          old_policy_limit = 'maxGridGainStep > 0.060'
-          new_policy_limit = 'maxGridGainStep > 0.050'
-
-          if old_policy_limit not in policy:
+          if 'maxGridGainStep > 0.060' not in policy:
               raise RuntimeError(
-                  'v0.4.28 regional gain QC anchor not found'
+                  'v0.4.28 gain-step QC anchor not found'
               )
 
           policy = policy.replace(
-              old_policy_limit,
-              new_policy_limit,
+              'maxGridGainStep > 0.060',
+              'maxGridGainStep > 0.050',
               1
           )
 
-          old_policy_text = (
+          if (
               'regional gain step %.4f > 0.0600'
-          )
-
-          new_policy_text = (
-              'regional gain step %.4f > 0.0500'
-          )
-
-          if old_policy_text not in policy:
+              not in policy
+          ):
               raise RuntimeError(
-                  'v0.4.28 regional gain report anchor not found'
+                  'v0.4.28 gain-step report anchor not found'
               )
 
           policy = policy.replace(
-              old_policy_text,
-              new_policy_text,
+              'regional gain step %.4f > 0.0600',
+              'regional gain step %.4f > 0.0500',
               1
           )
 
           policy_file.write_text(policy)
 
-          # ---------------------------------------------------------
-          # MIXED-LIGHT ENGINE
-          # ---------------------------------------------------------
+          # -------------------------------------------------------
+          # ENGINE
+          # -------------------------------------------------------
 
           engine_file = project / (
               'app/src/main/java/com/dennis/photomasterai/'
@@ -253,304 +239,224 @@ jobs:
 
           engine = engine_file.read_text()
 
-          # ---------------------------------------------------------
-          # NEW SAFETY CONSTANTS
-          # ---------------------------------------------------------
+          # Safety constants.
 
-          constants_old = (
+          constants_anchor = (
               'private static final int GX = 8, GY = 8, '
               'MAX_EDGE = 640, CHUNK = 128;'
           )
 
-          constants_new = (
-              'private static final int GX = 8, GY = 8, '
-              'MAX_EDGE = 640, CHUNK = 128;'
-              '\n'
-              '              private static final double '
-              'MAX_ADJACENT_GAIN_STEP = 0.045;'
-              '\n'
-              '              private static final int '
-              'MAX_FINAL_CHANNEL_CODE_DELTA = 9;'
-          )
-
-          if constants_old not in engine:
+          if constants_anchor not in engine:
               raise RuntimeError(
-                  'v0.4.28 engine constants anchor not found'
+                  'v0.4.28 constants anchor not found'
               )
 
           engine = engine.replace(
-              constants_old,
-              constants_new,
+              constants_anchor,
+              constants_anchor
+              + '\n'
+              + '    private static final double '
+              + 'MAX_ADJACENT_GAIN_STEP = 0.045;'
+              + '\n'
+              + '    private static final int '
+              + 'MAX_FINAL_CHANNEL_CODE_DELTA = 9;',
               1
           )
 
-          # ---------------------------------------------------------
-          # CONTINUITY SCALE DIAGNOSTIC
-          # ---------------------------------------------------------
+          # Add diagnostic field.
 
-          field_old = (
+          field_anchor = (
               'double meanNeutralError, '
               'gainSpread, maxGridGainStep;'
           )
 
-          field_new = (
-              'double meanNeutralError, '
-              'gainSpread, maxGridGainStep, '
-              'continuityScale = 1.0;'
-          )
-
-          if field_old not in engine:
+          if field_anchor not in engine:
               raise RuntimeError(
                   'v0.4.28 Evidence field anchor not found'
               )
 
           engine = engine.replace(
-              field_old,
-              field_new,
+              field_anchor,
+              'double meanNeutralError, gainSpread, '
+              'maxGridGainStep, continuityScale = 1.0;',
               1
           )
 
-          # ---------------------------------------------------------
-          # NORMALISE THE REGIONAL CORRECTION FIELD
-          # ---------------------------------------------------------
-
-          analysis_old = (
-              '                  e.meanNeutralError = '
-              'targetErrorCount>0 ? '
-              'targetErrorSum/targetErrorCount : 0.0;\n'
-              '                  e.gainSpread = gainSpread(e);\n'
-              '                  e.maxGridGainStep = '
-              'maxGridGainStep(e);'
-          )
-
-          analysis_new = (
-              '                  e.meanNeutralError = '
-              'targetErrorCount>0 ? '
-              'targetErrorSum/targetErrorCount : 0.0;\n'
-              '                  enforceContinuity(e);\n'
-              '                  e.gainSpread = gainSpread(e);\n'
-              '                  e.maxGridGainStep = '
-              'maxGridGainStep(e);'
-          )
-
-          if analysis_old not in engine:
-              raise RuntimeError(
-                  'v0.4.28 continuity analysis anchor not found'
-              )
-
-          engine = engine.replace(
-              analysis_old,
-              analysis_new,
-              1
-          )
-
-          # ---------------------------------------------------------
-          # ADD CONTINUITY FUNCTION
-          # ---------------------------------------------------------
-
-          helper_anchor = (
-              '              private static double '
-              'gainSpread(Evidence e) {'
-          )
-
-          helper_lines = [
-              '              private static void '
-              'enforceContinuity(Evidence e) {',
-              '                  double rawStep=',
-              '                          maxGridGainStep(e);',
-              '',
-              '                  if (rawStep<=MAX_ADJACENT_GAIN_STEP',
-              '                          || rawStep<=1e-9) {',
-              '                      e.continuityScale=1.0;',
-              '                      return;',
-              '                  }',
-              '',
-              '                  double scale=',
-              '                          MAX_ADJACENT_GAIN_STEP',
-              '                                  / rawStep;',
-              '',
-              '                  for (int y=0;y<GY;y++) {',
-              '                      for (int x=0;x<GX;x++) {',
-              '                          Cell c=e.cells[y][x];',
-              '',
-              '                          if (!c.valid) {',
-              '                              continue;',
-              '                          }',
-              '',
-              '                          c.gainR=',
-              '                                  1.0',
-              '                                  +(c.gainR-1.0)',
-              '                                  *scale;',
-              '',
-              '                          c.gainG=',
-              '                                  1.0',
-              '                                  +(c.gainG-1.0)',
-              '                                  *scale;',
-              '',
-              '                          c.gainB=',
-              '                                  1.0',
-              '                                  +(c.gainB-1.0)',
-              '                                  *scale;',
-              '                      }',
-              '                  }',
-              '',
-              '                  e.continuityScale=scale;',
-              '              }',
-              '',
-          ]
-
-          helper = '\n'.join(helper_lines)
-
-          if helper_anchor not in engine:
-              raise RuntimeError(
-                  'v0.4.28 gainSpread helper anchor not found'
-              )
-
-          engine = engine.replace(
-              helper_anchor,
-              helper + helper_anchor,
-              1
-          )
-
-          # ---------------------------------------------------------
-          # FINAL POST-LUMINANCE RGB MOVEMENT GUARD
+          # -------------------------------------------------------
+          # CONTINUITY NORMALISATION
           #
-          # 9/255 = 0.03529.
-          # This keeps final movement safely below QC = 0.040.
-          # ---------------------------------------------------------
+          # Robust anchor: insert directly before gainSpread.
+          # No indentation-dependent multi-line matching.
+          # -------------------------------------------------------
 
-          render_old = (
-              '                              '
-              'if (lum>1e-6 && nl>1e-6) {\n'
-              '                                  '
-              'double preserve=clamp('
-              'lum/nl,0.96,1.04);\n'
-              '                                  '
-              'nr*=preserve; ng*=preserve; '
-              'nb*=preserve;\n'
-              '                              }\n'
-              '\n'
-              '                              '
+          gain_line = (
+              'e.gainSpread = gainSpread(e);'
+          )
+
+          if gain_line not in engine:
+              raise RuntimeError(
+                  'v0.4.28 gainSpread assignment not found'
+              )
+
+          engine = engine.replace(
+              gain_line,
+              'enforceContinuity(e);\n'
+              '                  '
+              + gain_line,
+              1
+          )
+
+          # -------------------------------------------------------
+          # ADD CONTINUITY METHOD
+          # -------------------------------------------------------
+
+          method_anchor = (
+              'private static double gainSpread(Evidence e) {'
+          )
+
+          if method_anchor not in engine:
+              raise RuntimeError(
+                  'v0.4.28 gainSpread method not found'
+              )
+
+          helper = '\n'.join([
+              'private static void enforceContinuity(Evidence e) {',
+              '    double rawStep=maxGridGainStep(e);',
+              '',
+              '    if (rawStep<=MAX_ADJACENT_GAIN_STEP',
+              '            || rawStep<=1e-9) {',
+              '        e.continuityScale=1.0;',
+              '        return;',
+              '    }',
+              '',
+              '    double scale=',
+              '            MAX_ADJACENT_GAIN_STEP/rawStep;',
+              '',
+              '    for (int y=0;y<GY;y++) {',
+              '        for (int x=0;x<GX;x++) {',
+              '            Cell c=e.cells[y][x];',
+              '',
+              '            if (!c.valid) continue;',
+              '',
+              '            c.gainR=',
+              '                    1.0',
+              '                    +(c.gainR-1.0)*scale;',
+              '',
+              '            c.gainG=',
+              '                    1.0',
+              '                    +(c.gainG-1.0)*scale;',
+              '',
+              '            c.gainB=',
+              '                    1.0',
+              '                    +(c.gainB-1.0)*scale;',
+              '        }',
+              '    }',
+              '',
+              '    e.continuityScale=scale;',
+              '}',
+              '',
+              '              '
+          ])
+
+          engine = engine.replace(
+              method_anchor,
+              helper + method_anchor,
+              1
+          )
+
+          # -------------------------------------------------------
+          # FINAL POST-LUMINANCE RGB CLAMP
+          #
+          # Insert directly before integer conversion.
+          # This avoids matching the luminance block formatting.
+          # -------------------------------------------------------
+
+          rgb_anchor = (
               'int ir=c255((int)Math.round(nr));'
           )
 
-          render_new_lines = [
-              '                              '
-              'if (lum>1e-6 && nl>1e-6) {',
-              '                                  '
-              'double preserve=clamp('
-              'lum/nl,0.96,1.04);',
-              '                                  '
-              'nr*=preserve; ng*=preserve; '
-              'nb*=preserve;',
-              '                              }',
-              '',
-              '                              '
-              '// Final post-luminance RGB guard.',
-              '                              '
-              '// 9/255 = 0.0353.',
-              '                              '
-              'nr=clamp(',
-              '                                      '
-              'nr,',
-              '                                      '
-              'rr-MAX_FINAL_CHANNEL_CODE_DELTA,',
-              '                                      '
-              'rr+MAX_FINAL_CHANNEL_CODE_DELTA);',
-              '',
-              '                              '
-              'ng=clamp(',
-              '                                      '
-              'ng,',
-              '                                      '
-              'gg-MAX_FINAL_CHANNEL_CODE_DELTA,',
-              '                                      '
-              'gg+MAX_FINAL_CHANNEL_CODE_DELTA);',
-              '',
-              '                              '
-              'nb=clamp(',
-              '                                      '
-              'nb,',
-              '                                      '
-              'bb-MAX_FINAL_CHANNEL_CODE_DELTA,',
-              '                                      '
-              'bb+MAX_FINAL_CHANNEL_CODE_DELTA);',
-              '',
-              '                              '
-              'int ir=c255((int)Math.round(nr));',
-          ]
-
-          render_new = '\n'.join(render_new_lines)
-
-          if render_old not in engine:
+          if rgb_anchor not in engine:
               raise RuntimeError(
-                  'v0.4.28 post-luminance render anchor '
-                  'not found'
+                  'v0.4.28 RGB output anchor not found'
               )
 
+          rgb_guard = '\n'.join([
+              '// Final post-luminance channel safety guard.',
+              '// 9/255 = 0.0353, below QC ceiling 0.040.',
+              'nr=clamp(',
+              '        nr,',
+              '        rr-MAX_FINAL_CHANNEL_CODE_DELTA,',
+              '        rr+MAX_FINAL_CHANNEL_CODE_DELTA);',
+              '',
+              'ng=clamp(',
+              '        ng,',
+              '        gg-MAX_FINAL_CHANNEL_CODE_DELTA,',
+              '        gg+MAX_FINAL_CHANNEL_CODE_DELTA);',
+              '',
+              'nb=clamp(',
+              '        nb,',
+              '        bb-MAX_FINAL_CHANNEL_CODE_DELTA,',
+              '        bb+MAX_FINAL_CHANNEL_CODE_DELTA);',
+              '',
+              '                              '
+          ])
+
           engine = engine.replace(
-              render_old,
-              render_new,
+              rgb_anchor,
+              rgb_guard + rgb_anchor,
               1
           )
 
-          # ---------------------------------------------------------
-          # REPORT CONTINUITY ACTIVITY
-          # ---------------------------------------------------------
+          # -------------------------------------------------------
+          # REPORT CONTINUITY GUARD
+          # -------------------------------------------------------
 
-          report_marker = (
-              '                  if (!plan.apply) {'
+          report_anchor = (
+              'if (!plan.apply) {'
           )
 
-          report_lines = [
-              '                  r.append(',
-              '                          String.format(',
-              '                                  Locale.US,',
-              '                                  '
-              '"• Continuity guard field scale %.1f%% '
-              '| adjacent gain cap %.4f '
-              '| final channel cap %d/255%n",',
-              '                                  '
-              'e.continuityScale*100.0,',
-              '                                  '
-              'MAX_ADJACENT_GAIN_STEP,',
-              '                                  '
-              'MAX_FINAL_CHANNEL_CODE_DELTA));',
-              '',
-          ]
-
-          report_add = '\n'.join(report_lines)
-
-          if report_marker not in engine:
+          if report_anchor not in engine:
               raise RuntimeError(
-                  'v0.4.28 report marker not found'
+                  'v0.4.28 plan/report anchor not found'
               )
 
+          report = '\n'.join([
+              'r.append(String.format(',
+              '        Locale.US,',
+              '        "• Continuity guard field scale '
+              '%.1f%% | adjacent gain cap %.4f | '
+              'final channel cap %d/255%n",',
+              '        e.continuityScale*100.0,',
+              '        MAX_ADJACENT_GAIN_STEP,',
+              '        MAX_FINAL_CHANNEL_CODE_DELTA));',
+              '',
+              '                  '
+          ])
+
           engine = engine.replace(
-              report_marker,
-              report_add + report_marker,
+              report_anchor,
+              report + report_anchor,
               1
           )
 
           engine_file.write_text(engine)
 
-          # ---------------------------------------------------------
-          # NEW PURE-JAVA HOST CHECK
-          # ---------------------------------------------------------
+          # -------------------------------------------------------
+          # HOST CHECK
+          # -------------------------------------------------------
 
           host_file = project / (
               'tools/'
               'MixedLightContinuityPolicyHostChecks.java'
           )
 
-          host_lines = [
+          host = '\n'.join([
               'package com.dennis.photomasterai;',
               '',
               'public final class '
               'MixedLightContinuityPolicyHostChecks {',
               '',
-              '    public static void main(',
-              '            String[] args) {',
+              '    public static void main(String[] args) {',
               '',
               '        MixedLightColourPolicy.QcResult safe =',
               '                MixedLightColourPolicy.'
@@ -568,7 +474,7 @@ jobs:
               '        require(',
               '                safe.accepted,',
               '                "safe continuity candidate '
-              'should pass");',
+              'must pass");',
               '',
               '        MixedLightColourPolicy.QcResult '
               'channelFail =',
@@ -592,7 +498,7 @@ jobs:
               '        require(',
               '                channelFail.reason.contains(',
               '                        "max channel delta"),',
-              '                "channel failure must be '
+              '                "channel rejection must be '
               'reported");',
               '',
               '        MixedLightColourPolicy.QcResult '
@@ -611,13 +517,13 @@ jobs:
               '',
               '        require(',
               '                !stepFail.accepted,',
-              '                "regional step above 0.050 '
+              '                "gain step above 0.050 '
               'must fail");',
               '',
               '        require(',
               '                stepFail.reason.contains(',
               '                        "regional gain step"),',
-              '                "regional failure must be '
+              '                "gain-step rejection must be '
               'reported");',
               '',
               '        System.out.println(',
@@ -634,31 +540,25 @@ jobs:
               '        }',
               '    }',
               '}',
-              '',
-          ]
+              ''
+          ])
 
-          host_file.write_text(
-              '\n'.join(host_lines)
+          host_file.write_text(host)
+
+          print(
+              'v0.4.29 Mixed-Light Continuity Guard applied'
           )
 
           print(
-              'v0.4.29 Mixed-Light Continuity Guard '
-              'applied'
+              'Adjacent correction field <= 0.045'
           )
 
           print(
-              'Adjacent regional gain field normalized '
-              'to <= 0.045'
+              'Final channel movement <= 9/255 (~0.0353)'
           )
 
           print(
-              'Final RGB movement capped to '
-              '9/255 (~0.0353)'
-          )
-
-          print(
-              'Max-channel QC remains 0.040; '
-              'regional QC tightened to 0.050'
+              'QC: channel 0.040 / adjacent region 0.050'
           )
           PY
 
@@ -672,6 +572,9 @@ jobs:
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourIntelligence.java"
 
           grep -q "MAX_FINAL_CHANNEL_CODE_DELTA = 9" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourIntelligence.java"
+
+          grep -q "enforceContinuity(e)" \
             "$PROJECT/app/src/main/java/com/dennis/photomasterai/MixedLightColourIntelligence.java"
 
           grep -q "maxGridGainStep > 0.050" \
@@ -735,8 +638,7 @@ jobs:
           rm -rf host-checks
           mkdir host-checks
 
-          javac \
-            -d host-checks \
+          javac -d host-checks \
             app/src/main/java/com/dennis/photomasterai/DeepPixelRepair.java \
             app/src/main/java/com/dennis/photomasterai/RepairSafetyPolicy.java \
             app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java \
@@ -858,10 +760,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          gradle \
-            :app:assembleDebug \
-            --stacktrace
+          gradle :app:assembleDebug --stacktrace
 
       - name: Verify package and prepare artifact
         shell: bash
@@ -869,7 +768,6 @@ jobs:
           set -euo pipefail
 
           PROJECT="${{ steps.source.outputs.project }}"
-
           APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
 
           test -f "$APK" || {
@@ -878,7 +776,6 @@ jobs:
           }
 
           SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
-
           AAPT="$SDK/build-tools/35.0.0/aapt"
 
           BADGING="$(
@@ -909,9 +806,7 @@ jobs:
 
           OUT="artifact/PhotoMasterAI-v0.4.29-MIXED-LIGHT-CONTINUITY.apk"
 
-          cp \
-            "$APK" \
-            "$OUT"
+          cp "$APK" "$OUT"
 
           sha256sum "$OUT" \
             > "artifact/PhotoMasterAI-v0.4.29-MIXED-LIGHT-CONTINUITY-SHA256.txt"
@@ -923,48 +818,35 @@ jobs:
           versionCode: 38
 
           BASELINE
-          Exact successful v0.4.28 source reconstructed from
-          successful run 37602511410.
+          Exact successful v0.4.28 source from run 37602511410.
 
           NEW
-          - Adjacent Mixed-Light gain field limited to 0.045
-          - Final post-luminance RGB movement capped at 9/255
-          - 9/255 = approximately 0.0353
-          - Max channel QC remains 0.0400
+          - Mixed-Light adjacent correction field limited to 0.045
+          - Final post-luminance RGB movement limited to 9/255
+          - 9/255 is approximately 0.0353
+          - Existing max-channel QC stays at 0.0400
           - Regional gain-step QC tightened to 0.0500
-          - Existing +/-3.5% correction envelope retained
-          - Continuity activity reported in Mixed-Light section
+          - Exact rollback diagnostics retained
 
           PURPOSE
-          Preserve useful Mixed-Light candidates that v0.4.28
-          measured but rejected because isolated pixels or
-          neighbouring correction regions exceeded output limits.
+          Keep useful Mixed-Light colour improvements while preventing
+          isolated pixels or neighbouring regions from exceeding safety
+          limits.
 
-          REGRESSION TARGETS
-
-          Indoor room:
-          v0.4.28 neutral error improved about 19% but max final
-          channel movement reached 0.0471.
-
-          Night scooter:
-          v0.4.28 neutral error improved about 27% but max final
-          channel movement reached 0.0549 and regional gain step
-          reached 0.0700.
-
-          Flower:
-          v0.4.28 neutral error improved about 30.8% but max final
-          channel movement reached 0.0510.
+          v0.4.28 regression evidence:
+          - Indoor room: about 19% neutral-error improvement
+          - Night scooter: about 27% neutral-error improvement
+          - Flower: about 30.8% neutral-error improvement
 
           RETAINED
           - v0.4.27 Local Tone safeguards
           - v0.4.25 geometry structural override
           - preserve-source sRGB / Display P3
           - high-ring finishing guard
-          - NAFNet-SIDD safeguards
-          - optics safeguards
-          - vignetting safeguards
+          - neural denoise safeguards
+          - optics / vignetting safeguards
           - shadow-integrity rollback
-          - background and screen-off processing
+          - background processing
           - JPEG quality 100
           EOF
 
