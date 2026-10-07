@@ -1,129 +1,108 @@
-name: Build AutoFix True Colour Lab v0.6.0 TEST
+name: Build Dennis AI Mastering Lab v0.14.5 TEST APK
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - 'AutoFix-True-Colour-Lab-v0.6.0-TEST-GitHubBuildSource.zip'
-      - '.github/workflows/build-true-colour-lab.yml'
-
-permissions:
-  contents: read
+      - 'tools/DennisAiMasteringLab-v0.14.5.patch.gz'
+      - '.github/workflows/build-apk.yml'
 
 jobs:
   build:
-    name: True Colour Lab v0.6.0 TEST
     runs-on: ubuntu-latest
-    timeout-minutes: 30
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify and extract source
-        shell: bash
-        run: |
-          set -euo pipefail
-          ZIP="AutoFix-True-Colour-Lab-v0.6.0-TEST-GitHubBuildSource.zip"
-          test -f "$ZIP" || { echo "::error::Missing $ZIP"; exit 1; }
-          unzip -t "$ZIP"
-          rm -rf true-colour-build
-          mkdir true-colour-build
-          unzip -q "$ZIP" -d true-colour-build
-
-      - name: Locate Android project
-        id: project
-        shell: bash
-        run: |
-          set -euo pipefail
-          SETTINGS="$(find true-colour-build -type f -name settings.gradle | head -n 1 || true)"
-          test -n "$SETTINGS" || { echo "::error::settings.gradle not found"; exit 1; }
-          PROJECT="$(dirname "$SETTINGS")"
-          test -f "$PROJECT/app/build.gradle" || { echo "::error::app/build.gradle not found"; exit 1; }
-          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
-          echo "Android project: $PROJECT"
-
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle 8.9
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
+
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: '8.6'
 
-      - name: Configure preinstalled Android SDK
-        shell: bash
+      - name: Unpack v0.14.4 baseline source
         run: |
-          set -euo pipefail
+          rm -rf project
+          mkdir -p project
+          unzip -q DennisAiMasteringLab-v0.14.4-GitHubBuildSource.zip -d project
 
-          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
-          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
-          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
-          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
-          echo "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
-
-          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
-          if [ ! -x "$SDKMANAGER" ]; then
-            SDKMANAGER="$(find "$SDK/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1 || true)"
-          fi
-
-          test -n "$SDKMANAGER" && test -x "$SDKMANAGER" || {
-            echo "::error::sdkmanager not found in preinstalled Android SDK."
-            exit 1
-          }
-
-          echo "Using SDK: $SDK"
-          echo "Using sdkmanager: $SDKMANAGER"
-          "$SDKMANAGER" --version
-
-          yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" \
-            "platform-tools" \
-            "platforms;android-34" \
-            "build-tools;34.0.0"
-
-      - name: Run deterministic engine tests
-        working-directory: ${{ steps.project.outputs.project }}
-        shell: bash
+      - name: Apply v0.14.5 Adaptive Dynamics Preservation patch
         run: |
-          set -euo pipefail
-          chmod +x run-tests.sh
-          ./run-tests.sh
+          gzip -dc tools/DennisAiMasteringLab-v0.14.5.patch.gz | patch --batch -p1 -d project
+          grep -q "versionName '0.14.5'" project/app/build.gradle
+          test -f project/app/src/main/java/com/dennis/aimasteringlab/AdaptiveDynamicsPreservation.java
 
-      - name: Build and sign TEST APK with existing app key
-        working-directory: ${{ steps.project.outputs.project }}
-        shell: bash
+      - name: Run focused host regressions
         run: |
-          set -euo pipefail
-          chmod +x build-apk.sh
-          ./build-apk.sh
+          rm -rf host-classes host-test-work
+          mkdir -p host-classes host-test-work
+          javac -encoding UTF-8 -d host-classes \
+            -sourcepath project/app/src/main/java:project/tests \
+            project/app/src/main/java/com/dennis/aimasteringlab/FullAiMasteringEngine.java \
+            project/app/src/main/java/com/dennis/aimasteringlab/AdaptiveDynamicsPreservation.java \
+            project/app/src/main/java/com/dennis/aimasteringlab/AdaptiveBroadMastering.java \
+            project/app/src/main/java/com/dennis/aimasteringlab/PassagePreservation.java \
+            project/tests/V0145DynamicsPreservationHarness.java \
+            project/tests/V0145PassageEnvelopeHarness.java \
+            project/tests/V0145AdaptiveAnchorHarness.java \
+            project/tests/V0144AdaptiveLadderHarness.java \
+            project/tests/V0144AdaptiveSelectionHarness.java \
+            project/tests/V0143BroadMasteringNeedHarness.java \
+            project/tests/V0143BroadAnchorHarness.java \
+            project/tests/V0143BroadRetentionHarness.java \
+            project/tests/org/json/*.java
+          java -cp host-classes com.dennis.aimasteringlab.V0145DynamicsPreservationHarness
+          java -cp host-classes com.dennis.aimasteringlab.V0145PassageEnvelopeHarness
+          java -cp host-classes com.dennis.aimasteringlab.V0145AdaptiveAnchorHarness host-test-work/adaptive-anchor
+          java -cp host-classes com.dennis.aimasteringlab.V0144AdaptiveLadderHarness
+          java -cp host-classes com.dennis.aimasteringlab.V0144AdaptiveSelectionHarness
+          java -cp host-classes com.dennis.aimasteringlab.V0143BroadMasteringNeedHarness
+          java -cp host-classes com.dennis.aimasteringlab.V0143BroadAnchorHarness host-test-work/broad-anchor
+          java -cp host-classes com.dennis.aimasteringlab.V0143BroadRetentionHarness host-test-work/broad-retention
 
-      - name: Collect APK and checksum
-        shell: bash
+      - name: Package v0.14.5 source checkpoint
         run: |
-          set -euo pipefail
-          PROJECT="${{ steps.project.outputs.project }}"
-          APK="$PROJECT/release/AutoFix-True-Colour-Lab-v0.6.0-TEST.apk"
-          test -f "$APK" || { echo "::error::Signed TEST APK not found"; exit 1; }
+          (cd project && zip -qr ../DennisAiMasteringLab-v0.14.5-GitHubBuildSource.zip . \
+            -x '.gradle/*' 'build/*' 'app/build/*' '*.keystore' '*.jks' '*.apk')
+          sha256sum DennisAiMasteringLab-v0.14.5-GitHubBuildSource.zip > DennisAiMasteringLab-v0.14.5-CHECKSUMS.sha256
 
-          rm -rf artifact
-          mkdir artifact
-          cp "$APK" artifact/AutoFix-True-Colour-Lab-v0.6.0-TEST.apk
-          sha256sum artifact/AutoFix-True-Colour-Lab-v0.6.0-TEST.apk \
-            > artifact/AutoFix-True-Colour-Lab-v0.6.0-TEST-SHA256.txt
+      - name: Make side-by-side TEST package
+        run: |
+          sed -i "s/applicationId 'com.dennis.aimasteringlab'/applicationId 'com.dennis.aimasteringlab.test145'/" project/app/build.gradle
+          sed -i 's/android:label="Dennis AI Mastering Lab"/android:label="Dennis Mastering v0.14.5 TEST"/' project/app/src/main/AndroidManifest.xml
 
-          echo "Signed APK ready:"
-          ls -lh artifact
+      - name: Build debug APK
+        working-directory: project
+        run: gradle --no-daemon :app:assembleDebug
 
-      - name: Upload TEST APK
+      - name: Rename APK and checksum
+        run: |
+          cp project/app/build/outputs/apk/debug/app-debug.apk DennisAiMasteringLab-v0.14.5-AdaptiveDynamics-TEST.apk
+          sha256sum DennisAiMasteringLab-v0.14.5-AdaptiveDynamics-TEST.apk >> DennisAiMasteringLab-v0.14.5-CHECKSUMS.sha256
+
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: AutoFix-True-Colour-Lab-v0.6.0-TEST
+          name: DennisAiMasteringLab-v0.14.5-AdaptiveDynamics-TEST
+          path: DennisAiMasteringLab-v0.14.5-AdaptiveDynamics-TEST.apk
+          retention-days: 30
+
+      - name: Upload source checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: DennisAiMasteringLab-v0.14.5-Source
           path: |
-            artifact/AutoFix-True-Colour-Lab-v0.6.0-TEST.apk
-            artifact/AutoFix-True-Colour-Lab-v0.6.0-TEST-SHA256.txt
-          if-no-files-found: error
+            DennisAiMasteringLab-v0.14.5-GitHubBuildSource.zip
+            DennisAiMasteringLab-v0.14.5-CHECKSUMS.sha256
           retention-days: 30
