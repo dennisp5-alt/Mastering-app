@@ -1,9 +1,10 @@
-name: Build Dennis AI Mastering Lab v0.15.0 Guarded Vocal Auditions TEST APK
+name: Build Dennis AI Mastering Lab v0.15.1 Bit-Exact DSP Performance TEST APK
 
 on:
   workflow_dispatch:
   push:
     paths:
+      - 'tools/DennisAiMasteringLab-v0.15.1.patch.gz'
       - 'tools/DennisAiMasteringLab-v0.15.0.patch.gz'
       - 'tools/DennisAiMasteringLab-v0.14.9.patch.gz'
       - 'tools/DennisAiMasteringLab-v0.14.8.patch.gz'
@@ -82,6 +83,14 @@ jobs:
           test -f project/tests/V0150SparseVocalHarness.java
           test -f project/tests/V0150QcReportingHarness.java
 
+      - name: Apply v0.15.1 Bit-Exact DSP Hot-Loop patch
+        run: |
+          gzip -dc tools/DennisAiMasteringLab-v0.15.1.patch.gz | patch --batch --fuzz=0 -p1 -d project
+          grep -q "versionName '0.15.1'" project/app/build.gradle
+          test -f project/tests/V0151ExactHotLoopHarness.java
+          test -f project/tests/LegacyTruePeakMeter.java
+          test -f project/tests/LegacyLookaheadLimiter.java
+
       - name: Run focused host regressions
         run: |
           rm -rf host-classes host-test-work
@@ -99,6 +108,9 @@ jobs:
             project/app/src/main/java/com/dennis/aimasteringlab/PassagePreservation.java \
             project/tests/V0149CandidateEfficiencyHarness.java \
             project/tests/V0150SparseVocalHarness.java \
+            project/tests/V0151ExactHotLoopHarness.java \
+            project/tests/LegacyTruePeakMeter.java \
+            project/tests/LegacyLookaheadLimiter.java \
             project/tests/V0150QcReportingHarness.java \
             project/tests/V0148StudioPassthroughHarness.java \
             project/tests/V0148TimingHarness.java \
@@ -114,6 +126,7 @@ jobs:
             project/tests/org/json/*.java
           java -cp host-classes com.dennis.aimasteringlab.V0149CandidateEfficiencyHarness
           java -cp host-classes com.dennis.aimasteringlab.V0150SparseVocalHarness
+          java -cp host-classes com.dennis.aimasteringlab.V0151ExactHotLoopHarness
           java -cp host-classes com.dennis.aimasteringlab.V0150QcReportingHarness
           java -cp host-classes com.dennis.aimasteringlab.V0148StudioPassthroughHarness host-test-work
           java -cp host-classes com.dennis.aimasteringlab.V0148TimingHarness
@@ -127,16 +140,16 @@ jobs:
           java -cp host-classes com.dennis.aimasteringlab.V0143BroadAnchorHarness host-test-work/broad-anchor
           java -cp host-classes com.dennis.aimasteringlab.V0143BroadRetentionHarness host-test-work/broad-retention
 
-      - name: Package v0.15.0 source checkpoint
+      - name: Package v0.15.1 source checkpoint
         run: |
-          (cd project && zip -qr ../DennisAiMasteringLab-v0.15.0-GitHubBuildSource.zip . \
+          (cd project && zip -qr ../DennisAiMasteringLab-v0.15.1-GitHubBuildSource.zip . \
             -x '.gradle/*' 'build/*' 'app/build/*' '*.keystore' '*.jks' '*.apk')
-          sha256sum DennisAiMasteringLab-v0.15.0-GitHubBuildSource.zip > DennisAiMasteringLab-v0.15.0-CHECKSUMS.sha256
+          sha256sum DennisAiMasteringLab-v0.15.1-GitHubBuildSource.zip > DennisAiMasteringLab-v0.15.1-CHECKSUMS.sha256
 
       - name: Make safe side-by-side TEST package (temporary signing)
         run: |
-          sed -i "s/applicationId 'com.dennis.aimasteringlab'/applicationId 'com.dennis.aimasteringlab.test150'/" project/app/build.gradle
-          sed -i 's/android:label="Dennis AI Mastering Lab"/android:label="Dennis Mastering v0.15.0 TEST"/' project/app/src/main/AndroidManifest.xml
+          sed -i "s/applicationId 'com.dennis.aimasteringlab'/applicationId 'com.dennis.aimasteringlab.test151'/" project/app/build.gradle
+          sed -i 's/android:label="Dennis AI Mastering Lab"/android:label="Dennis Mastering v0.15.1 TEST"/' project/app/src/main/AndroidManifest.xml
 
       - name: Build debug APK
         working-directory: project
@@ -144,21 +157,21 @@ jobs:
 
       - name: Rename APK and checksum
         run: |
-          cp project/app/build/outputs/apk/debug/app-debug.apk DennisAiMasteringLab-v0.15.0-GuardedVocal-TEST.apk
-          sha256sum DennisAiMasteringLab-v0.15.0-GuardedVocal-TEST.apk >> DennisAiMasteringLab-v0.15.0-CHECKSUMS.sha256
+          cp project/app/build/outputs/apk/debug/app-debug.apk DennisAiMasteringLab-v0.15.1-BitExactDSP-TEST.apk
+          sha256sum DennisAiMasteringLab-v0.15.1-BitExactDSP-TEST.apk >> DennisAiMasteringLab-v0.15.1-CHECKSUMS.sha256
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: DennisAiMasteringLab-v0.15.0-GuardedVocal-TEST
-          path: DennisAiMasteringLab-v0.15.0-GuardedVocal-TEST.apk
+          name: DennisAiMasteringLab-v0.15.1-BitExactDSP-TEST
+          path: DennisAiMasteringLab-v0.15.1-BitExactDSP-TEST.apk
           retention-days: 30
 
       - name: Upload source checkpoint
         uses: actions/upload-artifact@v4
         with:
-          name: DennisAiMasteringLab-v0.15.0-Source
+          name: DennisAiMasteringLab-v0.15.1-Source
           path: |
-            DennisAiMasteringLab-v0.15.0-GitHubBuildSource.zip
-            DennisAiMasteringLab-v0.15.0-CHECKSUMS.sha256
+            DennisAiMasteringLab-v0.15.1-GitHubBuildSource.zip
+            DennisAiMasteringLab-v0.15.1-CHECKSUMS.sha256
           retention-days: 30
