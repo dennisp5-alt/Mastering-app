@@ -219,9 +219,14 @@ report_insert='''                  report.append(
                                           ? "ACTIVE" : "inactive"));
 
 '''
-once('                  if (!plan.apply) {\\n\\n                      report.append(\\n                              "• Night-light control WITHHELD — ")',
-report_insert+'                  if (!plan.apply) {\\n\\n                      report.append(\\n                              "• Night-light control WITHHELD — ")',
-"separate diagnostic report")
+report_needle = '"• Night-light control WITHHELD — "'
+report_location = engine.find(report_needle)
+if report_location < 0:
+    raise RuntimeError("Night Light withheld-report location missing")
+report_if = engine.rfind("if (!plan.apply)", 0, report_location)
+if report_if < 0:
+    raise RuntimeError("Night Light withheld plan branch missing")
+engine = engine[:report_if] + report_insert + engine[report_if:]
 
 # Preserve dark sky by skipping all dark-sky pixel values; only a
 # source-evidenced bright lamp pixel may bypass broad CELL-based sky mask.
