@@ -69,6 +69,31 @@ public class EngineTest {
             if(a.noteClasses[i]!=b.noteClasses[i])changed++;
         assertTrue("Model must affect same-seed composition, changed="+changed,changed>25);
     }
+    @Test public void backupRestorePreservesLibraryProfiles()throws Exception {
+        File dir=java.nio.file.Files.createTempDirectory("music-lib-test").toFile();
+        File other=java.nio.file.Files.createTempDirectory("music-lib-restore").toFile();
+        try {
+            LibraryStore store=new LibraryStore(dir);
+            int[] notes={0,4,7,9,0,4,7,9,0,4,7,9};
+            float[] chroma=new float[12];chroma[0]=.5f;chroma[7]=.5f;
+            store.add(new WavAnalyzer.SongProfile("Test recording",notes,chroma));
+            ByteArrayOutputStream buffer=new ByteArrayOutputStream();
+            store.backup(buffer);
+            LibraryStore restored=new LibraryStore(other);
+            restored.restore(new ByteArrayInputStream(buffer.toByteArray()));
+            assertEquals(1,restored.size());
+            assertArrayEquals(notes,restored.tracks().get(0).notes);
+            assertEquals("Test recording",restored.tracks().get(0).name);
+            byte[] bad=buffer.toByteArray();bad[0]=0;
+            try {
+                restored.restore(new ByteArrayInputStream(bad));
+                fail("Invalid backup accepted");
+            } catch(IOException expected) { assertEquals(1,restored.size()); }
+        }finally {
+            File[] a=dir.listFiles();if(a!=null)for(File f:a)f.delete();dir.delete();
+            File[] b=other.listFiles();if(b!=null)for(File f:b)f.delete();other.delete();
+        }
+    }
     private static void write16(OutputStream out,int x)throws IOException{out.write(x&255);out.write((x>>>8)&255);}
     private static void write32(OutputStream out,int x)throws IOException{for(int i=0;i<4;i++)out.write((x>>>(i*8))&255);}
 }

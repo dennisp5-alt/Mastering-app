@@ -34,6 +34,42 @@ public final class LibraryStore {
         if(file.exists()&&!file.delete())throw new IOException("Could not replace training library");
         if(!tmp.renameTo(file))throw new IOException("Could not finish saving training library");
     }
+    /** Explicit user-controlled backup so experimental APK signing changes cannot destroy music DNA. */
+    public void backup(OutputStream target) throws IOException {
+        save();
+        try(InputStream in=new BufferedInputStream(new FileInputStream(file))) {
+            byte[] buf=new byte[16384];int count;
+            while((count=in.read(buf))!=-1)target.write(buf,0,count);
+            target.flush();
+        }
+    }
+    /** Restore only after validating a whole backup, then atomically write private library. */
+    public void restore(InputStream backup) throws IOException {
+        ArrayList<WavAnalyzer.SongProfile> restored=new ArrayList<>();
+        try(DataInputStream in=new DataInputStream(new BufferedInputStream(backup))) {
+            if(in.readInt()!=MAGIC)throw new IOException("Not a Dennis Music DNA backup");
+            int count=in.readInt();
+            if(count<0||count>MAX_SONGS)throw new IOException("Invalid backup track count");
+            for(int i=0;i<count;i++){
+                String name=in.readUTF();float[] chroma=new float[12];
+                for(int c=0;c<12;c++){
+                    float v=in.readFloat();
+                    if(!Float.isFinite(v)||v<0||v>1)throw new IOException("Invalid backup chroma");
+                    chroma[c]=v;
+                }
+                int length=in.readInt();
+                if(length<10||length>30000)throw new IOException("Invalid backup sequence length");
+                int[] notes=new int[length];
+                for(int j=0;j<length;j++){
+                    notes[j]=in.readUnsignedByte();
+                    if(notes[j]>11)throw new IOException("Invalid backup note value");
+                }
+                restored.add(new WavAnalyzer.SongProfile(name,notes,chroma));
+            }
+            if(in.read()!=-1)throw new IOException("Unexpected backup trailing data");
+        }
+        songs.clear();songs.addAll(restored);save();
+    }
     private void load() throws IOException {
         if(!file.exists())return;
         try(DataInputStream in=new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {

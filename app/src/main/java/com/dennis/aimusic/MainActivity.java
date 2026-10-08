@@ -17,7 +17,7 @@ import java.util.concurrent.Executors;
 
 /** Fully offline experimental native Android app. No Internet, microphone or filesystem permission. */
 public final class MainActivity extends Activity {
-    private static final int REQUEST_IMPORT=51,REQUEST_EXPORT=52;
+    private static final int REQUEST_IMPORT=51,REQUEST_EXPORT=52,REQUEST_BACKUP=53,REQUEST_RESTORE=54;
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private final int BG=0xff101619, PANEL=0xff192427, ACCENT=0xff76dbc3;
     private LibraryStore library;
@@ -25,7 +25,7 @@ public final class MainActivity extends Activity {
     private TextView status,stats,subtitle;
     private EditText bpm;
     private Spinner genre,duration;
-    private Button importButton,composeButton,playButton,exportButton,resetButton,newSeedButton;
+    private Button importButton,composeButton,playButton,exportButton,resetButton,newSeedButton,backupButton,restoreButton;
     private CheckBox useTraining;
     private long comparisonSeed=4837291021L;
     private volatile File lastSong;
@@ -73,6 +73,10 @@ public final class MainActivity extends Activity {
         composeButton=button(body,"2   COMPOSE INSTRUMENTAL WAV",true);composeButton.setOnClickListener(v->compose());
         playButton=button(body,"PLAY LAST COMPOSITION",false);playButton.setEnabled(false);playButton.setOnClickListener(v->togglePlay());
         exportButton=button(body,"3   SAVE WAV TO PHONE",false);exportButton.setEnabled(false);exportButton.setOnClickListener(v->saveWav());
+        backupButton=button(body,"BACK UP MY MUSIC DNA",false);
+        backupButton.setOnClickListener(v->backupProfiles());
+        restoreButton=button(body,"RESTORE MUSIC DNA BACKUP",false);
+        restoreButton.setOnClickListener(v->confirmRestore());
         resetButton=button(body,"CLEAR TRAINING LIBRARY",false);resetButton.setOnClickListener(v->confirmClear());
         status=text("Import a recording to begin.",13,0xffb2c8c7);body.addView(status);
         body.addView(text("REALISTIC LIMITS  •  Locally trained note-sequence predictor and simple synthesised instruments only. This build does not generate vocals, lyrics, cloned voices, or Suno-quality music.",12,0xff91a5a8));
@@ -98,6 +102,8 @@ public final class MainActivity extends Activity {
         busy=value;importButton.setEnabled(!value&&library!=null);composeButton.setEnabled(!value);
         playButton.setEnabled(!value&&lastSong!=null);exportButton.setEnabled(!value&&lastSong!=null);
         resetButton.setEnabled(!value&&library!=null);
+        backupButton.setEnabled(!value&&library!=null);
+        restoreButton.setEnabled(!value&&library!=null);
         newSeedButton.setEnabled(!value);
         useTraining.setEnabled(!value&&brain.isTrained());
     }
@@ -122,6 +128,25 @@ public final class MainActivity extends Activity {
                     brain=rebuild(library.tracks());
                     main(()->{syncStats();setBusy(false);setStatus("Learned "+title+" ("+profile.notes.length+" feature events). Stored locally.");});
                 } catch(Exception e){main(()->{setBusy(false);setStatus("Import failed: "+e.getMessage());});}
+            });
+        } else if(requestCode==REQUEST_BACKUP) {
+            setBusy(true);setStatus("Saving training-library backup…");
+            worker.execute(()->{
+                try(OutputStream out=getContentResolver().openOutputStream(uri,"w")){
+                    if(out==null)throw new IOException("Unable to open backup destination");
+                    library.backup(out);
+                    main(()->{setBusy(false);setStatus("Music DNA backup saved. Keep it safe for later APK versions.");});
+                } catch(Exception ex){main(()->{setBusy(false);setStatus("Backup failed: "+ex.getMessage());});}
+            });
+        } else if(requestCode==REQUEST_RESTORE) {
+            setBusy(true);setStatus("Restoring training-library backup…");
+            worker.execute(()->{
+                try(InputStream in=getContentResolver().openInputStream(uri)){
+                    if(in==null)throw new IOException("Unable to open backup");
+                    library.restore(in);
+                    brain=rebuild(library.tracks());
+                    main(()->{syncStats();setBusy(false);setStatus("Music DNA restored: "+library.size()+" tracks. Model retrained locally.");});
+                }catch(Exception ex){main(()->{setBusy(false);setStatus("Restore failed: "+ex.getMessage());});}
             });
         } else if(requestCode==REQUEST_EXPORT){
             File source=lastSong;
@@ -186,6 +211,23 @@ public final class MainActivity extends Activity {
         Intent save=new Intent(Intent.ACTION_CREATE_DOCUMENT);save.addCategory(Intent.CATEGORY_OPENABLE);
         save.setType("audio/wav");save.putExtra(Intent.EXTRA_TITLE,"Dennis_AI_Music_"+System.currentTimeMillis()+".wav");
         startActivityForResult(save,REQUEST_EXPORT);
+    }
+    private void backupProfiles(){
+        Intent save=new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        save.addCategory(Intent.CATEGORY_OPENABLE);
+        save.setType("application/octet-stream");
+        save.putExtra(Intent.EXTRA_TITLE,"Dennis_Music_DNA_v02.dms");
+        startActivityForResult(save,REQUEST_BACKUP);
+    }
+    private void confirmRestore(){
+        new AlertDialog.Builder(this).setTitle("Replace this training library?")
+          .setMessage("Restoring a backup replaces only this experimental app's stored feature profiles. Original recordings are never modified.")
+          .setNegativeButton("Cancel",null)
+          .setPositiveButton("Restore", (d,w)->{
+              Intent open=new Intent(Intent.ACTION_OPEN_DOCUMENT);
+              open.addCategory(Intent.CATEGORY_OPENABLE);open.setType("*/*");
+              startActivityForResult(open,REQUEST_RESTORE);
+          }).show();
     }
     private void confirmClear(){
         new AlertDialog.Builder(this).setTitle("Delete learning library?")
