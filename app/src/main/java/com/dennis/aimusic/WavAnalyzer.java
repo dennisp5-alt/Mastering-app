@@ -107,7 +107,7 @@ public final class WavAnalyzer {
                 double sum=0;for(double p:chroma)sum+=p;
                 if(sum>0)for(int k=0;k<12;k++)totals[k]+=chroma[k]/sum;
                 // Suppress repeated identical spectral evidence while preserving sequential flow.
-                if(best!=previous || blocks%4==0) {notes.add(best);previous=best;}
+                if(best!=previous || blocks%2==0) {notes.add(best);previous=best;}
             }
             blocks++;
             if(progress!=null && blocks%16==0) progress.report(Math.min(99,(int)(100.0*blocks/Math.max(1,totalBlocks))));
