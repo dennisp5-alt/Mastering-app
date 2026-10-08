@@ -98,26 +98,86 @@ engine_file = project / (
 )
 engine = engine_file.read_text()
 
-single_shot_pattern = re.compile(
-    r"\\n[ \\t]*RenderSummary[ \\t]+summary[ \\t]*=[ \\t\\r\\n]*"
-    r"new[ \\t]+RenderSummary\\(\\)[ \\t]*;[\\s\\S]*?"
-    r"return[ \\t]+new[ \\t]+Outcome\\([ \\t\\r\\n]*"
-    r"candidate[ \\t]*,[ \\t\\r\\n]*"
-    r"after[ \\t]*,[ \\t\\r\\n]*"
-    r"true[ \\t]*,[ \\t\\r\\n]*"
-    r"report\\.toString\\(\\)[ \\t\\r\\n]*"
-    r"\\)[ \\t]*;"
+apply_region_start = engine.find(
+    "if (!plan.apply)"
 )
 
-single_shot_match = single_shot_pattern.search(engine)
-
-if single_shot_match is None:
+if apply_region_start < 0:
     raise RuntimeError(
-        "Night Light single-shot QC block not found"
+        "Night Light plan/apply region not found"
     )
 
-start_index = single_shot_match.start()
-end_index = single_shot_match.end()
+analysis_region_start = engine.find(
+    "private static Evidence analyse(",
+    apply_region_start,
+)
+
+if analysis_region_start < 0:
+    raise RuntimeError(
+        "Night Light analyse-method boundary not found"
+    )
+
+summary_token = "RenderSummary summary ="
+
+summary_index = engine.find(
+    summary_token,
+    apply_region_start,
+    analysis_region_start,
+)
+
+if summary_index < 0:
+    raise RuntimeError(
+        "Night Light RenderSummary block not found"
+    )
+
+start_index = engine.rfind(
+    "\n",
+    apply_region_start,
+    summary_index,
+)
+
+if start_index < 0:
+    start_index = summary_index
+else:
+    start_index += 1
+
+accepted_text_index = engine.find(
+    "Night-light control ACCEPTED",
+    summary_index,
+    analysis_region_start,
+)
+
+if accepted_text_index < 0:
+    raise RuntimeError(
+        "Night Light accepted-report anchor not found"
+    )
+
+accepted_return_index = engine.find(
+    "return new Outcome(",
+    accepted_text_index,
+    analysis_region_start,
+)
+
+if accepted_return_index < 0:
+    raise RuntimeError(
+        "Night Light accepted return anchor not found"
+    )
+
+accepted_return_end = engine.find(
+    "report.toString());",
+    accepted_return_index,
+    analysis_region_start,
+)
+
+if accepted_return_end < 0:
+    raise RuntimeError(
+        "Night Light accepted return end not found"
+    )
+
+end_index = (
+    accepted_return_end
+    + len("report.toString());")
+)
 
 replacement = r'''                  Bitmap acceptedCandidate =
                           null;
