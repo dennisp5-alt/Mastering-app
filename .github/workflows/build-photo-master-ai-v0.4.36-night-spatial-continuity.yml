@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/build-photo-master-ai-v0.4.36-night-spatial-continuity.yml'
       - 'tools/apply_v0436_night_spatial_continuity.py'
+      - 'tools/apply_stable_signing.py'
       - 'tools/apply_v0434_night_texture.py'
       - 'tools/apply_v0435_night_adaptive_backoff.py'
 
@@ -912,6 +913,8 @@ jobs:
         run: |
           set -euo pipefail
 
+          python3 "$GITHUB_WORKSPACE/tools/apply_stable_signing.py" .
+
           gradle \
             :app:assembleDebug \
             --stacktrace
@@ -1028,6 +1031,12 @@ jobs:
           - no automatic ACCEPT unless a candidate passes every QC gate
           - this candidate still requires on-device scene validation
 
+          SIGNING REPAIR
+          - Pin Android debug signing to the existing cached keystore.
+          - Verify expected certificate fingerprint before publishing.
+          - Older APKs used different certificates; one-time reinstall needed.
+          - Processing algorithm unchanged.
+
           RETAINED
           - v0.4.32 Night Light Detail Guard
           - ring-aware Night Light strength cap
@@ -1068,6 +1077,14 @@ jobs:
             --print-certs \
             "$APK"
 
+          EXPECTED_CERT="c9db4a02c46952b6fabeeaaadbc21aa73589ec8e25b29650b6828860e7d6b5c9"
+          CERT="$("$BT/apksigner" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)"
+          test "$CERT" = "$EXPECTED_CERT" || {
+            echo "::error::APK signing certificate changed: $CERT"
+            exit 1
+          }
+          echo "Pinned signer verified: $CERT"
+
           echo "APK passed container, alignment and signature verification"
 
       - name: Publish raw APK GitHub Release
@@ -1077,7 +1094,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          TAG="photo-master-ai-v0.4.36-r1"
+          TAG="photo-master-ai-v0.4.36-r2"
           APK="artifact/PhotoMasterAI-v0.4.36-NIGHT-SPATIAL-CONTINUITY.apk"
           SHA="artifact/PhotoMasterAI-v0.4.36-NIGHT-SPATIAL-CONTINUITY-SHA256.txt"
           NOTES="artifact/PhotoMasterAI-v0.4.36-Notes.txt"
@@ -1092,7 +1109,7 @@ jobs:
           else
             gh release create "$TAG" \
               --repo "${{ github.repository }}" \
-              --title "Photo Master AI v0.4.36" \
+              --title "Photo Master AI v0.4.36 (Stable Signing)" \
               --notes "Raw APK release. APK container, ZIP alignment and signing are verified in GitHub Actions before publishing." \
               "$APK" "$SHA" "$NOTES"
           fi
