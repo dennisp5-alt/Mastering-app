@@ -40,6 +40,35 @@ public class EngineTest {
         int dominant=0;for(int i=1;i<12;i++)if(p.chroma[i]>p.chroma[dominant])dominant=i;
         assertEquals("C4 should peak in C pitch class",0,dominant);
     }
+    @Test public void phraseComposerAddsRestsAndRepeatsDeterministically() {
+        TinyMusicBrain model=new TinyMusicBrain();
+        SongComposer.Plan a=SongComposer.compose(model,104,180,0,0,27831L);
+        SongComposer.Plan b=SongComposer.compose(model,104,180,0,0,27831L);
+        assertArrayEquals(a.noteClasses,b.noteClasses);
+        assertArrayEquals(a.noteOnset,b.noteOnset);
+        assertEquals(a.noteClasses.length,a.velocity.length);
+        int rests=0, sustained=0; boolean[] sections=new boolean[5];
+        for(int i=0;i<a.noteClasses.length;i++){
+            if(a.noteClasses[i]<0) rests++;
+            if(a.noteOnset[i]>=0&&a.noteOnset[i]<i)sustained++;
+        }
+        for(int section:a.sections)sections[section]=true;
+        assertTrue("Phrase plan must have actual silences",rests>10);
+        assertTrue("Phrase plan must have sustained notes",sustained>10);
+        for(boolean section:sections)assertTrue("Arrangement should contain all sections",section);
+    }
+    @Test public void modelAffectsControlledComparisonWithSameSeed(){
+        int[] repeated=new int[1600];
+        for(int i=0;i<repeated.length;i++)repeated[i]=new int[]{0,4,7,9}[i%4];
+        TinyMusicBrain trained=new TinyMusicBrain();
+        trained.fit(Collections.singletonList(repeated));
+        SongComposer.Plan a=SongComposer.compose(trained,104,180,0,0,42827L);
+        SongComposer.Plan b=SongComposer.compose(new TinyMusicBrain(),104,180,0,0,42827L);
+        int changed=0;
+        for(int i=0;i<a.noteClasses.length;i++)
+            if(a.noteClasses[i]!=b.noteClasses[i])changed++;
+        assertTrue("Model must affect same-seed composition, changed="+changed,changed>25);
+    }
     private static void write16(OutputStream out,int x)throws IOException{out.write(x&255);out.write((x>>>8)&255);}
     private static void write32(OutputStream out,int x)throws IOException{for(int i=0;i<4;i++)out.write((x>>>(i*8))&255);}
 }

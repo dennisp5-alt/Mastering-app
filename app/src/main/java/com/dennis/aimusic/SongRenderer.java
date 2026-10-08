@@ -60,47 +60,60 @@ public final class SongRenderer {
                 int base=48+plan.chordRoots[bar];
                 // Sustained simple harmony; basic triads deliberately do not copy the input audio.
                 double padFade=Math.min(1,barPhase*9)*Math.min(1,(1-barPhase)*13);
-                double pad=.19*padFade*(sine(FREQ[base]*t)+.72*sine(FREQ[base+4]*t)+.64*sine(FREQ[base+7]*t))/2.36;
+                double sectionGain=section==2?1.22:section==3?.85:section==1?.92:.50;
+                double pad=.17*sectionGain*padFade*(sine(FREQ[base]*t)+.72*sine(FREQ[base+4]*t)+.64*sine(FREQ[base+7]*t))/2.36;
                 // Simple electric bass playing roots, with a fixed beat-length decay.
-                double bassAmp=.30*Math.pow(1-beatPhase,1.6);
+                double bassAmp=.27*Math.pow(1-beatPhase,1.6)*(section==2?1.11:section==3?.71:1.0);
                 double bass=bassAmp*(.75*triangle(FREQ[base-12]*t)+.25*sine(FREQ[base-12]*2*t));
                 if(introOrOutro)bass*=.65;
-                // Composition model supplies successive pitch classes; audible short plucked lead.
+                // Phrased notes contain held lengths and genuine silences; do not trigger a new pluck
+                // at every eighth-note cell as v0.1 did.
                 int step=(int)Math.min(plan.noteClasses.length-1,Math.floor(frame/(framesPerBeat/2)));
-                double stepPhase=frame/(framesPerBeat/2)-step;
-                int melodyMidi=60+plan.noteClasses[step];
-                double pluckAmp=Math.pow(1-stepPhase,2.0)*Math.min(1,stepPhase*26);
-                double lead=.21*pluckAmp*(.85*sine(FREQ[melodyMidi]*t)+.12*sine(FREQ[melodyMidi]*2*t)+.08*sine(FREQ[melodyMidi]*3*t));
-                if(introOrOutro)lead*=.48;
+                int onset=plan.noteOnset[step];
+                double lead=0;
+                if(onset>=0) {
+                    int melodyMidi=60+plan.noteClasses[step];
+                    double age=(frame-onset*(framesPerBeat/2))/RATE;
+                    double attack=Math.min(1,Math.max(0,age)*42);
+                    double release=Math.exp(-2.4*age/beatSeconds);
+                    double velocityGain=plan.velocity[step]/105.0;
+                    double shimmer=(plan.style==0?.06:plan.style==1?.16:plan.style==2?.11:.08);
+                    lead=.18*attack*release*velocityGain*(.81*sine(FREQ[melodyMidi]*t)
+                        +shimmer*sine(2*FREQ[melodyMidi]*t)+.07*sine(3*FREQ[melodyMidi]*t));
+                }
+                lead*=section==2?1.23:section==3?.86:introOrOutro?.50:.92;
                 // Rhythm patterns selected per style. Deterministic noise-based hi-hat/snare.
                 int beatsInBar=(int)(beatIndex%4);
                 double kick=0,snare=0,hat=0;
                 if(!introOrOutro || section==4) {
                     boolean fourOnFloor=plan.style==2;
                     boolean kickEvent=(fourOnFloor|| beatsInBar==0||beatsInBar==2);
+                    if(section==3&&beatsInBar==2&&(bar%4)!=3)kickEvent=false;
+                    if(section==2&&beatsInBar==3&&(bar%8)==7)kickEvent=true;
                     if(kickEvent&&beatPhase<.28) {
                         double k=beatPhase/.28;
-                        kick=.34*(1-k)*(1-k)*sine((75-30*k)*t);
+                        kick=.30*(1-k)*(1-k)*sine((75-30*k)*beatPhase*beatSeconds);
                     }
                     if((beatsInBar==1||beatsInBar==3)&&beatPhase<.20){
                         double s=beatPhase/.20;
                         double n=noise(frame,plan.seed)/1073741824.0-1;
-                        snare=.18*(1-s)*(1-s)*n;
+                        snare=(section==2?.22:.16)*(1-s)*(1-s)*n;
                     }
                     double hphase=(beatPhase*2)%1;
                     if(hphase<.20) {
                         double n=noise(frame,plan.seed^0x289af3L)/1073741824.0-1;
-                        hat=.065*(1-hphase/.20)*n;
+                        hat=(section==2?.088:.045)*(1-hphase/.20)*n;
                     }
                     if(plan.style==1){kick*=1.10;lead*=1.1;pad*=.7;}
                     if(plan.style==3){kick*=.78;snare*=.75;pad*=1.18;}
                     if(plan.style==0){kick*=.72;snare*=.72;hat*=.55;}
                 }
-                double dry=pad+bass+lead+kick+snare+hat;
-                // Low-cost cross-feedback echo for stereo dimension; bounded feedback.
+                // Stereo separation is modest: dry kick/bass centred, pad and lead differently placed.
+                // Cross-feedback echo decorrelates without widening the bass.
                 float pastL=delayLeft[delayIndex],pastR=delayRight[delayIndex];
-                double l=clip(dry+.15*pastL+.06*pastR);
-                double r=clip(pad*.93+bass+lead*.90+kick+snare+hat+.16*pastR+.05*pastL);
+                double centre=bass+kick+snare+hat;
+                double l=clip(centre+pad*.81+lead*.99+.22*pastL+.035*pastR);
+                double r=clip(centre+pad*1.10+lead*.66+.08*pastR+.16*pastL);
                 delayLeft[delayIndex]=(float)(lead*.55+pad*.22+pastR*.21);
                 delayRight[delayIndex]=(float)(lead*.47+pad*.27+pastL*.21);
                 if(++delayIndex==delayLength)delayIndex=0;
