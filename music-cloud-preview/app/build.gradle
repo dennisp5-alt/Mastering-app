@@ -1,0 +1,20 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'com.dennis.musiccloud'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'com.dennis.musiccloud'
+        minSdk 29
+        targetSdk 34
+        versionCode 1
+        versionName '0.3.0-cloud-preview'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
+}
