@@ -1,9 +1,10 @@
-name: Build Dennis AI Mastering Lab v0.14.8 Performance TEST APK
+name: Build Dennis AI Mastering Lab v0.14.9 Candidate Efficiency TEST APK
 
 on:
   workflow_dispatch:
   push:
     paths:
+      - 'tools/DennisAiMasteringLab-v0.14.9.patch.gz'
       - 'tools/DennisAiMasteringLab-v0.14.8.patch.gz'
       - 'tools/DennisAiMasteringLab-v0.14.7.patch.gz'
       - 'tools/DennisAiMasteringLab-v0.14.6.patch.gz'
@@ -66,6 +67,13 @@ jobs:
           test -f project/app/src/main/java/com/dennis/aimasteringlab/StudioPerformance.java
           test -f project/tests/V0148StudioPassthroughHarness.java
 
+      - name: Apply v0.14.9 Candidate Efficiency patch
+        run: |
+          gzip -dc tools/DennisAiMasteringLab-v0.14.9.patch.gz | patch --batch --fuzz=0 -p1 -d project
+          grep -q "versionName '0.14.9'" project/app/build.gradle
+          test -f project/tests/V0149CandidateEfficiencyHarness.java
+          test -f project/tests/V0149QcReportingHarness.java
+
       - name: Run focused host regressions
         run: |
           rm -rf host-classes host-test-work
@@ -81,7 +89,8 @@ jobs:
             project/app/src/main/java/com/dennis/aimasteringlab/SincResampler.java \
             project/app/src/main/java/com/dennis/aimasteringlab/AdaptiveBroadMastering.java \
             project/app/src/main/java/com/dennis/aimasteringlab/PassagePreservation.java \
-            project/tests/V0148QcReportingHarness.java \
+            project/tests/V0149CandidateEfficiencyHarness.java \
+            project/tests/V0149QcReportingHarness.java \
             project/tests/V0148StudioPassthroughHarness.java \
             project/tests/V0148TimingHarness.java \
             project/tests/V0146DemandAwareObjectiveHarness.java \
@@ -94,7 +103,8 @@ jobs:
             project/tests/V0143BroadAnchorHarness.java \
             project/tests/V0143BroadRetentionHarness.java \
             project/tests/org/json/*.java
-          java -cp host-classes com.dennis.aimasteringlab.V0148QcReportingHarness
+          java -cp host-classes com.dennis.aimasteringlab.V0149CandidateEfficiencyHarness
+          java -cp host-classes com.dennis.aimasteringlab.V0149QcReportingHarness
           java -cp host-classes com.dennis.aimasteringlab.V0148StudioPassthroughHarness host-test-work
           java -cp host-classes com.dennis.aimasteringlab.V0148TimingHarness
           java -cp host-classes com.dennis.aimasteringlab.V0146DemandAwareObjectiveHarness host-test-work/demand-gate
@@ -107,16 +117,16 @@ jobs:
           java -cp host-classes com.dennis.aimasteringlab.V0143BroadAnchorHarness host-test-work/broad-anchor
           java -cp host-classes com.dennis.aimasteringlab.V0143BroadRetentionHarness host-test-work/broad-retention
 
-      - name: Package v0.14.8 source checkpoint
+      - name: Package v0.14.9 source checkpoint
         run: |
-          (cd project && zip -qr ../DennisAiMasteringLab-v0.14.8-GitHubBuildSource.zip . \
+          (cd project && zip -qr ../DennisAiMasteringLab-v0.14.9-GitHubBuildSource.zip . \
             -x '.gradle/*' 'build/*' 'app/build/*' '*.keystore' '*.jks' '*.apk')
-          sha256sum DennisAiMasteringLab-v0.14.8-GitHubBuildSource.zip > DennisAiMasteringLab-v0.14.8-CHECKSUMS.sha256
+          sha256sum DennisAiMasteringLab-v0.14.9-GitHubBuildSource.zip > DennisAiMasteringLab-v0.14.9-CHECKSUMS.sha256
 
       - name: Make safe side-by-side TEST package (temporary signing)
         run: |
-          sed -i "s/applicationId 'com.dennis.aimasteringlab'/applicationId 'com.dennis.aimasteringlab.test148'/" project/app/build.gradle
-          sed -i 's/android:label="Dennis AI Mastering Lab"/android:label="Dennis Mastering v0.14.8 TEST"/' project/app/src/main/AndroidManifest.xml
+          sed -i "s/applicationId 'com.dennis.aimasteringlab'/applicationId 'com.dennis.aimasteringlab.test149'/" project/app/build.gradle
+          sed -i 's/android:label="Dennis AI Mastering Lab"/android:label="Dennis Mastering v0.14.9 TEST"/' project/app/src/main/AndroidManifest.xml
 
       - name: Build debug APK
         working-directory: project
@@ -124,21 +134,21 @@ jobs:
 
       - name: Rename APK and checksum
         run: |
-          cp project/app/build/outputs/apk/debug/app-debug.apk DennisAiMasteringLab-v0.14.8-Performance-TEST.apk
-          sha256sum DennisAiMasteringLab-v0.14.8-Performance-TEST.apk >> DennisAiMasteringLab-v0.14.8-CHECKSUMS.sha256
+          cp project/app/build/outputs/apk/debug/app-debug.apk DennisAiMasteringLab-v0.14.9-CandidateEfficiency-TEST.apk
+          sha256sum DennisAiMasteringLab-v0.14.9-CandidateEfficiency-TEST.apk >> DennisAiMasteringLab-v0.14.9-CHECKSUMS.sha256
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: DennisAiMasteringLab-v0.14.8-Performance-TEST
-          path: DennisAiMasteringLab-v0.14.8-Performance-TEST.apk
+          name: DennisAiMasteringLab-v0.14.9-CandidateEfficiency-TEST
+          path: DennisAiMasteringLab-v0.14.9-CandidateEfficiency-TEST.apk
           retention-days: 30
 
       - name: Upload source checkpoint
         uses: actions/upload-artifact@v4
         with:
-          name: DennisAiMasteringLab-v0.14.8-Source
+          name: DennisAiMasteringLab-v0.14.9-Source
           path: |
-            DennisAiMasteringLab-v0.14.8-GitHubBuildSource.zip
-            DennisAiMasteringLab-v0.14.8-CHECKSUMS.sha256
+            DennisAiMasteringLab-v0.14.9-GitHubBuildSource.zip
+            DennisAiMasteringLab-v0.14.9-CHECKSUMS.sha256
           retention-days: 30
