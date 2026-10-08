@@ -98,24 +98,26 @@ engine_file = project / (
 )
 engine = engine_file.read_text()
 
-start = "                  RenderSummary summary =\n                          new RenderSummary();"
-end = """                  return new Outcome(
-                          candidate,
-                          after,
-                          true,
-                          report.toString());"""
+single_shot_pattern = re.compile(
+    r"\\n[ \\t]*RenderSummary[ \\t]+summary[ \\t]*=[ \\t\\r\\n]*"
+    r"new[ \\t]+RenderSummary\\(\\)[ \\t]*;[\\s\\S]*?"
+    r"return[ \\t]+new[ \\t]+Outcome\\([ \\t\\r\\n]*"
+    r"candidate[ \\t]*,[ \\t\\r\\n]*"
+    r"after[ \\t]*,[ \\t\\r\\n]*"
+    r"true[ \\t]*,[ \\t\\r\\n]*"
+    r"report\\.toString\\(\\)[ \\t\\r\\n]*"
+    r"\\)[ \\t]*;"
+)
 
-start_index = engine.find(start)
+single_shot_match = single_shot_pattern.search(engine)
 
-if start_index < 0:
-    raise RuntimeError("Night Light single-shot start anchor not found")
+if single_shot_match is None:
+    raise RuntimeError(
+        "Night Light single-shot QC block not found"
+    )
 
-end_index = engine.find(end, start_index)
-
-if end_index < 0:
-    raise RuntimeError("Night Light single-shot end anchor not found")
-
-end_index += len(end)
+start_index = single_shot_match.start()
+end_index = single_shot_match.end()
 
 replacement = r'''                  Bitmap acceptedCandidate =
                           null;
