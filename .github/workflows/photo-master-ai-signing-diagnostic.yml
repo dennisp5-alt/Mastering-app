@@ -24,6 +24,18 @@ jobs:
           path: ~/.android/debug.keystore
           key: photo-master-ai-debug-keystore-v1
           lookup-only: false
+      - name: Examine source Gradle signing configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/photo-source
+          unzip -q PhotoMasterAI-v0.4.1-Source.zip -d /tmp/photo-source
+          echo "Signing-related source files:"
+          find /tmp/photo-source -type f \( -name '*.keystore' -o -name '*.jks' -o -name 'build.gradle' -o -name 'gradle.properties' \) | head -40
+          echo "Gradle signing references:"
+          grep -R -n -E 'signingConfig|storeFile|keyAlias|debug.keystore|user.home|applicationId' /tmp/photo-source --include='*.gradle' --include='*.properties' || true
+          echo "Gradle app build:"
+          find /tmp/photo-source -path '*/app/build.gradle' -type f -exec sed -n '1,130p' {} \;
       - name: Compare restored certificate to installed v0.4.35
         shell: bash
         run: |
