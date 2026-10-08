@@ -268,9 +268,7 @@ once(needle,addition+needle,"separate regional edit mask")
 # For distributed lighting, report the very same positive luma-reduction
 # metric across eligible ambient/lamp sources, without relaxing its gates.
 # Existing strong hotspot QC measurement remains unchanged.
-once('''if (
-                                  lum > 0.72
-                                          && sat < 0.45) {''',
+regex_once(r'if\s*\(\s*lum\s*>\s*0\.72\s*&&\s*sat\s*<\s*0\.45\s*\)\s*\{',
 '''if (
                                   (lum > 0.72 && sat < 0.45)
                                   || (distributedLampHere
