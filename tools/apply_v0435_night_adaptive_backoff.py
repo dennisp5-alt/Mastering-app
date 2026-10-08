@@ -217,7 +217,6 @@ replacement = r'''                  Bitmap acceptedCandidate =
                               render(
                                       mastered,
                                       evidence,
-                                      plan,
                                       attemptStrength,
                                       summary);
 
