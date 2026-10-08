@@ -138,7 +138,7 @@ once("long hotspotPixels = 0;",
 
 # Count bright LOCALIZED sources in mid/lower scene independent of
 # mean cell brightness, so diluted streetlights can be detected.
-once("if (lum > 0.93)\n                              hotspotPixels++;",
+regex_once(r'if\s*\(\s*lum\s*>\s*0\.93\s*\)\s*hotspotPixels\+\+\s*;',
 """if (lum > 0.93)
                               hotspotPixels++;
 
