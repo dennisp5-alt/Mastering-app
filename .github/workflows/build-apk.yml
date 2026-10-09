@@ -143,6 +143,7 @@ jobs:
           patch --batch --fuzz=0 -p1 -d project < ui157/v0157.patch
           mkdir -p project/app/src/main/res/drawable-nodpi
           cp ui157/ic_launcher.png project/app/src/main/res/drawable-nodpi/ic_launcher.png
+          rm -f project/app/src/main/res/drawable/ic_launcher.xml
           printf '%s  %s\n' '5ff5658aafa68fe71808f26bf90fce0f4997c41f31f0788cc1debe8d6dd467c8' 'project/app/src/main/res/drawable-nodpi/ic_launcher.png' | sha256sum -c -
           grep -q "versionName '0.15.7'" project/app/build.gradle
           grep -q 'new StudioWaveformView' project/app/src/main/java/com/dennis/aimasteringlab/StudioActivity.java
