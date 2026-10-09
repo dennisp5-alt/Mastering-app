@@ -1,9 +1,10 @@
-name: Build Dennis AI Mastering Lab v0.15.4 Transient-Safe Tonal Audition TEST APK
+name: Build Dennis AI Mastering Lab v0.15.5 Guarded Sparse Peak TEST APK
 
 on:
   workflow_dispatch:
   push:
     paths:
+      - 'tools/DennisAiMasteringLab-v0.15.5.patch.gz'
       - 'tools/DennisAiMasteringLab-v0.15.4.patch.gz'
       - 'tools/DennisAiMasteringLab-v0.15.3.patch.gz'
       - 'tools/DennisAiMasteringLab-v0.15.2.patch.gz'
@@ -119,6 +120,13 @@ jobs:
           test -f project/tests/V0154TonalTransientHarness.java
           grep -q "transientSafeTonalEligible" project/app/src/main/java/com/dennis/aimasteringlab/AdaptiveBroadMastering.java
 
+      - name: Apply v0.15.5 Guarded Sparse Peak patch
+        run: |
+          gzip -dc tools/DennisAiMasteringLab-v0.15.5.patch.gz | patch --batch --fuzz=0 -p1 -d project
+          grep -q "versionName '0.15.5'" project/app/build.gradle
+          test -f project/tests/V0155SparsePeakHarness.java
+          grep -q "compareSparsePeak" project/app/src/main/java/com/dennis/aimasteringlab/FullAiReleaseQc.java
+
       - name: Run focused host regressions
         run: |
           rm -rf host-classes host-test-work
@@ -138,6 +146,7 @@ jobs:
             project/tests/V0150SparseVocalHarness.java \
             project/tests/BuildConfig.java \
             project/tests/LegacyAutonomousMasteringRenderer.java \
+            project/tests/V0155SparsePeakHarness.java \
             project/tests/V0154TonalTransientHarness.java \
             project/tests/V0153PeakFallbackHarness.java \
             project/tests/V0152RenderBypassHarness.java \
@@ -159,6 +168,7 @@ jobs:
             project/tests/org/json/*.java
           java -cp host-classes com.dennis.aimasteringlab.V0149CandidateEfficiencyHarness
           java -cp host-classes com.dennis.aimasteringlab.V0150SparseVocalHarness
+          java -cp host-classes com.dennis.aimasteringlab.V0155SparsePeakHarness
           java -cp host-classes com.dennis.aimasteringlab.V0154TonalTransientHarness
           java -cp host-classes com.dennis.aimasteringlab.V0153PeakFallbackHarness host-test-work/peak-recovery
           java -cp host-classes com.dennis.aimasteringlab.V0152RenderBypassHarness host-test-work/v0152
@@ -176,16 +186,16 @@ jobs:
           java -cp host-classes com.dennis.aimasteringlab.V0143BroadAnchorHarness host-test-work/broad-anchor
           java -cp host-classes com.dennis.aimasteringlab.V0143BroadRetentionHarness host-test-work/broad-retention
 
-      - name: Package v0.15.4 source checkpoint
+      - name: Package v0.15.5 source checkpoint
         run: |
-          (cd project && zip -qr ../DennisAiMasteringLab-v0.15.4-GitHubBuildSource.zip . \
+          (cd project && zip -qr ../DennisAiMasteringLab-v0.15.5-GitHubBuildSource.zip . \
             -x '.gradle/*' 'build/*' 'app/build/*' '*.keystore' '*.jks' '*.apk')
-          sha256sum DennisAiMasteringLab-v0.15.4-GitHubBuildSource.zip > DennisAiMasteringLab-v0.15.4-CHECKSUMS.sha256
+          sha256sum DennisAiMasteringLab-v0.15.5-GitHubBuildSource.zip > DennisAiMasteringLab-v0.15.5-CHECKSUMS.sha256
 
       - name: Make safe side-by-side TEST package (temporary signing)
         run: |
-          sed -i "s/applicationId 'com.dennis.aimasteringlab'/applicationId 'com.dennis.aimasteringlab.test154'/" project/app/build.gradle
-          sed -i 's/android:label="Dennis AI Mastering Lab"/android:label="Dennis Mastering v0.15.4 TEST"/' project/app/src/main/AndroidManifest.xml
+          sed -i "s/applicationId 'com.dennis.aimasteringlab'/applicationId 'com.dennis.aimasteringlab.test155'/" project/app/build.gradle
+          sed -i 's/android:label="Dennis AI Mastering Lab"/android:label="Dennis Mastering v0.15.5 TEST"/' project/app/src/main/AndroidManifest.xml
 
       - name: Build debug APK
         working-directory: project
@@ -193,21 +203,21 @@ jobs:
 
       - name: Rename APK and checksum
         run: |
-          cp project/app/build/outputs/apk/debug/app-debug.apk DennisAiMasteringLab-v0.15.4-TonalTransient-TEST.apk
-          sha256sum DennisAiMasteringLab-v0.15.4-TonalTransient-TEST.apk >> DennisAiMasteringLab-v0.15.4-CHECKSUMS.sha256
+          cp project/app/build/outputs/apk/debug/app-debug.apk DennisAiMasteringLab-v0.15.5-SparsePeak-TEST.apk
+          sha256sum DennisAiMasteringLab-v0.15.5-SparsePeak-TEST.apk >> DennisAiMasteringLab-v0.15.5-CHECKSUMS.sha256
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: DennisAiMasteringLab-v0.15.4-TonalTransient-TEST
-          path: DennisAiMasteringLab-v0.15.4-TonalTransient-TEST.apk
+          name: DennisAiMasteringLab-v0.15.5-SparsePeak-TEST
+          path: DennisAiMasteringLab-v0.15.5-SparsePeak-TEST.apk
           retention-days: 30
 
       - name: Upload source checkpoint
         uses: actions/upload-artifact@v4
         with:
-          name: DennisAiMasteringLab-v0.15.4-Source
+          name: DennisAiMasteringLab-v0.15.5-Source
           path: |
-            DennisAiMasteringLab-v0.15.4-GitHubBuildSource.zip
-            DennisAiMasteringLab-v0.15.4-CHECKSUMS.sha256
+            DennisAiMasteringLab-v0.15.5-GitHubBuildSource.zip
+            DennisAiMasteringLab-v0.15.5-CHECKSUMS.sha256
           retention-days: 30
