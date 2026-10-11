@@ -19,6 +19,7 @@ import java.io.OutputStream;
 import java.math.BigInteger;
 import java.net.HttpURLConnection;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URL;
@@ -72,7 +73,7 @@ final class ChatGptConnection {
     }
     void disconnect() {
         // Local sign-out. Remote revocation must be performed in ChatGPT Settings.
-        pref.edit().remove("tokens").apply();
+        pref.edit().remove("tokens").remove("pending_client_id").apply();
     }
     private String hostId() {
         String host=pref.getString("host_id","");
@@ -139,15 +140,45 @@ final class ChatGptConnection {
         }
     }
     private static JSONObject postForm(String url,String form)throws Exception{
-        HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();
-        c.setRequestMethod("POST");c.setConnectTimeout(15000);c.setReadTimeout(30000);c.setDoOutput(true);
-        c.setRequestProperty("Content-Type","application/x-www-form-urlencoded");
-        try {
-            try(OutputStream out=c.getOutputStream()){out.write(form.getBytes(StandardCharsets.UTF_8));}
-            String body=response(c);
-            if(c.getResponseCode()!=200)throw new Exception("Authentication failed (HTTP "+c.getResponseCode()+"). Sign in again.");
-            return new JSONObject(body);
-        }finally{c.disconnect();}
+        // Retrying DNS lookup failures is safe: the request was never delivered.
+        // Never retry a timed-out OAuth POST blindly: the one-use code or rotating
+        // refresh token may already have been consumed by the server.
+        UnknownHostException lastDnsError=null;
+        for(int attempt=0;attempt<3;attempt++){
+            HttpURLConnection c=null;
+            try {
+                c=(HttpURLConnection)new URL(url).openConnection();
+                c.setRequestMethod("POST");
+                c.setConnectTimeout(15000);c.setReadTimeout(30000);c.setDoOutput(true);
+                c.setRequestProperty("Content-Type","application/x-www-form-urlencoded");
+                try(OutputStream out=c.getOutputStream()) {
+                    out.write(form.getBytes(StandardCharsets.UTF_8));
+                }
+                String body=response(c);
+                if(c.getResponseCode()!=200){
+                    String code="";
+                    try{
+                        JSONObject e=new JSONObject(body).optJSONObject("error");
+                        if(e!=null)code=e.optString("code",e.optString("message",""));
+                        if(code.isEmpty())code=new JSONObject(body).optString("error","");
+                    }catch(Exception ignored){}
+                    if("invalid_grant".equals(code))
+                        throw new Exception("That sign-in code could not be used. Start a new ChatGPT sign-in; your saved prompts are safe.");
+                    throw new Exception("ChatGPT authentication HTTP "+c.getResponseCode()+
+                        (code.isEmpty()?"":" ("+code+")")+". Try reconnecting.");
+                }
+                return new JSONObject(body);
+            }catch(UnknownHostException dns){
+                lastDnsError=dns;
+                if(attempt<2){
+                    try{Thread.sleep((attempt+1)*1300L);}
+                    catch(InterruptedException interrupted){
+                        Thread.currentThread().interrupt();throw new Exception("Sign-in interrupted");
+                    }
+                }
+            }finally{if(c!=null)c.disconnect();}
+        }
+        throw new UnknownHostException("auth.openai.com (DNS unavailable after 3 attempts)");
     }
     private static JSONObject fetchJson(String uri,String bearer)throws Exception{
         HttpURLConnection c=(HttpURLConnection)new URL(uri).openConnection();
@@ -174,7 +205,7 @@ final class ChatGptConnection {
             final String state=random(),nonce=random(),verifier=random();
             final String redirect="http://127.0.0.1:"+server.getLocalPort()+"/auth/callback";
             final JSONObject old=readTokens();
-            final String previousId=old==null?"":old.optString("client_id","");
+            final String previousId=old==null?pref.getString("pending_client_id",""):old.optString("client_id","");
             final String clientId=previousId.isEmpty()?"dynamic_agent_client":previousId;
             Uri.Builder u=Uri.parse(AUTH).buildUpon()
                 .appendQueryParameter("client_id",clientId)
@@ -231,8 +262,10 @@ final class ChatGptConnection {
                         throw new Exception("OpenAI did not issue a valid app registration");
                     if(!previousId.isEmpty() && callbackId!=null && !previousId.equals(callbackId))
                         throw new Exception("Different client ID in callback");
-                    reply(s,"Sign-in received. Return to Suno Prompts to finish connecting.");
+                    reply(s,"Authorisation returned. Open Suno Prompts to see whether the secure connection finishes; this page does not confirm connection.");
                     final String issuedId=previousId.isEmpty()?callbackId:previousId;
+                    // Retain registration ID across recoverable network failures, but never mark it connected until OIDC validation succeeds.
+                    if(previousId.isEmpty())pref.edit().putString("pending_client_id",issuedId).commit();
                     JSONObject token=postForm(TOKEN,"grant_type=authorization_code&client_id="+enc(issuedId)+
                         "&code="+enc(code)+"&code_verifier="+enc(verifier)+"&redirect_uri="+enc(redirect)+
                         "&resource="+enc(RESOURCE));
@@ -253,11 +286,14 @@ final class ChatGptConnection {
                     saved.put("refresh_token",token.getString("refresh_token"));
                     saved.put("expires_at",System.currentTimeMillis()+token.optLong("expires_in",3600)*1000L);
                     persist(saved);
+                    pref.edit().remove("pending_client_id").apply();
                     cb.done(saved.getString("email"));
                     return;
                 }catch(java.net.SocketTimeoutException ignored) { /* listen until expiry */ }
             }
             throw new Exception("Sign-in timed out. Try again from the app.");
+        }catch(UnknownHostException dns){
+            cb.fail("OpenAI sign-in returned successfully, but the phone's DNS could not resolve auth.openai.com for the secure token exchange. We retried three times without sending credentials. In Suno Prompts, run Test OpenAI connection. Try switching between Wi-Fi and mobile data, or check VPN / Private DNS filtering, then sign in again. No prompts were changed.");
         }catch(Exception e){cb.fail(e.getMessage()==null?"Could not connect ChatGPT":e.getMessage());}
         finally{stopListener();}
     }
