@@ -1,0 +1,43 @@
+name: Build Dennis Spatial Audio Lab
+
+on:
+  push:
+    branches: [spatial-audio-lab-v0.1]
+    paths:
+      - "spatial-audio-lab/**"
+      - ".github/workflows/build-spatial-audio-lab.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-debug:
+    name: Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Install Android SDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Unpack standalone app source
+        run: base64 -d spatial-audio-lab/source-bundle.tar.gz.b64 | tar -xz
+      - name: DSP regression tests
+        run: bash spatial-audio-lab/tests/run-tests.sh
+      - name: Compile debug APK
+        run: gradle -p spatial-audio-lab :app:assembleDebug --no-daemon --stacktrace
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dennis-Spatial-Audio-Lab-v0.1.0-APK
+          path: spatial-audio-lab/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
