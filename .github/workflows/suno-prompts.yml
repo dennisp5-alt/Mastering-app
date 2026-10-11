@@ -7,6 +7,10 @@ on:
       - ".github/workflows/suno-prompts.yml"
   workflow_dispatch:
 
+concurrency:
+  group: suno-prompts-main
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
@@ -33,14 +37,14 @@ jobs:
       - name: Verify package and prepare raw APK
         run: |
           mkdir -p dist
-          cp SunoPrompts/app/build/outputs/apk/debug/app-debug.apk dist/SunoPrompts-v0.3.0-debug.apk
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/SunoPrompts-v0.3.0-debug.apk | head -n 8
-          unzip -t dist/SunoPrompts-v0.3.0-debug.apk | tail -n 2
-          sha256sum dist/SunoPrompts-v0.3.0-debug.apk > dist/SunoPrompts-v0.3.0-debug.apk.sha256
+          cp SunoPrompts/app/build/outputs/apk/debug/app-debug.apk dist/SunoPrompts-v0.3.1-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/SunoPrompts-v0.3.1-debug.apk | head -n 8
+          unzip -t dist/SunoPrompts-v0.3.1-debug.apk | tail -n 2
+          sha256sum dist/SunoPrompts-v0.3.1-debug.apk > dist/SunoPrompts-v0.3.1-debug.apk.sha256
       - name: Publish installable artifact
         uses: actions/upload-artifact@v4
         with:
-          name: suno-prompts-apk-v0.3.0
+          name: suno-prompts-apk-v0.3.1
           path: dist/*
           retention-days: 30
       - name: Release standalone APK
@@ -48,23 +52,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if ! gh release view suno-prompts-v0.3.0 >/dev/null 2>&1; then
-            gh release create suno-prompts-v0.3.0 --title "Suno Prompts v0.3.0" --notes "Suno Prompts 0.3: official open-source ChatGPT plan sign-in, source-backed prompt generation, free offline fallback and preserved artist folders."
+          if ! gh release view suno-prompts-v0.3.1 >/dev/null 2>&1; then
+            gh release create suno-prompts-v0.3.1 --title "Suno Prompts v0.3.1" --notes "Suno Prompts v0.3.1: Android ChatGPT sign-in DNS recovery, OpenAI network diagnostics and free fallback."
           fi
-          gh release upload suno-prompts-v0.3.0 dist/SunoPrompts-v0.3.0-debug.apk dist/SunoPrompts-v0.3.0-debug.apk.sha256 --clobber
+          gh release upload suno-prompts-v0.3.1 dist/SunoPrompts-v0.3.1-debug.apk dist/SunoPrompts-v0.3.1-debug.apk.sha256 --clobber
       - name: Record successfully published APK
         if: success() && github.ref == 'refs/heads/main'
         run: |
-          APK_SHA="$(sha256sum dist/SunoPrompts-v0.3.0-debug.apk | cut -d ' ' -f1)"
+          APK_SHA="$(sha256sum dist/SunoPrompts-v0.3.1-debug.apk | cut -d ' ' -f1)"
           cat > SunoPrompts/BUILD_STATUS.json <<EOF
           {
             "status": "success",
-            "version": "0.3.0",
-            "apk": "SunoPrompts-v0.3.0-debug.apk",
+            "version": "0.3.1",
+            "apk": "SunoPrompts-v0.3.1-debug.apk",
             "sha256": "$APK_SHA",
             "built_from": "${{ github.sha }}",
             "run_id": "${{ github.run_id }}",
-            "release_url": "https://github.com/dennisp5-alt/Mastering-app/releases/tag/suno-prompts-v0.3.0"
+            "release_url": "https://github.com/dennisp5-alt/Mastering-app/releases/tag/suno-prompts-v0.3.1"
           }
           EOF
           git config user.name "github-actions[bot]"
@@ -79,7 +83,7 @@ jobs:
           cat > SunoPrompts/BUILD_STATUS.json <<EOF
           {
             "status": "failed",
-            "version": "0.3.0",
+            "version": "0.3.1",
             "built_from": "${{ github.sha }}",
             "run_id": "${{ github.run_id }}",
             "run_url": "https://github.com/dennisp5-alt/Mastering-app/actions/runs/${{ github.run_id }}"
