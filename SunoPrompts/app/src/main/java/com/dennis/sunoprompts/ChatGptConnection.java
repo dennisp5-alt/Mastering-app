@@ -143,7 +143,6 @@ final class ChatGptConnection {
         // Retrying DNS lookup failures is safe: the request was never delivered.
         // Never retry a timed-out OAuth POST blindly: the one-use code or rotating
         // refresh token may already have been consumed by the server.
-        UnknownHostException lastDnsError=null;
         for(int attempt=0;attempt<3;attempt++){
             HttpURLConnection c=null;
             try {
@@ -169,9 +168,8 @@ final class ChatGptConnection {
                 }
                 return new JSONObject(body);
             }catch(UnknownHostException dns){
-                lastDnsError=dns;
                 if(attempt<2){
-                    try{Thread.sleep((attempt+1)*1300L);}
+                    try{Thread.sleep(attempt==0?3000L:8000L);}
                     catch(InterruptedException interrupted){
                         Thread.currentThread().interrupt();throw new Exception("Sign-in interrupted");
                     }
@@ -181,14 +179,26 @@ final class ChatGptConnection {
         throw new UnknownHostException("auth.openai.com (DNS unavailable after 3 attempts)");
     }
     private static JSONObject fetchJson(String uri,String bearer)throws Exception{
-        HttpURLConnection c=(HttpURLConnection)new URL(uri).openConnection();
-        c.setConnectTimeout(15000);c.setReadTimeout(15000);
-        if(bearer!=null)c.setRequestProperty("Authorization","Bearer "+bearer);
-        try {
-            String body=response(c);
-            if(c.getResponseCode()!=200)throw new Exception("Remote request failed: HTTP "+c.getResponseCode());
-            return new JSONObject(body);
-        }finally{c.disconnect();}
+        for(int attempt=0;attempt<3;attempt++) {
+            HttpURLConnection c=null;
+            try{
+                c=(HttpURLConnection)new URL(uri).openConnection();
+                c.setConnectTimeout(15000);c.setReadTimeout(15000);
+                if(bearer!=null)c.setRequestProperty("Authorization","Bearer "+bearer);
+                String body=response(c);
+                if(c.getResponseCode()!=200)
+                    throw new Exception("Identity verification service HTTP "+c.getResponseCode());
+                return new JSONObject(body);
+            }catch(UnknownHostException dns){
+                if(attempt==2)throw dns;
+                try{Thread.sleep(attempt==0?3000L:8000L);}
+                catch(InterruptedException interrupted){
+                    Thread.currentThread().interrupt();
+                    throw new Exception("Identity verification interrupted");
+                }
+            }finally{if(c!=null)c.disconnect();}
+        }
+        throw new Exception("Identity verification server unreachable");
     }
 
     /** Browser will call back into this listener. Runs on a worker thread. */
