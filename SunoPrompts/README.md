@@ -1,28 +1,26 @@
-# Suno Prompts — Android v0.1.0
+# Suno Prompts v0.2.0 — Free Production Reference Library
 
-Independent offline-library Android application for researching artists and recordings, then writing original Suno music-production prompts.
+Android package `com.dennis.sunoprompts`; targetSdk 34; minimum Android 8.0.
 
-## Working features
-- Artist/song lookup via MusicBrainz and English Wikipedia, with linked references.
-- Local SQLite folders by artist, one saved prompt per song.
-- Editable style prompt (1,000-character cap), Exclude prompt and research/production notes.
-- Save, copy, share and delete with a dark native interface.
-- Built-in style-aware starter templates when no AI account is configured.
-- Optional AI generation via a user-provided OpenAI API key, encrypted by Android Keystore AES/GCM.
-- Spotify not included.
+## No credits required
+**This build does not make OpenAI API requests and does not include API-key settings.** Legacy API-key storage from v0.1 is cleared on launch. No Spotify integration. Saved prompts are stored locally in SQLite and remain available offline.
 
-## Usage
-1. Open Suno Prompts on Android and tap New song prompt.
-2. Enter the artist, song, optional creative production direction.
-3. Tap Research + create starter prompt; or optionally visit AI Settings, enter your API key, then Generate AI Prompt.
-4. Open artist folders to edit or copy prompts into Suno.
+## Features
+- Artist folders, recording titles, editable style prompt (max 1,000 characters), separate Exclude, save/share/copy/delete.
+- Curated, reviewed production briefs for **Lee Kernaghan / Boys from the Bush**, selected AC/DC, Slim Dusty, Dire Straits and Duran Duran tracks.
+- Curated artist-level production directions for a growing set of musicians (Lee Kernaghan, Slim Dusty, Alan Jackson, AC/DC and others).
+- Free online fallback using MusicBrainz and Wikipedia metadata when the artist isn't in the curated library. Genre-based guesses are explicitly labelled, not falsely passed off as song-specific audio analysis.
+- Unprofiled artists receive an explicit warning rather than a fabricated musical description.
+- One-tap **Replace with latest FREE production prompt** to update an old generic saved result while keeping its artist folder.
 
-OpenAI API usage is separately billed to the user's API account. ChatGPT Plus does not include developer API credits. No shared API key is bundled.
-
-## Limits
-Research retrieves textual background, not actual audio; the app cannot verify exact BPM, key, mic chains, stereo channels, or playing techniques from an audio master. It flags missing sources instead of pretending to have heard a recording. Output is original production guidance, not a recreation of melodies or lyrics. Built-in templates are visibly labelled Starter. Saved prompts work offline; research/AI require internet.
-
-One saved prompt per artist/song. Android application ID: com.dennis.sunoprompts; minSdk 26; targetSdk 34.
+## Audio limitations
+Neither MusicBrainz nor Wikipedia verifies each song's exact playing technique, tempo, key, equipment or stereo arrangement. Curated briefs are professional **interpretations for original songs**, not actual transcriptions of the reference audio. To automatically recognise an arbitrary track's sound, a trained model or a supported audio-analysis engine would be required; this is not included.
 
 ## Build
-Run 'gradle :app:assembleDebug' inside SunoPrompts with JDK17, Gradle 8.11.1, SDK35; or use the independent GitHub Actions workflow suno-prompts.yml. It publishes the raw SunoPrompts-v0.1.0-debug.apk to GitHub Releases.
+JDK17, Gradle 8.11.1, Android SDK 35. Run `gradle :app:assembleDebug` in this folder or use `.github/workflows/suno-prompts.yml`. The workflow validates the APK and publishes **SunoPrompts-v0.2.0-debug.apk** as a raw GitHub release asset.
+
+## Testing
+1. Install over v0.1.0 so previously saved artist folders are preserved.
+2. Open the existing Lee Kernaghan / Boys from the Bush song, tap **Replace with latest FREE production prompt** and confirm.
+3. Check that the prompt starts with **Early-1990s Australian country-rock bush anthem**, not **Song-inspired original production brief**.
+4. Check AC/DC / Back in Black and another unprofiled artist to verify clear difference between curated and broader guidance.
