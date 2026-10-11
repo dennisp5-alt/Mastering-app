@@ -31,7 +31,7 @@ final class PromptTemplates {
             tone="Wide and clear 1980s-inspired stereo imaging, snappy percussion, firm centre bass and separated synth registers.";
         }
         String style="Song-inspired original production brief for \""+song+"\". "+musical+" "+voice+" "+tone+
-            (notes.isBlank()?"":" Direction: "+notes.trim())+" Original melody and lyrics; focus on arrangement and production character.";
+            (notes.trim().isEmpty()?"":" Direction: "+notes.trim())+" Original melody and lyrics; focus on arrangement and production character.";
         p.style=shorten(style,1000);
         p.exclude="Copied melody or lyrics, soundalike vocal cloning, robotic timing, metallic cymbals, over-compression, smeared low mids, harsh digital distortion, synthetic AI vocal artifacts.";
         p.analysis="Starter prompt: no audio has been analysed. General stylistic choices are educated directions, not verified track-by-track acoustic facts.\n\n"+
