@@ -1,4 +1,4 @@
-# Suno Prompts v0.3.0 — ChatGPT Plan Edition
+# Suno Prompts v0.3.1 — ChatGPT Plan Edition
 
 Standalone Android application (package `com.dennis.sunoprompts`, Android API 26+). This open-source app's code lives in the SunoPrompts directory. See LICENSE in this directory. The rest of the repository is unrelated.
 
@@ -33,4 +33,11 @@ No OpenAI API key, separately purchased credits, ChatGPT session scraping, or pr
 - Build validation is automatic on GitHub; OAuth still requires real-device confirmation.
 
 ## Local build
-JDK 17, Gradle 8.11.1, Android SDK 35: `gradle :app:assembleDebug`. Workflow: `.github/workflows/suno-prompts.yml`. Release: `SunoPrompts-v0.3.0-debug.apk`.
+JDK 17, Gradle 8.11.1, Android SDK 35: `gradle :app:assembleDebug`. Workflow: `.github/workflows/suno-prompts.yml`. Release: `SunoPrompts-v0.3.1-debug.apk`.
+
+## v0.3.1 Android sign-in diagnostics
+The browser completing the local 127.0.0.1 callback does not mean the OAuth token exchange finished. When Android DNS cannot resolve the official auth.openai.com hostname, the app now retries lookups at 3s and 8s intervals (DNS only; OAuth POST socket timeouts are NOT blindly replayed). It retains the issued client registration ID without treating the user as logged in; only verified OIDC tokens authorise plan usage. The identity JWKS GET also retries lookup failure.
+
+Use ChatGPT Plan → **Test OpenAI connection** to test active network (Wi-Fi/mobile/VPN), custom Private DNS state, Android DNS for auth.openai.com and TLS connectivity to official OpenAI OIDC discovery. No tokens, passwords or artist data leave the device during the diagnostic. If DNS fails, change Wi-Fi/mobile network or temporarily review VPN, ad blocker or custom Private DNS. Do not override the official auth.openai.com hostname or disable certificate verification.
+
+The app's debug APK is signed by the build runner's ephemeral debug key. Android may therefore block in-place upgrades from prior builds with INSTALL_FAILED_UPDATE_INCOMPATIBLE. **Do not uninstall before copying any valuable saved prompts** until a stable signing strategy and backup/restore are implemented.
