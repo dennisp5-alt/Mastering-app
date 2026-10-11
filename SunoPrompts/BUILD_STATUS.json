@@ -1,9 +1,9 @@
 {
   "status": "success",
-  "version": "0.3.0",
-  "apk": "SunoPrompts-v0.3.0-debug.apk",
-  "sha256": "80ada4f408e382a8f4401c9f00eb98cffadca57db6040b91952bcd7019842185",
-  "built_from": "5ce1abf80f8c50dd6190a0f3307f7ed43bb20f7e",
-  "run_id": "38184578573",
-  "release_url": "https://github.com/dennisp5-alt/Mastering-app/releases/tag/suno-prompts-v0.3.0"
+  "version": "0.3.1",
+  "apk": "SunoPrompts-v0.3.1-debug.apk",
+  "sha256": "f5d617a3c75ae5fd8860b1651965e1cafd24ff12496481e5b48a009d28c3be1f",
+  "built_from": "f4c2d8281b23e014f61cc82ed4dd749c74e49e14",
+  "run_id": "38185521881",
+  "release_url": "https://github.com/dennisp5-alt/Mastering-app/releases/tag/suno-prompts-v0.3.1"
 }
