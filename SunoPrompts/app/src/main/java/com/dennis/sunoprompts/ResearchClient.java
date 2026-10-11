@@ -27,14 +27,14 @@ final class ResearchClient {
         try { musicBrainz(result,artist,song); }
         catch(Exception e) {result.warnings+="MusicBrainz lookup unavailable. "; }
         try {
-            String title=wikiFind(artist,true);
+            String title=wikiFind(artist,true,"");
             if(!title.isEmpty()) {
                 result.artistFacts=limit(wikiExtract(title),1600);
                 result.sources+="Wikipedia ("+title+"): https://en.wikipedia.org/wiki/"+wikiSegment(title)+"\n";
             }
         } catch(Exception e) {result.warnings+="Artist encyclopedia unavailable. ";}
         try {
-            String title=wikiFind(song+" "+artist,false);
+            String title=wikiFind(song+" "+artist,false,song);
             if(!title.isEmpty() && matchesSong(title,song)) {
                 result.songFacts=limit(wikiExtract(title),3200);
                 result.sources+="Wikipedia ("+title+"): https://en.wikipedia.org/wiki/"+wikiSegment(title)+"\n";
@@ -79,15 +79,14 @@ final class ResearchClient {
             return;
         }
     }
-    private static String wikiFind(String phrase,boolean artist) throws Exception {
-        String url="https://en.wikipedia.org/w/api.php?action=query&list=search&srnamespace=0&srlimit=5&format=json&srsearch="+encode(phrase);
+    private static String wikiFind(String phrase,boolean artist,String targetSong) throws Exception {
+        String url="https://en.wikipedia.org/w/api.php?action=query&list=search&srnamespace=0&srlimit=8&format=json&srsearch="+encode(phrase);
         JSONArray hits=new JSONObject(read(url)).getJSONObject("query").optJSONArray("search");
         if(hits==null)return "";
         for(int i=0;i<hits.length();i++) {
             String title=hits.getJSONObject(i).optString("title","");
-            if(artist && title.equalsIgnoreCase(phrase)) return title;
-            if(!artist && matchesSong(title,phrase.split(" ")[0])) { /* inspect complete input below */ }
-            if(!artist)return title;
+            if(artist && title.equalsIgnoreCase(phrase))return title;
+            if(!artist && matchesSong(title,targetSong))return title;
         }
         return "";
     }
