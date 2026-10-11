@@ -41,6 +41,8 @@ public final class MainActivity extends Activity {
         getWindow().setStatusBarColor(BG);
         getWindow().setNavigationBarColor(BG);
         store=new PromptStore(this);
+        // v0.2 no-credit mode: discard any legacy API token; no paid AI requests are made.
+        getSharedPreferences("suno_settings",MODE_PRIVATE).edit().remove("api_key").apply();
         showHome();
     }
 
