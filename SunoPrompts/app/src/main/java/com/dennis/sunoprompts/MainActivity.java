@@ -31,6 +31,7 @@ public final class MainActivity extends Activity {
     private static final int LILAC=0xffBAA2FF, MINT=0xff54DFD0, OUTLINE=0xff39415A;
     private LinearLayout root, body;
     private PromptStore store;
+    private ChatGptConnection chat;
     private final ExecutorService tasks=Executors.newSingleThreadExecutor();
     private String location="home", activeArtist="";
     private long activeId=0;
@@ -41,6 +42,7 @@ public final class MainActivity extends Activity {
         getWindow().setStatusBarColor(BG);
         getWindow().setNavigationBarColor(BG);
         store=new PromptStore(this);
+        chat=new ChatGptConnection(this);
         // v0.2 no-credit mode: discard any legacy API token; no paid AI requests are made.
         getSharedPreferences("suno_settings",MODE_PRIVATE).edit().remove("api_key").apply();
         showHome();
@@ -143,8 +145,9 @@ public final class MainActivity extends Activity {
         welcome.addView(create);create.setOnClickListener(v->showCreate(""));
         spacing(body,7);
         LinearLayout controls=horizontal();
-        TextView settings=action("Free mode • No API credits",false);controls.addView(settings,new LinearLayout.LayoutParams(-1,-2));
-        settings.setOnClickListener(v->new AlertDialog.Builder(this).setTitle("No paid AI needed").setMessage("The app generates prompts from curated recording and artist production profiles. MusicBrainz and Wikipedia provide optional free metadata research. Songs without a reviewed production profile are marked clearly; the app never claims to have heard the recording.").setPositiveButton("OK",null).show());
+        TextView settings=action(chat.canUsePlan()?"✓ ChatGPT plan connected":"Connect ChatGPT plan",false);
+        controls.addView(settings,new LinearLayout.LayoutParams(-1,-2));
+        settings.setOnClickListener(v->showAccount());
         body.addView(controls);
         spacing(body,23);
         body.addView(text("ARTIST FOLDERS",13,SOFT,true));spacing(body,12);
@@ -167,7 +170,7 @@ public final class MainActivity extends Activity {
             card.setClickable(true);
         }
         spacing(body,14);
-        body.addView(text("v0.2 • Free to generate. No key or credits. Curated song and artist guides work offline; optional metadata research uses the internet.",12,FAINT,false));
+        body.addView(text("v0.3 • Free offline reference prompts plus optional ChatGPT plan generation. No separate API key or token purchase required.",12,FAINT,false));
     }
 
     private void showArtist(String artist){
@@ -195,10 +198,18 @@ public final class MainActivity extends Activity {
         EditText notes=input("Optional: warmer mix, detailed stereo, era, vocal direction…","",true);
         field(form,"Artist",artist);field(form,"Song title",song);
         field(form,"Your production direction (optional)",notes);
-        TextView generate=action("Create FREE production prompt",true);
+        TextView generateAi=action(chat.canUsePlan()?"Generate with ChatGPT plan":"Connect ChatGPT for detailed prompts",true);
+        form.addView(generateAi);spacing(form,12);
+        TextView generate=action("Use FREE offline/reference generator",false);
         form.addView(generate);
-        TextView help=text("No API key, credits or subscription. Curated song profiles and artist-specific production directions are generated locally. Other artists may use free MusicBrainz/Wikipedia research, which cannot analyse the audio itself. Unprofiled songs are clearly labelled.",13,SOFT,false);
+        TextView help=text("ChatGPT generation uses your existing eligible plan allowance; no separate OpenAI API credits. Sign in and approve plan usage first. Free local reference profiles remain available when offline or at your usage limit. Both modes save to the same artist folders.",13,SOFT,false);
         spacing(form,15);form.addView(help);
+        generateAi.setOnClickListener(v->{
+            if(!chat.canUsePlan()){showAccount();return;}
+            String a=value(artist),s=value(song),n=value(notes);
+            if(a.isEmpty()||s.isEmpty()){toast("Enter an artist and song.");return;}
+            generateWithChatGpt(a,s,n,0);
+        });
         generate.setOnClickListener(v->{
             String a=value(artist),s=value(song),n=value(notes);
             if(a.isEmpty()||s.isEmpty()){toast("Enter both an artist and a song title.");return;}
@@ -219,7 +230,7 @@ public final class MainActivity extends Activity {
             });
         });
         spacing(body,12);
-        body.addView(text("Curated songs are ready instantly, even without internet. Unrecognised artists need internet access and may require your own production notes.",13,SOFT,false));
+        body.addView(text("The app researches song metadata before asking ChatGPT to write a distinct production brief. No source recording is analysed, so the output is a reasoned interpretation rather than a verified transcription.",13,SOFT,false));
     }
 
     private void showDetail(long id){
@@ -273,6 +284,16 @@ public final class MainActivity extends Activity {
             }
         }
         spacing(body,12);
+        TextView improve=action(chat.canUsePlan()?"Regenerate with ChatGPT plan":"Connect ChatGPT for a stronger prompt",true);
+        body.addView(improve);
+        improve.setOnClickListener(v->{
+            if(!chat.canUsePlan()){showAccount();return;}
+            new AlertDialog.Builder(this).setTitle("Replace with ChatGPT prompt?")
+                .setMessage("A new researched prompt will replace the saved style, Exclude and notes for this song. Copy any edits you want to keep.")
+                .setNegativeButton("Cancel",null)
+                .setPositiveButton("Generate",(dialog,which)->generateWithChatGpt(p.artist,p.song,"",p.id)).show();
+        });
+        spacing(body,12);
         TextView refresh=action("Replace with latest FREE production prompt",false);
         body.addView(refresh);
         refresh.setOnClickListener(v->new AlertDialog.Builder(this)
@@ -308,6 +329,123 @@ public final class MainActivity extends Activity {
                 .setPositiveButton("Delete",(dialog,which)->{store.remove(p.id);showArtist(p.artist);}).show());
     }
 
+    private void generateWithChatGpt(String artist,String song,String notes,long replacementId) {
+        if(working){toast("Another operation is active.");return;}
+        working=true;
+        new AlertDialog.Builder(this)
+            .setTitle("ChatGPT plan generation")
+            .setMessage("Researching "+song+" by "+artist+". Only artist, song, creative notes and public research will be sent to OpenAI. If the request fails, your current prompt remains unchanged.")
+            .setPositiveButton("OK",null).show();
+        tasks.execute(()->{
+            try{
+                // Authenticate and select from the account's model catalog.
+                String token=chat.accessToken();
+                java.util.ArrayList<ChatGptPrompts.Model> models=ChatGptPrompts.models(token);
+                String preferred=getSharedPreferences("suno_settings",MODE_PRIVATE).getString("chat_model","");
+                String selected=models.get(0).id;
+                for(ChatGptPrompts.Model m:models)if(m.id.equals(preferred)){selected=m.id;break;}
+                ResearchClient.Research research=ResearchClient.lookup(artist,song);
+                PromptStore.Prompt generated=ChatGptPrompts.generate(token,selected,artist,song,notes,research);
+                if(replacementId!=0)generated.id=replacementId;
+                long id=store.save(generated);
+                runOnUiThread(()->{working=false;showDetail(id);});
+            }catch(Exception e){
+                String message=e.getMessage()==null?"Unknown ChatGPT request error":e.getMessage();
+                runOnUiThread(()->{
+                    working=false;
+                    new AlertDialog.Builder(this).setTitle("Prompt was not changed")
+                        .setMessage(message)
+                        .setPositiveButton("OK",null).show();
+                });
+            }
+        });
+    }
+
+    private void showAccount() {
+        location="account";
+        base("ChatGPT Plan","OFFICIAL SIGN IN • NO API KEY","Library",this::showHome);
+        LinearLayout card=panel(body);
+        card.addView(text(chat.connected()?"ACCOUNT CONNECTED":"USE YOUR CHATGPT PLAN",16,WHITE,true));
+        spacing(card,10);
+        card.addView(text(chat.canUsePlan()?
+            "ChatGPT plan usage authorised for "+chat.account()+
+            ". Requests count towards your existing ChatGPT plan limits.":
+            "Connect through OpenAI's official browser sign-in. Grant ChatGPT plan usage to create specific production prompts without purchasing API credits.",14,SOFT,false));
+        spacing(card,16);
+        TextView login=action(chat.canUsePlan()?"Reconnect ChatGPT account":"Continue with ChatGPT",true);
+        card.addView(login);
+        login.setOnClickListener(v->{
+            if(working)return;
+            working=true;
+            login.setText("Complete sign-in in your browser…");login.setEnabled(false);
+            tasks.execute(()->chat.signIn(this,new ChatGptConnection.Callback(){
+                public void done(String account){
+                    runOnUiThread(()->{
+                        working=false;
+                        showAccount();
+                        new AlertDialog.Builder(MainActivity.this)
+                            .setTitle("ChatGPT plan enabled")
+                            .setMessage("Connected: "+account+". Eligible generation will use your ChatGPT plan allowance. You can manage limits in ChatGPT Settings.")
+                            .setPositiveButton("OK",null).show();
+                    });
+                }
+                public void fail(String message){
+                    runOnUiThread(()->{
+                        working=false;
+                        showAccount();
+                        new AlertDialog.Builder(MainActivity.this)
+                            .setTitle("Connection unsuccessful")
+                            .setMessage(message)
+                            .setPositiveButton("OK",null).show();
+                    });
+                }
+            }));
+        });
+        spacing(body,10);
+        TextView usage=action("View ChatGPT usage settings",false);
+        body.addView(usage);
+        usage.setOnClickListener(v->startActivity(new Intent(Intent.ACTION_VIEW,
+            Uri.parse("https://chatgpt.com/#settings/Usage"))));
+        if(chat.canUsePlan()){
+            spacing(body,12);
+            TextView model=action("Choose available AI model",false);
+            body.addView(model);
+            model.setOnClickListener(v->{
+                if(working)return;
+                working=true;model.setText("Loading your model catalog…");
+                tasks.execute(()->{
+                    try{
+                        java.util.ArrayList<ChatGptPrompts.Model> models=ChatGptPrompts.models(chat.accessToken());
+                        String[] labels=new String[models.size()];
+                        for(int i=0;i<models.size();i++)labels[i]=models.get(i).label;
+                        runOnUiThread(()->{
+                            working=false;model.setText("Choose available AI model");
+                            new AlertDialog.Builder(this).setTitle("ChatGPT models")
+                                .setItems(labels,(dialog,which)->{
+                                    getSharedPreferences("suno_settings",MODE_PRIVATE).edit()
+                                        .putString("chat_model",models.get(which).id).apply();
+                                    toast("Selected "+models.get(which).label);
+                                }).setNegativeButton("Cancel",null).show();
+                        });
+                    }catch(Exception e){runOnUiThread(()->{
+                        working=false;model.setText("Choose available AI model");
+                        toast("Model catalog unavailable: "+e.getMessage());
+                    });}
+                });
+            });
+            spacing(body,12);
+            TextView signOut=action("Disconnect on this device",false);
+            body.addView(signOut);
+            signOut.setOnClickListener(v->new AlertDialog.Builder(this)
+                .setTitle("Disconnect ChatGPT?")
+                .setMessage("This clears credentials stored on your phone. To also revoke the connection remotely, open ChatGPT Settings. Your saved prompts are not deleted.")
+                .setNegativeButton("Cancel",null)
+                .setPositiveButton("Disconnect",(dialog,which)->{chat.disconnect();showAccount();}).show());
+        }
+        spacing(body,13);
+        body.addView(text("This connection shares no ChatGPT chat history. Requests use the official Responses API, not unofficial website endpoints. If sign-in or plan permission fails, use the free generator instead.",13,SOFT,false));
+    }
+
     private void copy(String txt,String message){
         ((ClipboardManager)getSystemService(Context.CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("Suno Prompt",txt));
         toast(message);
@@ -315,10 +453,10 @@ public final class MainActivity extends Activity {
 
     @Override public void onBackPressed() {
         if("detail".equals(location)){showArtist(activeArtist);}
-        else if("artist".equals(location)||"create".equals(location)){showHome();}
+        else if("artist".equals(location)||"create".equals(location)||"account".equals(location)){showHome();}
         else super.onBackPressed();
     }
     @Override protected void onDestroy(){
-        tasks.shutdownNow();store.close();super.onDestroy();
+        chat.stopListener();tasks.shutdownNow();store.close();super.onDestroy();
     }
 }
