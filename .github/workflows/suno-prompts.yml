@@ -71,3 +71,21 @@ jobs:
           git add SunoPrompts/BUILD_STATUS.json
           git commit -m "Record successful Suno Prompts build" || true
           git push origin HEAD:main
+
+      - name: Record build failure for diagnosis
+        if: failure() && github.ref == 'refs/heads/main'
+        run: |
+          cat > SunoPrompts/BUILD_STATUS.json <<EOF
+          {
+            "status": "failed",
+            "version": "0.1.0",
+            "built_from": "${{ github.sha }}",
+            "run_id": "${{ github.run_id }}",
+            "run_url": "https://github.com/dennisp5-alt/Mastering-app/actions/runs/${{ github.run_id }}"
+          }
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add SunoPrompts/BUILD_STATUS.json
+          git commit -m "Record Suno Prompts CI failure" || true
+          git push origin HEAD:main
