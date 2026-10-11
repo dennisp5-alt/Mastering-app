@@ -1,26 +1,36 @@
-# Suno Prompts v0.2.0 — Free Production Reference Library
+# Suno Prompts v0.3.0 — ChatGPT Plan Edition
 
-Android package `com.dennis.sunoprompts`; targetSdk 34; minimum Android 8.0.
+Standalone Android application (package `com.dennis.sunoprompts`, Android API 26+). This open-source app's code lives in the SunoPrompts directory. See LICENSE in this directory. The rest of the repository is unrelated.
 
-## No credits required
-**This build does not make OpenAI API requests and does not include API-key settings.** Legacy API-key storage from v0.1 is cleared on launch. No Spotify integration. Saved prompts are stored locally in SQLite and remain available offline.
+## ChatGPT Plus / Pro login, no API key
+Optional **Continue with ChatGPT** uses the official Sign in with ChatGPT open-source dynamic OAuth registration documented at https://developers.openai.com/siwc/token-sharing-open-source/sign-in . It runs a local 127.0.0.1 server, uses browser OAuth PKCE S256, checks state/nonce/issuer/audience/JWKS signature and granted ChatGPT plan permission, and stores credentials with Android Keystore AES-GCM. It discovers eligible models from the plan-scoped model catalog, then sends `store:false`/`stream:true` requests to the PUBLIC `/v1/responses` API. Refresh tokens are rotated and stored encrypted. Users can disconnect locally or revoke app access in ChatGPT Settings.
+
+No OpenAI API key, separately purchased credits, ChatGPT session scraping, or private ChatGPT website endpoints are used. **Plan usage depends on eligibility, user consent, and remaining shared limits.** New sign-in is not verified on a physical Android device yet; test with an eligible account.
 
 ## Features
-- Artist folders, recording titles, editable style prompt (max 1,000 characters), separate Exclude, save/share/copy/delete.
-- Curated, reviewed production briefs for **Lee Kernaghan / Boys from the Bush**, selected AC/DC, Slim Dusty, Dire Straits and Duran Duran tracks.
-- Curated artist-level production directions for a growing set of musicians (Lee Kernaghan, Slim Dusty, Alan Jackson, AC/DC and others).
-- Free online fallback using MusicBrainz and Wikipedia metadata when the artist isn't in the curated library. Genre-based guesses are explicitly labelled, not falsely passed off as song-specific audio analysis.
-- Unprofiled artists receive an explicit warning rather than a fabricated musical description.
-- One-tap **Replace with latest FREE production prompt** to update an old generic saved result while keeping its artist folder.
+- Automatic artist folders in SQLite, one saved prompt per artist+song.
+- ChatGPT generation: optional source-informed, original, highly song-specific Suno v6 style (<=1000 characters) and Exclude prompt; model list auto-selected or chosen by user.
+- Free curated reference library for known songs and artists (continues to work without login); metadata search with MusicBrainz and Wikipedia.
+- Editable song prompts, Share, Copy, Save, Delete and Replace with latest free reference.
+- ChatGPT errors do not replace saved prompts. The latest version keeps the same application ID and existing database as v0.1/v0.2.
+- No Spotify integration or automatic audio-file analysis.
 
-## Audio limitations
-Neither MusicBrainz nor Wikipedia verifies each song's exact playing technique, tempo, key, equipment or stereo arrangement. Curated briefs are professional **interpretations for original songs**, not actual transcriptions of the reference audio. To automatically recognise an arbitrary track's sound, a trained model or a supported audio-analysis engine would be required; this is not included.
+## How to test
+1. Install this APK **over** v0.2.0 without uninstalling it. Existing folders should remain.
+2. Open the ChatGPT button on the home screen, tap **Continue with ChatGPT** and authorise plan use in your browser.
+3. After the callback, switch to Suno Prompts if the browser stays open. Account should show Connected.
+4. Search AC/DC / Thunderstruck or Lee Kernaghan / The Outback Club. Tap **Generate with ChatGPT plan**.
+5. View and edit saved original production prompts, compare with free profile.
+6. Test declined consent, disconnected state, expired access and plan usage limit. No saved prompt should be changed on errors.
 
-## Build
-JDK17, Gradle 8.11.1, Android SDK 35. Run `gradle :app:assembleDebug` in this folder or use `.github/workflows/suno-prompts.yml`. The workflow validates the APK and publishes **SunoPrompts-v0.2.0-debug.apk** as a raw GitHub release asset.
+## Security and caveats
+- Only the authenticated loopback callback host 127.0.0.1 receives the authorisation code; never use a shared external callback.
+- The app does not read ChatGPT chat history, and cannot claim to have listened to a referenced track without an imported recording.
+- MusicBrainz and Wikipedia are limited sources; the model is instructed to separate facts from informed producer interpretation.
+- Credentials remain on-device and are not logged. Use ChatGPT Settings to revoke the registration remotely.
+- Currently supports one active ChatGPT account profile on the device. Multiple-account selection may come later.
+- Secure provider identity is validated with JWKS; the system browser handles sign-in.
+- Build validation is automatic on GitHub; OAuth still requires real-device confirmation.
 
-## Testing
-1. Install over v0.1.0 so previously saved artist folders are preserved.
-2. Open the existing Lee Kernaghan / Boys from the Bush song, tap **Replace with latest FREE production prompt** and confirm.
-3. Check that the prompt starts with **Early-1990s Australian country-rock bush anthem**, not **Song-inspired original production brief**.
-4. Check AC/DC / Back in Black and another unprofiled artist to verify clear difference between curated and broader guidance.
+## Local build
+JDK 17, Gradle 8.11.1, Android SDK 35: `gradle :app:assembleDebug`. Workflow: `.github/workflows/suno-prompts.yml`. Release: `SunoPrompts-v0.3.0-debug.apk`.
