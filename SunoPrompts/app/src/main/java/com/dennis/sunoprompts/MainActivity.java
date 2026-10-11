@@ -406,6 +406,22 @@ public final class MainActivity extends Activity {
         body.addView(usage);
         usage.setOnClickListener(v->startActivity(new Intent(Intent.ACTION_VIEW,
             Uri.parse("https://chatgpt.com/#settings/Usage"))));
+        spacing(body,12);
+        TextView diagnose=action("Test OpenAI connection",false);
+        body.addView(diagnose);
+        diagnose.setOnClickListener(v->{
+            if(working)return;
+            working=true;diagnose.setText("Checking network and secure connection…");diagnose.setEnabled(false);
+            tasks.execute(()->{
+                String findings=NetworkHealth.test(getApplicationContext());
+                runOnUiThread(()->{
+                    working=false;
+                    diagnose.setEnabled(true);diagnose.setText("Test OpenAI connection");
+                    new AlertDialog.Builder(this).setTitle("Network diagnostic")
+                        .setMessage(findings).setPositiveButton("OK",null).show();
+                });
+            });
+        });
         if(chat.canUsePlan()){
             spacing(body,12);
             TextView model=action("Choose available AI model",false);
