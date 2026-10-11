@@ -12,7 +12,6 @@ import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.text.InputType;
-import android.text.method.PasswordTransformationMethod;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -142,8 +141,8 @@ public final class MainActivity extends Activity {
         welcome.addView(create);create.setOnClickListener(v->showCreate(""));
         spacing(body,7);
         LinearLayout controls=horizontal();
-        TextView settings=action("⚙  AI Settings",false);controls.addView(settings,new LinearLayout.LayoutParams(-1,-2));
-        settings.setOnClickListener(v->showSettings());
+        TextView settings=action("Free mode • No API credits",false);controls.addView(settings,new LinearLayout.LayoutParams(-1,-2));
+        settings.setOnClickListener(v->new AlertDialog.Builder(this).setTitle("No paid AI needed").setMessage("The app generates prompts from curated recording and artist production profiles. MusicBrainz and Wikipedia provide optional free metadata research. Songs without a reviewed production profile are marked clearly; the app never claims to have heard the recording.").setPositiveButton("OK",null).show());
         body.addView(controls);
         spacing(body,23);
         body.addView(text("ARTIST FOLDERS",13,SOFT,true));spacing(body,12);
@@ -166,7 +165,7 @@ public final class MainActivity extends Activity {
             card.setClickable(true);
         }
         spacing(body,14);
-        body.addView(text("v0.1 • Saved prompts work offline. Internet required for research and AI generation.",12,FAINT,false));
+        body.addView(text("v0.2 • Free to generate. No key or credits. Curated song and artist guides work offline; optional metadata research uses the internet.",12,FAINT,false));
     }
 
     private void showArtist(String artist){
@@ -194,9 +193,9 @@ public final class MainActivity extends Activity {
         EditText notes=input("Optional: warmer mix, detailed stereo, era, vocal direction…","",true);
         field(form,"Artist",artist);field(form,"Song title",song);
         field(form,"Your production direction (optional)",notes);
-        TextView generate=action(KeyVault.read(this).isEmpty()?"Research + create starter prompt":"Research + generate AI prompt",true);
+        TextView generate=action("Create FREE production prompt",true);
         form.addView(generate);
-        TextView help=text("Research uses MusicBrainz and Wikipedia. AI generation uses your personal OpenAI API key and may incur API charges. Without a key, the app creates a clearly labelled editable starter prompt.",13,SOFT,false);
+        TextView help=text("No API key, credits or subscription. Curated song profiles and artist-specific production directions are generated locally. Other artists may use free MusicBrainz/Wikipedia research, which cannot analyse the audio itself. Unprofiled songs are clearly labelled.",13,SOFT,false);
         spacing(form,15);form.addView(help);
         generate.setOnClickListener(v->{
             String a=value(artist),s=value(song),n=value(notes);
@@ -205,31 +204,20 @@ public final class MainActivity extends Activity {
             working=true;generate.setText("Researching sources…");
             generate.setEnabled(false);
             tasks.execute(()->{
-                ResearchClient.Research research=ResearchClient.lookup(a,s);
-                String key=KeyVault.read(getApplicationContext());
-                PromptStore.Prompt generated;
-                String failure="";
-                if(!key.isEmpty()){
-                    try { generated=AiClient.generate(key,KeyVault.model(getApplicationContext()),a,s,n,research); }
-                    catch(Exception ex){
-                        failure=ex.getMessage()==null?"Unknown AI error":ex.getMessage();
-                        generated=PromptTemplates.starter(a,s,n,research);
-                        generated.mode="STARTER — AI ERROR";
-                        generated.analysis="AI generation failed: "+failure+"\n\n"+generated.analysis;
-                    }
-                }else generated=PromptTemplates.starter(a,s,n,research);
+                ResearchClient.Research research;
+                boolean locallyKnown=SongProfiles.find(a,s)!=null || PromptTemplates.artistGuide(a)!=null;
+                if(locallyKnown)research=new ResearchClient.Research();
+                else research=ResearchClient.lookup(a,s);
+                PromptStore.Prompt generated=PromptTemplates.starter(a,s,n,research);
                 long id=store.save(generated);
-                String finalFailure=failure;
                 runOnUiThread(()->{
                     working=false;
-                    if(!finalFailure.isEmpty())toast("AI request failed; an editable starter was saved.");
                     showDetail(id);
                 });
             });
         });
         spacing(body,12);
-        TextView settings=action("Set up AI provider",false);body.addView(settings);
-        settings.setOnClickListener(v->showSettings());
+        body.addView(text("Curated songs are ready instantly, even without internet. Unrecognised artists need internet access and may require your own production notes.",13,SOFT,false));
     }
 
     private void showDetail(long id){
@@ -283,6 +271,26 @@ public final class MainActivity extends Activity {
             }
         }
         spacing(body,12);
+        TextView refresh=action("Replace with latest FREE production prompt",false);
+        body.addView(refresh);
+        refresh.setOnClickListener(v->new AlertDialog.Builder(this)
+            .setTitle("Replace saved production prompt?")
+            .setMessage("Rebuild using the free song and artist reference library. Your current edits to this song will be replaced.")
+            .setNegativeButton("Cancel",null)
+            .setPositiveButton("Replace",(dialog,which)->{
+                if(working)return;
+                working=true;refresh.setEnabled(false);refresh.setText("Rebuilding…");
+                tasks.execute(()->{
+                    ResearchClient.Research rr=(SongProfiles.find(p.artist,p.song)!=null ||
+                        PromptTemplates.artistGuide(p.artist)!=null)?
+                        new ResearchClient.Research():ResearchClient.lookup(p.artist,p.song);
+                    PromptStore.Prompt newPrompt=PromptTemplates.starter(p.artist,p.song,"",rr);
+                    newPrompt.id=p.id;
+                    store.save(newPrompt);
+                    runOnUiThread(()->{working=false;showDetail(p.id);});
+                });
+            }).show());
+        spacing(body,12);
         TextView share=action("Share prompt text",false);body.addView(share);
         share.setOnClickListener(v->{
             Intent intent=new Intent(Intent.ACTION_SEND);
@@ -303,45 +311,9 @@ public final class MainActivity extends Activity {
         toast(message);
     }
 
-    private void showSettings(){
-        String returnArtist=activeArtist;
-        location="settings";
-        base("AI Settings","CONFIGURE OPTIONAL CLOUD GENERATION","Library",this::showHome);
-        LinearLayout settings=panel(body);
-        settings.addView(text("OPENAI CONNECTION",12,LILAC,true));spacing(settings,11);
-        settings.addView(text("The app uses your own OpenAI API key. It is encrypted with Android Keystore and stays on your phone; it is sent only to the OpenAI API when you choose Generate.",14,SOFT,false));
-        spacing(settings,17);
-        EditText key=input("Paste OpenAI API key", "",false);
-        key.setTransformationMethod(PasswordTransformationMethod.getInstance());
-        field(settings,KeyVault.read(this).isEmpty()?"API key (not configured)":"API key (configured — leave blank to keep)",key);
-        EditText model=input("gpt-4.1-mini",KeyVault.model(this),false);
-        field(settings,"Chat Completions model",model);
-        TextView save=action("Save AI settings",true);settings.addView(save);
-        save.setOnClickListener(v->{
-            if(value(model).isEmpty()){toast("Model cannot be empty.");return;}
-            try {
-                if(!value(key).isEmpty())KeyVault.store(this,value(key));
-                KeyVault.setModel(this,value(model));
-                toast("Settings saved");showHome();
-            }catch(Exception e){toast("Could not securely save key: "+e.getMessage());}
-        });
-        spacing(settings,12);
-        TextView remove=action("Remove stored API key",false);
-        settings.addView(remove);remove.setOnClickListener(v->{
-            try{KeyVault.store(this,"");toast("Key removed");showSettings();}
-            catch(Exception e){toast("Unable to remove key");}
-        });
-        spacing(body,8);
-        LinearLayout notes=panel(body);
-        notes.addView(text("DATA & PRIVACY",12,LILAC,true));spacing(notes,9);
-        notes.addView(text("Your saved song prompts stay in the phone's local SQLite database. Research requests go to MusicBrainz and Wikipedia. For AI generation, the selected artist/song, any custom notes and research excerpts are sent to OpenAI. No Spotify account or permissions are used.",14,SOFT,false));
-        spacing(notes,8);
-        notes.addView(text("If AI generation is unavailable, the app stores a labelled starter prompt. It never claims to have listened to a recording.",13,SOFT,false));
-    }
-
     @Override public void onBackPressed() {
         if("detail".equals(location)){showArtist(activeArtist);}
-        else if("artist".equals(location)||"settings".equals(location)||"create".equals(location)){showHome();}
+        else if("artist".equals(location)||"create".equals(location)){showHome();}
         else super.onBackPressed();
     }
     @Override protected void onDestroy(){
