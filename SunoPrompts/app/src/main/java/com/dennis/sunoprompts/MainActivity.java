@@ -559,6 +559,10 @@ public final class MainActivity extends Activity {
         body.addView(repair);
         repair.setOnClickListener(v->{
             if(!chat.canUsePlan()){showAccount();return;}
+            if(!editor.getText().toString().equals(l.body)){
+                toast("Save your edits first to preserve the draft before AI repair.");
+                return;
+            }
             LyricsClient.Brief repairBrief=LyricsClient.Brief.fromJson(l.brief);
             if(repairBrief.title.isEmpty())repairBrief.title=l.song;
             if(repairBrief.artist.isEmpty())repairBrief.artist=l.artist;
