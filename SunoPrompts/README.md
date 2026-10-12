@@ -1,3 +1,31 @@
+# Suno Prompts Studio v0.5.2 — Song-Specific AI Production DNA
+
+## Why this version exists
+Earlier Studio AI prompt generation bypassed the reviewed song-specific reference library. Consequently Slim Dusty's *Lights on the Hill*, for example, often received generic country output even though the free app had a detailed production profile. v0.5.2 feeds that curated musical reference to the AI, prioritises what instruments PLAY and adds a quality gate that rejects generic responses.
+
+## New AI production workflow (TWO plan requests)
+1. Look up the exact artist and song in reviewed `SongProfiles`. Use that specific creative musical interpretation if available. If absent, use `PromptTemplates.artistGuide` or free MusicBrainz/Wikipedia metadata (which does NOT constitute audio analysis). Reviewed tracks skip unnecessary website requests.
+2. **Studio DNA** AI pass: plan groove, band parts, vocal phrasing, section development, sonic era, unique traits and evidence limitations. The complete structured plan is saved in the production notes.
+3. **Session production** AI pass: write a dense, realistic, 760–1000 character original Suno v6 prompt, with Exclude and notes. Aim for complementary left/right instruments, centred singer/kick/bass and a distinct believable arrangement, rather than generic genre adjectives.
+4. Offline quality-check output for presence of actual musical rhythm/voice/instruments/sections and Suno's 1000-character limit. For *Lights on the Hill*, require country/bush orientation, rolling road/truck pulse, acoustic guitar and responsive steel/twang/fiddle. Reject failing AI prompts **without overwriting** the previous saved style. No automatic paid retry.
+5. Store the model used, reviewed reference and evidence limits under the song's analysis notes. The reviewed library is an **interpretation**, not a stem-by-stem transcription or verified listen to the original audio.
+
+## AI model choice and plan limits
+When no model has been selected for this feature, choose explicitly from the account-returned model catalog. Subsequent requests use that saved model; if it disappears from the account, the app asks you to choose again instead of silently using the first entry. This feature uses **two AI requests**, counts toward the eligible ChatGPT plan and needs a working connection. The FREE song-specific reference tool remains available offline.
+
+## Regression coverage
+The local tests check that *Lights on the Hill* actually supplies its reviewed production profile to the AI, that another unprofiled Slim Dusty song receives only artist-level direction, and that generic country output cannot pass the specific Lights on the Hill QC. They also check missing structured music DNA cannot be passed through as a completed result. These tests validate program logic; they do not establish musical listening accuracy or runtime OAuth success.
+
+## BEFORE installing Studio v0.5.2
+The Android package remains `com.dennis.sunoprompts.studio`, but the APK is CI debug-signed. It may fail an in-place update because each Actions run has a different signing certificate. **Do not uninstall the working Studio app until its library is safely backed up.**
+1. On the working Studio app, tap **Back up my full library**; save the JSON to Files/Downloads or Documents and confirm it exists.
+2. Try installing the newer APK normally.
+3. Only if Android refuses to update, and the backup has been confirmed, uninstall the **Studio** app (not the separate original app) and install v0.5.2.
+4. Open Studio → **Restore a saved library backup**, choose the JSON and verify the import. You may have to reconnect ChatGPT (tokens are intentionally never included in backups).
+5. Preserve the old backup externally. Stable signing via privately stored GitHub Actions secrets is still future work.
+
+---
+
 # Suno Prompts Studio v0.5.1 — Imported Lyrics Offline Check
 
 ## Fix prompted by on-device testing
