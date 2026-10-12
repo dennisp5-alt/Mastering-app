@@ -37,20 +37,20 @@ public final class LyricRhythmCoachTest {
         assertTrue(r.mediumChorusLines+r.longChorusLines>0);
     }
     @Test public void importedLyricsWarnWithoutGenre(){
-        String chorus="[Chorus]\\nCount us through.\\nOne by one.\\nHold that gate\\nTill the last one's through.\\nTake my hand.\\nI've got you.\\nCount us through.\\n";
-        String source="[Verse 1]\\nWe clocked out under camera eyes\\nOur names in chalk beside the door\\n"+
+        String chorus="[Chorus]\nCount us through.\nOne by one.\nHold that gate\nTill the last one's through.\nTake my hand.\nI've got you.\nCount us through.\n";
+        String source="[Verse 1]\nWe clocked out under camera eyes\nOur names in chalk beside the door\n"+
             chorus+chorus.replace("[Chorus]","[Final Chorus]")+
-            chorus+"[Bridge]\\nNow I count the heads behind me\\n";
+            chorus+"[Bridge]\nNow I count the heads behind me\n";
         LyricRhythmCoach.Report report=LyricRhythmCoach.inspect(source,"Imported Lyrics");
         assertTrue(report.chantOnlyWarning);
         assertTrue(report.summary.contains("POSSIBLE CHANT-ONLY CHORUS"));
         assertTrue(report.summary.contains("No specific production style detected"));
     }
     @Test public void newRepairedChorusWithAlternatingSyllableLengthPasses(){
-        String lyrics="[Verse 1]\\nClocked out cameras watched us go\\nOur names in chalk beside the door\\n"+
-            "[Chorus]\\nCount us through.\\nHold that gate till the last one's through.\\n"+
-            "Take my hand.\\nIf you fall back I'll come back for you.\\n"+
-            "Count us through.\\nOne by one till we're all outside.\\n";
+        String lyrics="[Verse 1]\nClocked out cameras watched us go\nOur names in chalk beside the door\n"+
+            "[Chorus]\nCount us through.\nHold that gate till the last one's through.\n"+
+            "Take my hand.\nIf you fall back I'll come back for you.\n"+
+            "Count us through.\nOne by one till we're all outside.\n";
         LyricRhythmCoach.Report report=LyricRhythmCoach.inspect(lyrics,"");
         assertFalse(report.chantOnlyWarning);
         assertTrue(report.mediumChorusLines>=2);
