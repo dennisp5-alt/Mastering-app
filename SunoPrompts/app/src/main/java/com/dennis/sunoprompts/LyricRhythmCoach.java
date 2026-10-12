@@ -98,9 +98,19 @@ final class LyricRhythmCoach {
             r.estimatedChorusSyllables>=r.estimatedVerseSyllables)
             concerns.add("Dance-rock chorus may be denser than verses; check where chants and sustained melodic answers contrast");
         if(choruses.size()>0 && choruses.size()<4)concerns.add("Very short chorus; check that the title hook is clear");
-        if(danceRock(norm(production)) && choruses.size()>=4 && shortChorus*4>=choruses.size()*3 && longerChorus==0 && mediumChorus<=1){
+        // Genre-independent first pass: imported lyrics may not have a production profile.
+        // A chant-heavy chorus is an advisory, not automatically a fault in dance, rap or punk.
+        if(choruses.size()>=4 && shortChorus*4>=choruses.size()*3 &&
+            longerChorus==0 && r.estimatedChorusSyllables<=5){
             r.chantOnlyWarning=true;
-            concerns.add("CHORUS TOO CHANT-ONLY: at least 75% of lines are <=5 syllables with no substantial melodic answer. Mix short calls with a few 7–12 syllable rising or sustained-response lines, leaving space for instrument replies");
+            if(danceRock(norm(production))){
+                concerns.add("CHANT-HEAVY DANCE-ROCK CHORUS: 75%+ of lines are 1–5 syllables without a longer melodic release. Try mixing shouted calls with 7–12-syllable sung answers or held vowels.");
+            }else{
+                concerns.add("POSSIBLE CHANT-ONLY CHORUS: 75%+ of lines are 1–5 syllables with no extended melodic lines. This may be deliberate in some genres; for a more melodic chorus, add contrasting longer answers or held vowels.");
+            }
+        }
+        if(r.mode.startsWith("GENERAL SONGWRITING")){
+            concerns.add("No specific production style detected. Set the musical reference on this lyric draft for genre-sensitive advice.");
         }
         if(concerns.isEmpty())concerns.add("No obvious text-density warning; listen for actual stress, melody and groove after Suno renders it");
         r.summary="ADVISORY TEXT CHECK — NOT AUDIO MEASUREMENT\n\n"+
