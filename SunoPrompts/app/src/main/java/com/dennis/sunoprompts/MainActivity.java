@@ -28,6 +28,7 @@ import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
     private static final int BG=0xff0C1120, PANEL=0xff1B2335, FIELD=0xff242E43;
+    private static final int REQUEST_LIBRARY_EXPORT=9071,REQUEST_LIBRARY_IMPORT=9072;
     private static final int WHITE=0xffF2F3F8, SOFT=0xffAEB7CB, FAINT=0xff7F8DA9;
     private static final int LILAC=0xffBAA2FF, MINT=0xff54DFD0, OUTLINE=0xff39415A;
     private LinearLayout root, body;
@@ -48,6 +49,90 @@ public final class MainActivity extends Activity {
         getSharedPreferences("suno_settings",MODE_PRIVATE).edit().remove("api_key").apply();
         showHome();
         receiveSharedText(getIntent());
+    }
+
+    @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){
+        super.onActivityResult(requestCode,resultCode,data);
+        if(resultCode!=RESULT_OK||data==null||data.getData()==null)return;
+        final Uri uri=data.getData();
+        if(requestCode==REQUEST_LIBRARY_EXPORT){
+            if(working){toast("Another operation is active.");return;}
+            working=true;
+            tasks.execute(()->{
+                try{
+                    String json=LibraryBackup.export(store).toString(2);
+                    try(java.io.OutputStream out=getContentResolver().openOutputStream(uri,"w")){
+                        if(out==null)throw new Exception("Could not open destination file");
+                        out.write(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                        out.flush();
+                    }
+                    runOnUiThread(()->{
+                        working=false;
+                        new AlertDialog.Builder(this).setTitle("Library backup saved")
+                            .setMessage("Saved your production prompts and lyrics to the location you selected. Keep this JSON file before uninstalling or replacing the app. No ChatGPT login credentials were exported.")
+                            .setPositiveButton("OK",null).show();
+                    });
+                }catch(Exception ex){
+                    runOnUiThread(()->{
+                        working=false;
+                        new AlertDialog.Builder(this).setTitle("Backup not completed")
+                            .setMessage(ex.getMessage()==null?"Could not write file.":ex.getMessage())
+                            .setPositiveButton("OK",null).show();
+                    });
+                }
+            });
+        }else if(requestCode==REQUEST_LIBRARY_IMPORT){
+            if(working){toast("Another operation is active.");return;}
+            working=true;
+            tasks.execute(()->{
+                try{
+                    byte[] bytes;
+                    try(java.io.InputStream in=getContentResolver().openInputStream(uri);
+                        java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream()){
+                        if(in==null)throw new Exception("Could not read selected file");
+                        byte[] buffer=new byte[8192];int n;
+                        while((n=in.read(buffer))!=-1){
+                            out.write(buffer,0,n);
+                            if(out.size()>LibraryBackup.MAX_BYTES)throw new Exception("Backup file exceeds 12 MB limit");
+                        }
+                        bytes=out.toByteArray();
+                    }
+                    LibraryBackup.Preview preview=LibraryBackup.inspect(new String(bytes,java.nio.charset.StandardCharsets.UTF_8));
+                    runOnUiThread(()->{
+                        working=false;
+                        new AlertDialog.Builder(this).setTitle("Restore Suno Prompts library?")
+                            .setMessage(preview.text())
+                            .setNegativeButton("Cancel",null)
+                            .setPositiveButton("Import",(dialog,which)->{
+                                if(working)return;
+                                working=true;
+                                tasks.execute(()->{
+                                    try{
+                                        String report=LibraryBackup.restore(store,preview);
+                                        runOnUiThread(()->{
+                                            working=false;showHome();
+                                            new AlertDialog.Builder(this).setTitle("Restore complete")
+                                                .setMessage(report).setPositiveButton("OK",null).show();
+                                        });
+                                    }catch(Exception e){runOnUiThread(()->{
+                                        working=false;
+                                        new AlertDialog.Builder(this).setTitle("Restore failed")
+                                            .setMessage(e.getMessage()==null?"Import failed.":e.getMessage())
+                                            .setPositiveButton("OK",null).show();
+                                    });}
+                                });
+                            }).show();
+                    });
+                }catch(Exception ex){
+                    runOnUiThread(()->{
+                        working=false;
+                        new AlertDialog.Builder(this).setTitle("Backup could not be opened")
+                            .setMessage(ex.getMessage()==null?"Unsupported or damaged backup.":ex.getMessage())
+                            .setPositiveButton("OK",null).show();
+                    });
+                }
+            });
+        }
     }
 
     @Override protected void onNewIntent(Intent intent) {
@@ -218,6 +303,27 @@ public final class MainActivity extends Activity {
         controls.addView(settings,new LinearLayout.LayoutParams(-1,-2));
         settings.setOnClickListener(v->showAccount());
         body.addView(controls);
+        spacing(body,12);
+        TextView backup=action("Back up my full library",false);
+        body.addView(backup);
+        backup.setOnClickListener(v->{
+            Intent intent=new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            intent.setType("application/json");
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.putExtra(Intent.EXTRA_TITLE,"SunoPromptsStudio-Library.json");
+            startActivityForResult(intent,REQUEST_LIBRARY_EXPORT);
+        });
+        spacing(body,12);
+        TextView restore=action("Restore a saved library backup",false);
+        body.addView(restore);
+        restore.setOnClickListener(v->{
+            Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.setType("*/*");
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            startActivityForResult(intent,REQUEST_LIBRARY_IMPORT);
+        });
+        spacing(body,8);
+        body.addView(text("Moving from the older app? Open its saved song, choose Share prompt text (or Share lyrics) and select Suno Prompts Studio. The original installation stays untouched.",12,SOFT,false));
         spacing(body,23);
         body.addView(text("ARTIST FOLDERS",13,SOFT,true));spacing(body,12);
         if(artists.isEmpty()){
@@ -239,7 +345,7 @@ public final class MainActivity extends Activity {
             card.setClickable(true);
         }
         spacing(body,14);
-        body.addView(text("Suno Prompts Studio v0.4.2 • Install alongside your old app. Transfer saved prompts using Android Share.",12,FAINT,false));
+        body.addView(text("Suno Prompts Studio v0.4.2 • Side-by-side install, Android Share import, full JSON library backup and restore.",12,FAINT,false));
     }
 
     private void showArtist(String artist){
