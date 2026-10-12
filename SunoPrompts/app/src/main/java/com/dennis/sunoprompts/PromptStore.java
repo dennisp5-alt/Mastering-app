@@ -19,21 +19,31 @@ final class PromptStore extends SQLiteOpenHelper {
         String artist="", song="", body="", brief="", mode="";
         long updatedAt;
     }
+    static final class LyricProduction {
+        long id,lyricId,updatedAt;
+        String style="",exclude="",notes="",sourceHash="",mode="";
+    }
 
     PromptStore(Context context) {
-        super(context,"suno_prompts.db",null,2);
+        super(context,"suno_prompts.db",null,3);
     }
     @Override public void onCreate(SQLiteDatabase db){
         db.execSQL("CREATE TABLE prompts (id INTEGER PRIMARY KEY AUTOINCREMENT, artist TEXT NOT NULL COLLATE NOCASE, song TEXT NOT NULL COLLATE NOCASE, style TEXT NOT NULL, exclude_text TEXT NOT NULL, analysis TEXT NOT NULL, sources TEXT NOT NULL, mode TEXT NOT NULL, updated_at INTEGER NOT NULL, UNIQUE(artist,song))");
         db.execSQL("CREATE INDEX ix_artist ON prompts(artist)");
         createLyrics(db);
+        createLyricProductions(db);
     }
     private void createLyrics(SQLiteDatabase db){
         db.execSQL("CREATE TABLE IF NOT EXISTS lyrics (id INTEGER PRIMARY KEY AUTOINCREMENT, artist TEXT NOT NULL COLLATE NOCASE, song TEXT NOT NULL COLLATE NOCASE, lyric_body TEXT NOT NULL, brief TEXT NOT NULL, mode TEXT NOT NULL, updated_at INTEGER NOT NULL)");
         db.execSQL("CREATE INDEX IF NOT EXISTS ix_lyrics_artist ON lyrics(artist)");
     }
+    private void createLyricProductions(SQLiteDatabase db){
+        db.execSQL("CREATE TABLE IF NOT EXISTS lyric_productions (id INTEGER PRIMARY KEY AUTOINCREMENT, lyric_id INTEGER NOT NULL, style TEXT NOT NULL, exclude_text TEXT NOT NULL, notes TEXT NOT NULL, source_hash TEXT NOT NULL, mode TEXT NOT NULL, updated_at INTEGER NOT NULL)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS ix_production_lyric ON lyric_productions(lyric_id)");
+    }
     @Override public void onUpgrade(SQLiteDatabase db,int oldVersion,int newVersion){
-        if(oldVersion<2)createLyrics(db); // No DROP; keep every v0.1-v0.3 prompt.
+        if(oldVersion<2)createLyrics(db); // Never drop or mutate saved prompts.
+        if(oldVersion<3)createLyricProductions(db);
     }
     synchronized long save(Prompt p){
         SQLiteDatabase db=getWritableDatabase();
@@ -126,7 +136,56 @@ final class PromptStore extends SQLiteOpenHelper {
         }
     }
     synchronized void deleteLyrics(long id){
-        getWritableDatabase().delete("lyrics","id=?",new String[]{String.valueOf(id)});
+        SQLiteDatabase db=getWritableDatabase();
+        db.beginTransaction();
+        try {
+            db.delete("lyric_productions","lyric_id=?",new String[]{String.valueOf(id)});
+            db.delete("lyrics","id=?",new String[]{String.valueOf(id)});
+            db.setTransactionSuccessful();
+        }finally{db.endTransaction();}
+    }
+    synchronized long saveLyricProduction(LyricProduction p){
+        if(p.lyricId<=0 || getLyrics(p.lyricId)==null)
+            throw new IllegalArgumentException("Source lyrics no longer exist");
+        if(p.style==null || p.style.trim().isEmpty() || p.style.length()>1000)
+            throw new IllegalArgumentException("Production style must be 1–1000 characters");
+        ContentValues v=new ContentValues();
+        v.put("lyric_id",p.lyricId);v.put("style",p.style);v.put("exclude_text",p.exclude);
+        v.put("notes",p.notes);v.put("source_hash",p.sourceHash);
+        v.put("mode",p.mode);v.put("updated_at",System.currentTimeMillis());
+        if(p.id>0){
+            int count=getWritableDatabase().update("lyric_productions",v,"id=? AND lyric_id=?",
+                new String[]{String.valueOf(p.id),String.valueOf(p.lyricId)});
+            if(count==0)throw new IllegalStateException("Production prompt is not available");
+            return p.id;
+        }
+        return getWritableDatabase().insertOrThrow("lyric_productions",null,v);
+    }
+    synchronized LyricProduction getLyricProduction(long id){
+        try(Cursor c=getReadableDatabase().rawQuery(
+            "SELECT id,lyric_id,style,exclude_text,notes,source_hash,mode,updated_at FROM lyric_productions WHERE id=?",
+            new String[]{String.valueOf(id)})){
+            return c.moveToFirst()?productionFrom(c):null;
+        }
+    }
+    synchronized ArrayList<LyricProduction> productionsForLyrics(long lyricId){
+        ArrayList<LyricProduction> result=new ArrayList<>();
+        try(Cursor c=getReadableDatabase().rawQuery(
+            "SELECT id,lyric_id,style,exclude_text,notes,source_hash,mode,updated_at FROM lyric_productions WHERE lyric_id=? ORDER BY updated_at DESC,id DESC",
+            new String[]{String.valueOf(lyricId)})){
+            while(c.moveToNext())result.add(productionFrom(c));
+        }
+        return result;
+    }
+    synchronized void deleteLyricProduction(long id){
+        getWritableDatabase().delete("lyric_productions","id=?",new String[]{String.valueOf(id)});
+    }
+    private LyricProduction productionFrom(Cursor c){
+        LyricProduction p=new LyricProduction();
+        p.id=c.getLong(0);p.lyricId=c.getLong(1);
+        p.style=c.getString(2);p.exclude=c.getString(3);p.notes=c.getString(4);
+        p.sourceHash=c.getString(5);p.mode=c.getString(6);p.updatedAt=c.getLong(7);
+        return p;
     }
     private Lyrics lyricsFrom(Cursor c){
         Lyrics l=new Lyrics();
