@@ -1,0 +1,275 @@
+--- a/app/build.gradle
++++ b/app/build.gradle
+@@ -7,11 +7,11 @@
+     compileSdk 34
+ 
+     defaultConfig {
+-        applicationId 'com.dennis.aimasteringlab.test1510'
++        applicationId 'com.dennis.aimasteringlab.test1511'
+         minSdk 29
+         targetSdk 34
+-        versionCode 37
+-        versionName '0.15.10'
++        versionCode 38
++        versionName '0.15.11'
+     }
+ 
+     buildFeatures {
+--- a/app/src/main/java/com/dennis/aimasteringlab/StudioStemLabActivity.java
++++ b/app/src/main/java/com/dennis/aimasteringlab/StudioStemLabActivity.java
+@@ -51,7 +51,7 @@
+         root.setPadding(dp(16),dp(12),dp(16),dp(35));
+         scroll.setBackground(StudioVisuals.surface(StudioVisuals.BG,0xFF071D2C,0,0,this));
+         scroll.addView(root);setContentView(scroll);
+-        StudioVisuals.header(this,root);StudioVisuals.section(this,root,"Stem Intelligence Lab • v0.15.10 TEST");
++        StudioVisuals.header(this,root);StudioVisuals.section(this,root,"Stem Intelligence Lab • v0.15.11 TEST");
+         info("READ-ONLY EXPERIMENT. Inspect WAV stem ZIP files with or without a stereo reference. Nothing changes the sound or recipe of your trusted master.",false);
+         projects.clear();projects.addAll(StudioProject.list(new File(getFilesDir(),"studio-projects"),null));
+         ArrayList<String> names=new ArrayList<>();names.add("Stems only — no stereo reference");
+@@ -135,6 +135,17 @@
+                     .append(duration.optString("assessment"))
+                     .append("\nStrict duration mismatches: ")
+                     .append(duration.optInt("strict_duration_mismatches"));
++            JSONObject guided=j.optJSONObject("stem_assisted_stereo");
++            if(guided!=null){
++                text.append("\n\nStem-assisted stereo intelligence: ").append(guided.optString("decision"));
++                JSONObject vocal=guided.optJSONObject("vocal_analysis");
++                if(vocal!=null)text.append("\nVocal evidence: ").append(vocal.optString("status"))
++                        .append("\nCandidate de-ess events: ").append(vocal.optInt("candidate_deess_events"));
++                JSONObject masking=guided.optJSONObject("masking_analysis");
++                if(masking!=null)text.append("\nMasking evidence: ").append(masking.optString("status"))
++                        .append("\nCandidate masking events: ").append(masking.optInt("candidate_masking_events"));
++                text.append("\nNo stem processing or audition exported; see JSON for timed evidence.");
++            }
+             JSONArray alignment=j.optJSONArray("local_alignment");
+             if(alignment!=null){
+                 text.append("\n\nIndividual stem timing and evidence:");
+@@ -156,7 +167,7 @@
+                     .append("\n").append(stem.optString("status"))
+                     .append(" — ").append(stem.optString("reason"));
+             }
+-            text.append("\n\nSafety: v0.15.10 never uses stem samples in the finished master.");
++            text.append("\n\nSafety: v0.15.11 never uses stem samples in the finished master.");
+             new AlertDialog.Builder(this).setTitle(j.optString("title","Stem inspection"))
+                     .setMessage(text.toString()).setNegativeButton("Close",null)
+                     .setPositiveButton("EXPORT JSON",(d,w)->{
+--- a/app/src/main/java/com/dennis/aimasteringlab/StudioStemInspection.java
++++ b/app/src/main/java/com/dennis/aimasteringlab/StudioStemInspection.java
+@@ -12,7 +12,7 @@
+         if (!archive.isFile() || archive.length() < 22) throw new IOException("No complete stem ZIP was imported");
+         JSONObject report = new JSONObject();
+         report.put("schema", 1).put("mode", "READ_ONLY_STEM_INTELLIGENCE")
+-              .put("app_version", "0.15.10").put("title", title)
++              .put("app_version", "0.15.11").put("title", title)
+               .put("stem_zip_sha256", Hashing.sha256(archive))
+               .put("stem_zip_bytes", archive.length())
+               .put("original_supplied", original != null)
+@@ -115,6 +115,26 @@
+                 }
+                 report.put("local_alignment", alignment);
+             }
++            // Stage 2: propose guarded stereo-source corrections for later A/B.
++            // The master and this report's trust decision remain authoritative.
++            if (t.analysisOnlyAllowed) {
++                try {
++                    report.put("stem_assisted_stereo", StemAssistedStereoIntelligence.inspect(
++                            archive, analysis, progress));
++                } catch (Exception guidanceFailure) {
++                    report.put("stem_assisted_stereo", new JSONObject()
++                            .put("decision", "ANALYSIS_UNAVAILABLE")
++                            .put("reason", guidanceFailure.getMessage() == null
++                                    ? guidanceFailure.getClass().getSimpleName()
++                                    : guidanceFailure.getMessage())
++                            .put("mastering_audio_unchanged", true)
++                            .put("candidate_release_status", "NO_RENDER_OR_SELECTION"));
++                }
++            } else {
++                report.put("stem_assisted_stereo", new JSONObject()
++                        .put("decision", "DISABLED_BY_STEM_TRUST")
++                        .put("candidate_release_status", "NO_RENDER_OR_SELECTION"));
++            }
+             report.put("decision", t.audioDeltaAllowed ? "POTENTIAL_STEM_ASSIST_CANDIDATE"
+                     : t.analysisOnlyAllowed ? "ANALYSIS_ONLY" : "STEMS_REJECTED");
+             report.put("reason", "Read-only verdict. No stem samples enter the master in this experimental version; source WAV retains absolute priority.");
+--- a/app/src/main/java/com/dennis/aimasteringlab/StemAssistedStereoIntelligence.java
++++ b/app/src/main/java/com/dennis/aimasteringlab/StemAssistedStereoIntelligence.java
+@@ -0,0 +1,133 @@
++package com.dennis.aimasteringlab;
++
++import java.io.File;
++import java.util.HashSet;
++import java.util.Locale;
++import java.util.Set;
++import org.json.JSONArray;
++import org.json.JSONObject;
++
++/**
++ * Experimental analysis-only guide for the authoritative stereo WAV.
++ * The verified stems are solely detector/control evidence. This class never
++ * renders, alters, stores or promotes an audio candidate or edits a recipe.
++ */
++final class StemAssistedStereoIntelligence {
++    private static final int MAX_REPORTED_EVENTS = 16;
++
++    private StemAssistedStereoIntelligence() {}
++
++    static JSONObject inspect(File archive, AnalysisResult analysis,
++                              AudioAnalyzer.Progress progress) throws Exception {
++        StemTrustClassifier.Result trust = analysis.stemTrust;
++        JSONObject report = new JSONObject()
++                .put("mode", "STEM_ASSISTED_STEREO_INTELLIGENCE")
++                .put("audio_processing_enabled", false)
++                .put("source_wav_authoritative", true)
++                .put("stem_waveform_in_output", false)
++                .put("stem_delta_in_output", false)
++                .put("mastering_recipe_unchanged", true)
++                .put("final_master_export_enabled", false)
++                .put("candidate_release_status", "NO_RENDER_OR_SELECTION")
++                .put("required_next_gate", "Render stereo-source candidate, perform level-matched A/B and finished-audio safety verification before allowing any edit to be selected");
++        if (trust == null || !trust.analysisOnlyAllowed || analysis.stemAlignment == null) {
++            return report.put("decision", "NO_TRUSTED_STEM_EVIDENCE")
++                    .put("reason", "No safely aligned, independently verified stems are available for control measurements")
++                    .put("vocal_analysis", new JSONObject().put("status", "NOT_RUN"))
++                    .put("masking_analysis", new JSONObject().put("status", "NOT_RUN"))
++                    .put("bass_interaction", "NOT_EVALUATED");
++        }
++        // The detector models are deliberately restricted to analysis-only
++        // input. In particular, separated-stem samples never become master samples.
++        analysis.stemArchiveAnalysisOnlyAccepted = true;
++        analysis.stemArchiveAccepted = false;
++        analysis.vocalHumanity = VocalHumanityModel.analyzeForGuidance(archive, analysis, progress);
++        analysis.maskingPockets = MaskingPocketModel.analyzeForGuidance(archive, analysis, progress);
++        VocalHumanityModel.Result vocal = analysis.vocalHumanity;
++        MaskingPocketModel.Result masking = analysis.maskingPockets;
++        JSONObject vocalReport = new JSONObject()
++                .put("status", vocal.status)
++                .put("lead_stem", vocal.leadStemPath == null ? JSONObject.NULL : vocal.leadStemPath)
++                .put("available", vocal.available)
++                .put("phrase_regions", vocal.phrases.size())
++                .put("candidate_deess_events", vocal.deEssEvents.size())
++                .put("events", new JSONArray());
++        JSONArray vEvents = vocalReport.getJSONArray("events");
++        for (int i = 0; i < vocal.deEssEvents.size() && i < MAX_REPORTED_EVENTS; i++) {
++            VocalHumanityModel.DeEssEvent event = vocal.deEssEvents.get(i);
++            if (!credibleEvent(event.startSeconds, event.endSeconds, event.confidence,
++                    analysis.wav.durationSeconds)) continue;
++            vEvents.put(new JSONObject()
++                    .put("start_seconds", round(event.startSeconds))
++                    .put("end_seconds", round(event.endSeconds))
++                    .put("detected_sibilance_z", round(event.sibilanceZ))
++                    .put("confidence", round(event.confidence))
++                    .put("model_nominal_attenuation_db", round(event.attenuationDb))
++                    .put("action", "STEREO_DEESS_AUDITION_ONLY"));
++        }
++        JSONObject maskingReport = new JSONObject()
++                .put("status", masking.status)
++                .put("available", masking.available)
++                .put("competing_stems_examined", masking.competingStemsAnalyzed)
++                .put("candidate_masking_events", masking.events.size())
++                .put("events", new JSONArray());
++        JSONArray mEvents = maskingReport.getJSONArray("events");
++        Set<String> instruments = new HashSet<>();
++        for (int i = 0; i < masking.events.size() && i < MAX_REPORTED_EVENTS; i++) {
++            MaskingPocketModel.Event event = masking.events.get(i);
++            if (!credibleEvent(event.startSeconds, event.endSeconds, event.confidence,
++                    analysis.wav.durationSeconds)) continue;
++            instruments.add(event.stemPath);
++            mEvents.put(new JSONObject()
++                    .put("stem", event.stemPath)
++                    .put("instrument", event.stemRole)
++                    .put("band", event.bandLabel)
++                    .put("low_hz", round(event.lowHz))
++                    .put("high_hz", round(event.highHz))
++                    .put("start_seconds", round(event.startSeconds))
++                    .put("end_seconds", round(event.endSeconds))
++                    .put("confidence", round(event.confidence))
++                    .put("model_nominal_attenuation_db", round(event.attenuationDb))
++                    .put("action", "STEREO_MASKING_AUDITION_ONLY"));
++        }
++        boolean trustedBass = secureNamedStem(analysis, "bass");
++        boolean trustedDrums = secureNamedStem(analysis, "drum")
++                || secureNamedStem(analysis, "kick");
++        JSONObject bass = new JSONObject()
++                .put("aligned_bass_evidence", trustedBass)
++                .put("aligned_drum_evidence", trustedDrums)
++                .put("frequency_conflict_measured", false)
++                .put("correction_proposed", false)
++                .put("decision", trustedBass && trustedDrums
++                        ? "BASS_AND_DRUM_EVIDENCE_PRESENT_BUT_NO_CONFLICT_MEASUREMENT_YET"
++                        : "INSUFFICIENT_ALIGNED_BASS_DRUM_EVIDENCE");
++        report.put("vocal_analysis", vocalReport)
++              .put("masking_analysis", maskingReport)
++              .put("bass_interaction", bass)
++              .put("eligible_stem_roles_count", trust.secureStems)
++              .put("masking_stems_with_candidates", instruments.size());
++        boolean proposed = vEvents.length() > 0 || mEvents.length() > 0;
++        report.put("decision", proposed ? "STEREO_AUDITION_PROPOSED_NOT_RENDERED"
++                : "NO_GUIDED_STEREO_CORRECTION_JUSTIFIED")
++              .put("reason", proposed
++                      ? "Events are analytical proposals only. No original WAV or mastered audio was changed; no audition has passed the full finished-audio QC gate."
++                      : "No lead-vocal de-essing or masking event passed the available analysis gates; transparent stereo mastering remains the fallback.");
++        return report;
++    }
++
++    private static boolean secureNamedStem(AnalysisResult analysis, String name) {
++        for (StemAlignmentValidator.StemResult stem : analysis.stemAlignment.stems) {
++            if (stem.analysisSecure && stem.path.toLowerCase(Locale.US).contains(name)) return true;
++        }
++        return false;
++    }
++
++    private static boolean credibleEvent(double start, double end, double confidence,
++                                         double duration) {
++        return Double.isFinite(start) && Double.isFinite(end)
++                && Double.isFinite(confidence) && start >= 0 && end > start
++                && end <= duration && confidence >= 0 && confidence <= 1;
++    }
++
++    private static double round(double x) { return Math.round(x * 1000.0) / 1000.0; }
++}
+--- a/tests/V01511StemGuidanceHarness.java
++++ b/tests/V01511StemGuidanceHarness.java
+@@ -0,0 +1,30 @@
++package com.dennis.aimasteringlab;
++
++import java.io.File;
++import org.json.JSONObject;
++
++/** Ensures guidance never authorizes stem audio or silent mastering changes. */
++public final class V01511StemGuidanceHarness {
++    private static void require(boolean test, String message) {
++        if (!test) throw new AssertionError(message);
++    }
++    private static void checkFile(File original, File archive, boolean mustStayReadOnly) throws Exception {
++        JSONObject report = StudioStemInspection.inspect(archive, original, archive.getName(), (name,pct)->{});
++        require(report.getBoolean("mastering_audio_unchanged"), "master audio was marked changed");
++        require(!report.getBoolean("stem_audio_render_enabled"), "stem rendering became enabled");
++        JSONObject guidance = report.optJSONObject("stem_assisted_stereo");
++        require(guidance != null, "missing stem-assisted intelligence object");
++        require("NO_RENDER_OR_SELECTION".equals(guidance.getString("candidate_release_status")), "candidate escaped QC hold");
++        require(!guidance.optBoolean("final_master_export_enabled", false), "automatic master export was authorized");
++        require(!guidance.optBoolean("audio_processing_enabled", false), "guidance was mistaken for processing");
++        if (mustStayReadOnly) require(!report.optBoolean("future_audio_candidate_eligible", false), "unsafe stem passed into audio candidate");
++        System.out.println("V01511_STEM_GUIDANCE_PASS archive="+archive.getName()+" trust="+report.optString("decision")
++                + " proposal="+guidance.optString("decision"));
++    }
++    public static void main(String[] args) throws Exception {
++        File folder = new File(args[0]);
++        File mix = new File(folder,"StemFixtureMix.wav");
++        checkFile(mix,new File(folder,"StemFixtureSafe.zip"),false);
++        checkFile(mix,new File(folder,"StemFixtureDelayed.zip"),true);
++    }
++}
+--- a/RELEASE_NOTES_v0.15.11.md
++++ b/RELEASE_NOTES_v0.15.11.md
+@@ -0,0 +1,10 @@
++# Dennis AI Mastering Lab v0.15.11 — Stem-Assisted Stereo Intelligence (TEST)
++
++- Preserve the proven stereo mastering DSP byte-for-byte from v0.15.10 (inherited v0.15.7 engine).
++- In Stem Lab, when independently verified stems and the authoritative stereo WAV are present, run the existing conservative lead-vocal and competing-instrument masking detectors in **analysis-only mode**.
++- Report timed candidate sibilance and masking events, instrument/band and detector confidence in the exported Stem_Inspection.json. These findings are **not** proof that processing improves audio.
++- Record whether separately aligned bass/drum stems are available; bass frequency conflicts are **not** inferred without a spectral conflict measurement.
++- On missing or insufficient evidence, report no verified correction; never synthesize inferred stems or promote a mix correction.
++- No stem audio, stem waveform delta, mixed-down stem or stereo source edit can enter the released master; no candidate rendering or automatic promotion yet.
++- Run the v0.15.10 alignment regression and v0.15.11 safe/delayed stem-inspection regression. Keep the current stereo engine unchanged.
++- Separate test app ID: com.dennis.aimasteringlab.test1511.
