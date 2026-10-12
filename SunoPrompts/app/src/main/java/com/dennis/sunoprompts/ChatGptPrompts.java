@@ -133,6 +133,73 @@ final class ChatGptPrompts {
             json.optString("analysis","")+"\n\nSource research:\n"+research.context();
         return p;
     }
+    /**
+     * Reusable ChatGPT-plan JSON completion through the supported Responses endpoint.
+     * No user data is saved here; callers save only after successful completion.
+     */
+    static JSONObject completeJson(String token,String model,String instructions,String request)throws Exception {
+        JSONObject body=new JSONObject();
+        body.put("model",model);body.put("store",false);body.put("stream",true);
+        JSONArray input=new JSONArray();
+        input.put(new JSONObject().put("role","developer").put("content",instructions));
+        input.put(new JSONObject().put("role","user").put("content",request));
+        body.put("input",input);
+        HttpURLConnection c=(HttpURLConnection)new URL(ENDPOINT).openConnection();
+        c.setRequestMethod("POST");
+        c.setConnectTimeout(20000);c.setReadTimeout(90000);c.setDoOutput(true);
+        c.setRequestProperty("Authorization","Bearer "+token);
+        c.setRequestProperty("Content-Type","application/json");
+        c.setRequestProperty("Accept","text/event-stream");
+        StringBuilder output=new StringBuilder();
+        boolean completed=false;
+        try{
+            try(OutputStream out=c.getOutputStream()){
+                out.write(body.toString().getBytes(StandardCharsets.UTF_8));
+            }
+            int status=c.getResponseCode();
+            if(status!=200){
+                String detail=ChatGptConnection.response(c);
+                if(status==401)throw new Exception("ChatGPT access expired or permission was not granted. Connect again.");
+                if(status==429)throw new Exception("ChatGPT shared plan usage limit reached. Existing drafts remain saved.");
+                throw new Exception("ChatGPT HTTP "+status+": "+cleanError(detail));
+            }
+            try(BufferedReader in=new BufferedReader(new InputStreamReader(c.getInputStream(),StandardCharsets.UTF_8))){
+                String line;
+                while((line=in.readLine())!=null){
+                    if(!line.startsWith("data:"))continue;
+                    String data=line.substring(5).trim();
+                    if(data.isEmpty()||"[DONE]".equals(data))continue;
+                    JSONObject event;
+                    try{event=new JSONObject(data);}catch(Exception ignored){continue;}
+                    String type=event.optString("type");
+                    if("response.output_text.delta".equals(type)){
+                        output.append(event.optString("delta",""));
+                        if(output.length()>45000)throw new Exception("Lyrics exceeded output limits.");
+                    }else if("response.completed".equals(type)){
+                        completed=true;
+                        if(output.length()==0)output.append(textFromResponse(event.optJSONObject("response")));
+                        break;
+                    }else if("response.failed".equals(type)||"response.incomplete".equals(type)){
+                        JSONObject r=event.optJSONObject("response");
+                        JSONObject error=r==null?null:r.optJSONObject("error");
+                        String code=error==null?"incomplete":error.optString("code","incomplete");
+                        throw new Exception("ChatGPT did not finish generating lyrics ("+code+").");
+                    }else if("error".equals(type)){
+                        throw new Exception("ChatGPT streaming error.");
+                    }
+                }
+            }
+        }finally{c.disconnect();}
+        if(!completed)throw new Exception("ChatGPT closed the response early. Nothing was saved.");
+        String raw=output.toString().trim();
+        if(raw.startsWith(String.valueOf((char)96))){
+            int first=raw.indexOf('\n'),last=raw.lastIndexOf(String.valueOf((char)96));
+            if(first>=0 && last>first)raw=raw.substring(first+1,raw.lastIndexOf('\n')).trim();
+        }
+        try{return new JSONObject(raw);}
+        catch(Exception e){throw new Exception("AI did not return structured lyrics. Try generating again.");}
+    }
+
     private static String cleanError(String source){
         try{
             JSONObject err=new JSONObject(source).optJSONObject("error");
