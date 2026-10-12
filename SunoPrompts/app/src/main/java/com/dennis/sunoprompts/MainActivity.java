@@ -345,7 +345,7 @@ public final class MainActivity extends Activity {
             card.setClickable(true);
         }
         spacing(body,14);
-        body.addView(text("Suno Prompts Studio v0.5.2 • Curated song-specific Studio DNA producer, reviewed Suno prompts and explicit AI model selection.",12,FAINT,false));
+        body.addView(text("Suno Prompts Studio v0.5.3 • Automatic Suno style length repair, studio DNA references and quality checks.",12,FAINT,false));
     }
 
     private void showArtist(String artist){
@@ -389,6 +389,8 @@ public final class MainActivity extends Activity {
         EditText notes=input("Optional: warmer mix, detailed stereo, era, vocal direction…","",true);
         field(form,"Artist",artist);field(form,"Song title",song);
         field(form,"Your production direction (optional)",notes);
+        form.addView(text("Describe the musical sound you want. You do not need to write a character limit here; Studio automatically fits the final AI style within Suno’s 1,000-character limit.",12,SOFT,false));
+        spacing(form,12);
         TextView generateAi=action(chat.canUsePlan()?"Generate Studio DNA with ChatGPT (2 requests)":"Connect ChatGPT for detailed prompts",true);
         form.addView(generateAi);spacing(form,12);
         TextView generate=action("Use FREE offline/reference generator",false);
