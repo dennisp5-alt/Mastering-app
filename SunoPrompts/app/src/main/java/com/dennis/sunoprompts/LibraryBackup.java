@@ -16,7 +16,7 @@ final class LibraryBackup {
     static JSONObject export(PromptStore store)throws Exception {
         JSONObject backup=new JSONObject();
         backup.put("format","com.dennis.sunoprompts.library");
-        backup.put("schema",1);
+        backup.put("schema",2);
         backup.put("created_at",System.currentTimeMillis());
         JSONArray prompts=new JSONArray(),lyrics=new JSONArray();
         for(Map.Entry<String,Integer> folder:store.artists().entrySet()){
@@ -34,6 +34,15 @@ final class LibraryBackup {
                 entry.put("artist",l.artist);entry.put("song",l.song);
                 entry.put("body",l.body);entry.put("brief",l.brief);
                 entry.put("mode",l.mode);
+                JSONArray arrangements=new JSONArray();
+                for(PromptStore.LyricProduction item:store.productionsForLyrics(l.id)){
+                    JSONObject prod=new JSONObject();
+                    prod.put("style",item.style);prod.put("exclude",item.exclude);
+                    prod.put("notes",item.notes);prod.put("source_hash",item.sourceHash);
+                    prod.put("mode",item.mode);
+                    arrangements.put(prod);
+                }
+                entry.put("productions",arrangements);
                 lyrics.put(entry);
             }
         }
@@ -43,10 +52,10 @@ final class LibraryBackup {
 
     static final class Preview {
         JSONObject document;
-        int productionPrompts,lyricDrafts;
+        int productionPrompts,lyricDrafts,lyricProductions;
         String text(){
-            return productionPrompts+" production prompts and "+lyricDrafts+
-                " lyric drafts.\n\nExisting production prompts won't be overwritten. Identical lyrics will be skipped. New versions are added as separate drafts.\n\nNo passwords, API keys or ChatGPT tokens are imported.";
+            return productionPrompts+" production prompts, "+lyricDrafts+
+                " lyric drafts and "+lyricProductions+" lyrics-first arrangements.\n\nExisting production prompts won't be overwritten. Identical lyrics will be skipped. New versions are added as separate drafts.\n\nNo passwords, API keys or ChatGPT tokens are imported.";
         }
     }
     static Preview inspect(String raw)throws Exception {
@@ -55,7 +64,7 @@ final class LibraryBackup {
         JSONObject source=new JSONObject(raw);
         if(!"com.dennis.sunoprompts.library".equals(source.optString("format")))
             throw new Exception("This isn't a Suno Prompts Studio library backup.");
-        if(source.optInt("schema",-1)!=1)
+        if(source.optInt("schema",-1)!=1 && source.optInt("schema",-1)!=2)
             throw new Exception("Unsupported backup schema.");
         JSONArray prompts=source.optJSONArray("prompts"),lyrics=source.optJSONArray("lyrics");
         if(prompts==null || lyrics==null)
@@ -68,14 +77,26 @@ final class LibraryBackup {
                ||!safe(p.optString("style"),1000))
                 throw new Exception("Invalid production prompt at position "+(i+1));
         }
+        int productionCount=0;
         for(int i=0;i<lyrics.length();i++){
             JSONObject l=lyrics.optJSONObject(i);
             if(l==null||!safe(l.optString("artist"),200)||!safe(l.optString("song"),250)
                ||!safe(l.optString("body"),26000))
                 throw new Exception("Invalid lyric draft at position "+(i+1));
+            JSONArray parts=l.optJSONArray("productions");
+            if(parts==null)continue; // v0.4.2 backups have no arrangements.
+            if(parts.length()>100)throw new Exception("Too many arrangements for one draft");
+            for(int j=0;j<parts.length();j++){
+                JSONObject part=parts.optJSONObject(j);
+                if(part==null || !safe(part.optString("style"),1000) ||
+                    part.optString("exclude","").length()>350 ||
+                    part.optString("notes","").length()>30000)
+                    throw new Exception("Invalid production arrangement in lyric "+(i+1));
+                productionCount++;
+            }
         }
         Preview v=new Preview();
-        v.document=source;v.productionPrompts=prompts.length();v.lyricDrafts=lyrics.length();
+        v.document=source;v.productionPrompts=prompts.length();v.lyricDrafts=lyrics.length();v.lyricProductions=productionCount;
         return v;
     }
     private static boolean safe(String s,int limit){
@@ -84,7 +105,7 @@ final class LibraryBackup {
     static String restore(PromptStore store,Preview preview)throws Exception {
         JSONArray prompts=preview.document.getJSONArray("prompts");
         JSONArray lyrics=preview.document.getJSONArray("lyrics");
-        int addedPrompt=0,addedLyric=0,skipped=0;
+        int addedPrompt=0,addedLyric=0,addedProductions=0,skipped=0;
         SQLiteDatabase db=store.getWritableDatabase();
         db.beginTransaction();
         try {
@@ -102,15 +123,32 @@ final class LibraryBackup {
             for(int i=0;i<lyrics.length();i++){
                 JSONObject j=lyrics.getJSONObject(i);
                 String artist=j.getString("artist"),song=j.getString("song"),body=j.getString("body");
-                if(store.hasExactLyrics(artist,song,body)){skipped++;continue;}
-                PromptStore.Lyrics l=new PromptStore.Lyrics();
-                l.artist=artist;l.song=song;l.body=body;
-                l.brief=j.optString("brief","");l.mode=j.optString("mode","RESTORED LYRICS");
-                store.saveLyrics(l);addedLyric++;
+                long lyricId=store.findExactLyricsId(artist,song,body);
+                if(lyricId==0){
+                    PromptStore.Lyrics l=new PromptStore.Lyrics();
+                    l.artist=artist;l.song=song;l.body=body;
+                    l.brief=j.optString("brief","");l.mode=j.optString("mode","RESTORED LYRICS");
+                    lyricId=store.saveLyrics(l);addedLyric++;
+                }else skipped++;
+                JSONArray productions=j.optJSONArray("productions");
+                if(productions!=null){
+                    for(int k=0;k<productions.length();k++){
+                        JSONObject source=productions.getJSONObject(k);
+                        String style=source.getString("style");
+                        String hash=source.optString("source_hash","");
+                        if(store.hasExactLyricProduction(lyricId,style,hash)){skipped++;continue;}
+                        PromptStore.LyricProduction p=new PromptStore.LyricProduction();
+                        p.lyricId=lyricId;p.style=style;p.sourceHash=hash;
+                        p.exclude=source.optString("exclude","");p.notes=source.optString("notes","");
+                        p.mode=source.optString("mode","RESTORED LYRICS ARRANGEMENT");
+                        store.saveLyricProduction(p);addedProductions++;
+                    }
+                }
             }
             db.setTransactionSuccessful();
         }finally{db.endTransaction();}
-        return "Imported "+addedPrompt+" production prompts and "+addedLyric+
-            " lyric drafts. Skipped "+skipped+" already-saved items.";
+        return "Imported "+addedPrompt+" production prompts, "+addedLyric+
+            " lyric drafts and "+addedProductions+" lyrics-first arrangements. Skipped "+
+            skipped+" already-saved items.";
     }
 }
