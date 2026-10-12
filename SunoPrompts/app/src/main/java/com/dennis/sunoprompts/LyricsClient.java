@@ -7,6 +7,33 @@ final class LyricsClient {
     static final class Brief {
         String artist="",title="",story="",hook="",genre="",structure="",
             rhyme="",vocal="",avoid="",styleGuide="";
+        String toJson(String notes) {
+            JSONObject j=new JSONObject();
+            try {
+                j.put("artist",artist);j.put("title",title);j.put("story",story);
+                j.put("hook",hook);j.put("genre",genre);j.put("structure",structure);
+                j.put("rhyme",rhyme);j.put("vocal",vocal);j.put("avoid",avoid);
+                j.put("styleGuide",styleGuide);j.put("notes",notes);
+            }catch(Exception ignored){}
+            return j.toString();
+        }
+        static Brief fromJson(String saved) {
+            Brief b=new Brief();
+            try {
+                JSONObject j=new JSONObject(saved);
+                b.artist=j.optString("artist","");
+                b.title=j.optString("title","");
+                b.story=j.optString("story","");
+                b.hook=j.optString("hook","");
+                b.genre=j.optString("genre","");
+                b.structure=j.optString("structure","");
+                b.rhyme=j.optString("rhyme","");
+                b.vocal=j.optString("vocal","");
+                b.avoid=j.optString("avoid","");
+                b.styleGuide=j.optString("styleGuide","");
+            }catch(Exception ignored){}
+            return b;
+        }
         String describe() {
             return "Song title: "+title+"\nFolder / general artist reference: "+artist+
                 "\nStory and setting: "+story+"\nHook / chorus idea: "+hook+
@@ -49,7 +76,7 @@ final class LyricsClient {
         out.artist=brief.artist.isEmpty()?"Original Songs":brief.artist;
         out.song=brief.title;
         out.body=lyrics;
-        out.brief=brief.describe()+"\n\nSONGWRITER NOTES: "+result.optString("notes","");
+        out.brief=brief.toJson(result.optString("notes",""));
         out.mode="CHATGPT LYRICS — "+model;
         return out;
     }
