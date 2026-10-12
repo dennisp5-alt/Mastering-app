@@ -579,6 +579,9 @@ public final class MainActivity extends Activity {
         TextView generate=action(chat.canUsePlan()?"Generate original lyrics with ChatGPT":"Connect ChatGPT to generate lyrics",true);
         card.addView(generate);
         spacing(card,12);
+        TextView both=action(chat.canUsePlan()?"Generate lyrics + matching Suno sound (2 AI requests)":"Connect ChatGPT to generate lyrics + sound",false);
+        card.addView(both);
+        spacing(card,12);
         TextView manual=action("Start a blank lyrics draft (offline)",false);
         card.addView(manual);
         TextView explanation=text(
@@ -599,6 +602,18 @@ public final class MainActivity extends Activity {
             }
             return b;
         };
+        both.setOnClickListener(v->{
+            if(!chat.canUsePlan()){showAccount();return;}
+            LyricsClient.Brief b=brief.get();
+            if(b.title.isEmpty()||b.story.isEmpty()){
+                toast("Enter an original title and song story first.");return;
+            }
+            new AlertDialog.Builder(this).setTitle("Create lyrics and production?")
+                .setMessage("This will use two ChatGPT plan requests: first the original lyrics, then a Suno production arrangement around the generated words. Both are saved separately.")
+                .setNegativeButton("Cancel",null)
+                .setPositiveButton("Generate both",(dialog,which)->generateLyrics(b,true))
+                .show();
+        });
         generate.setOnClickListener(v->{
             if(!chat.canUsePlan()){showAccount();return;}
             LyricsClient.Brief b=brief.get();
@@ -620,6 +635,9 @@ public final class MainActivity extends Activity {
     }
 
     private void generateLyrics(LyricsClient.Brief brief){
+        generateLyrics(brief,false);
+    }
+    private void generateLyrics(LyricsClient.Brief brief,boolean includeProduction){
         if(working){toast("An operation is already running.");return;}
         if(!chat.canUsePlan()){showAccount();return;}
         working=true;
@@ -630,9 +648,34 @@ public final class MainActivity extends Activity {
                 String preferred=getSharedPreferences("suno_settings",MODE_PRIVATE).getString("chat_model","");
                 String model=models.get(0).id;
                 for(ChatGptPrompts.Model m:models)if(m.id.equals(preferred)){model=m.id;break;}
-                PromptStore.Lyrics result=LyricsClient.generate(token,model,brief);
-                long id=store.saveLyrics(result);
-                runOnUiThread(()->{working=false;showLyricsDetail(id);});
+                PromptStore.Lyrics lyrics=LyricsClient.generate(token,model,brief);
+                long id=store.saveLyrics(lyrics);
+                if(!includeProduction){
+                    runOnUiThread(()->{working=false;showLyricsDetail(id);});
+                    return;
+                }
+                // The first stage is already saved. If the second AI request fails,
+                // always return the lyrics id and never discard or overwrite it.
+                try{
+                    PromptStore.LyricProduction production=LyricsProductionClient.generate(
+                        token,model,id,lyrics.song,lyrics.body,brief,brief.styleGuide);
+                    long productionId=store.saveLyricProduction(production);
+                    runOnUiThread(()->{
+                        working=false;
+                        showLyricProductionDetail(productionId);
+                        toast("Lyrics + matching Suno sound saved to your library");
+                    });
+                }catch(Exception followup){
+                    String reason=followup.getMessage()==null?"No production prompt returned":followup.getMessage();
+                    runOnUiThread(()->{
+                        working=false;showLyricsDetail(id);
+                        new AlertDialog.Builder(this)
+                            .setTitle("Lyrics saved; production not generated")
+                            .setMessage("Your original lyrics are saved under the artist folder. The second ChatGPT request failed: "+
+                                reason+"\n\nYou can generate the matching sound later from the saved lyric draft.")
+                            .setPositiveButton("OK",null).show();
+                    });
+                }
             }catch(Exception e){
                 String message=e.getMessage()==null?"Unknown lyrics-generation error":e.getMessage();
                 runOnUiThread(()->{
