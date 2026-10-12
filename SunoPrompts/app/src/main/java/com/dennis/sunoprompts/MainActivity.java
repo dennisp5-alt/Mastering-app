@@ -47,6 +47,70 @@ public final class MainActivity extends Activity {
         // v0.2 no-credit mode: discard any legacy API token; no paid AI requests are made.
         getSharedPreferences("suno_settings",MODE_PRIVATE).edit().remove("api_key").apply();
         showHome();
+        receiveSharedText(getIntent());
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        receiveSharedText(intent);
+    }
+
+    private void receiveSharedText(Intent intent) {
+        if(intent==null || !Intent.ACTION_SEND.equals(intent.getAction()))return;
+        if(intent.getType()==null || !intent.getType().startsWith("text/plain"))return;
+        CharSequence text=intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
+        // Prevent import being repeated after rotation or home navigation.
+        intent.removeExtra(Intent.EXTRA_TEXT);
+        ShareImport imported=ShareImport.parse(text);
+        if(imported.type==ShareImport.Type.UNKNOWN) {
+            new AlertDialog.Builder(this).setTitle("Text cannot be imported")
+                .setMessage("Use Share prompt text or Share lyrics in your OLD Suno Prompts app, then select Suno Prompts Studio in Android's Share menu.")
+                .setPositiveButton("OK",null).show();
+            return;
+        }
+        String name=imported.type==ShareImport.Type.STYLE?
+            imported.artist+" / "+imported.title:imported.title;
+        new AlertDialog.Builder(this)
+            .setTitle("Import shared "+(imported.type==ShareImport.Type.STYLE?"production prompt":"lyrics"))
+            .setMessage("Import \""+name+"\" into Suno Prompts Studio? The original app is not changed.")
+            .setNegativeButton("Cancel",null)
+            .setPositiveButton("Import",(dialog,which)->commitSharedImport(imported))
+            .show();
+    }
+    private void commitSharedImport(ShareImport imported) {
+        if(imported.type==ShareImport.Type.LYRICS) {
+            PromptStore.Lyrics draft=new PromptStore.Lyrics();
+            draft.artist="Imported Lyrics";draft.song=imported.title;
+            draft.body=imported.body;draft.mode="IMPORTED FROM OLD APP";
+            LyricsClient.Brief brief=new LyricsClient.Brief();
+            brief.artist=draft.artist;brief.title=draft.song;
+            brief.story="User-authored lyrics transferred from a previous installation";
+            draft.brief=brief.toJson("Imported from Android Share");
+            long id=store.saveLyrics(draft);
+            showLyricsDetail(id);
+            return;
+        }
+        if(imported.type!=ShareImport.Type.STYLE)return;
+        PromptStore.Prompt current=store.findPrompt(imported.artist,imported.title);
+        if(current!=null){
+            new AlertDialog.Builder(this).setTitle("Prompt already exists")
+                .setMessage("Suno Prompts Studio already has a saved production prompt with this artist and song. Overwrite it with the shared text?")
+                .setNegativeButton("Keep existing",null)
+                .setPositiveButton("Replace",(dialog,which)->saveSharedStyle(imported,current.id))
+                .show();
+            return;
+        }
+        saveSharedStyle(imported,0);
+    }
+    private void saveSharedStyle(ShareImport imported,long existingId) {
+        PromptStore.Prompt p=new PromptStore.Prompt();
+        p.id=existingId;p.artist=imported.artist;p.song=imported.title;
+        p.style=imported.body;p.exclude=imported.exclude;
+        p.analysis="Imported verbatim by the user from an older Suno Prompts installation. The original app remains unchanged. No web or AI analysis was used during transfer.";
+        p.sources="";p.mode="USER IMPORT";
+        long id=store.save(p);
+        showDetail(id);
     }
 
     private int px(float dp) {return Math.round(dp*getResources().getDisplayMetrics().density);}
@@ -175,7 +239,7 @@ public final class MainActivity extends Activity {
             card.setClickable(true);
         }
         spacing(body,14);
-        body.addView(text("v0.4.1 • Rhythm-aware Lyrics Studio, original drafts, offline phrasing check and optional AI revision.",12,FAINT,false));
+        body.addView(text("Suno Prompts Studio v0.4.2 • Install alongside your old app. Transfer saved prompts using Android Share.",12,FAINT,false));
     }
 
     private void showArtist(String artist){
