@@ -1,3 +1,24 @@
+# Suno Prompts Studio v0.5.3 — Repair Long AI Styles Offline
+
+## Fix: user-reported production-quality rejection
+On Android, the two-pass Studio DNA producer sometimes returned a technically useful but over-1000-character style, then discarded the result at the quality gate. The user saw “Production paragraph exceeded Suno's 1000-character limit” despite already completing both AI requests.
+
+The app now handles this without requesting another AI generation:
+- Instruct the model to target **800–900 characters** instead of filling the entire 1000-character budget.
+- If still overlong, an offline `SunoStyleFitter` ranks complete musical sentences and clauses (rhythm, real instrument techniques, vocal delivery, section changes and era) and packs the best material within **975 characters**.
+- If this does not preserve music-quality criteria, reconstruct a concise arrangement from the **first AI pass's structured musician DNA**, preserving the reviewed song reference where available.
+- **Run the same final musical-quality gate again after shortening.** Do not silently save generic or incomplete music just to satisfy a count.
+- Show the compressed prompt in the existing edit/copy screen and document original and final character counts and compression method in **Research & Production Notes**. The full original overlong AI style is included there for comparison.
+- Use only the original **two ChatGPT plan requests**, no third paid retry; keep previous saved prompts if both compression strategies still fail.
+- Updated on-screen guidance explicitly says users do NOT need to write “1000 characters” in creative-direction notes.
+
+## Tests
+Tests cover a detailed *Lights on the Hill* AI result over the character limit, a within-budget untouched style, reconstruction from a first-pass musician DNA when model outputs unsegmentable filler, and rejection of content lacking musical roles. Existing full Android/JVM tests remain in the GitHub workflow.
+
+## Upgrade warning
+Keep your working Studio APK until the library has been backed up via **Back up my full library**. Existing CI debug APKs may not update one another because Android signing certificates differ between GitHub runs. After verifying the JSON in phone Files, an update can be attempted; if Android refuses, uninstall *Studio only*, install the new APK and use **Restore a saved library backup**. The separate legacy Suno Prompts app should not be removed. ChatGPT account credentials aren't included in backups and may require reconnection.
+
+---
 # Suno Prompts Studio v0.5.2 — Song-Specific AI Production DNA
 
 ## Why this version exists
