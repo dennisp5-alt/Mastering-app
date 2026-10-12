@@ -1,3 +1,31 @@
+# Suno Prompts Studio v0.4.2 — Safe Side-by-Side Install
+
+This release uses Android package **com.dennis.sunoprompts.studio**, independent from the old **com.dennis.sunoprompts**. Both can exist on the same Samsung phone simultaneously. This is a workaround for old debug builds signed with different temporary keys. The app data is NOT automatically shared across packages, because Android isolates apps' private files.
+
+## Step-by-step transfer without a computer
+1. Install the new Suno Prompts Studio APK. **Do not uninstall your previous Suno Prompts app.**
+2. In the old Suno Prompts app, open an artist/song production prompt.
+3. Tap **Share prompt text** and choose **Suno Prompts Studio** from the Android Share menu.
+4. The Studio app previews the import and asks permission to save it under that artist's folder.
+5. Repeat for other prompts. For old lyric drafts choose **Share lyrics**; these import into a separate **Imported Lyrics** folder. You can edit, copy and rename text manually, but lyric metadata (original artist folder) isn't available in the old shared text.
+
+## Protect the Studio library against future debug-signature changes
+- Studio home: **Back up my full library**. Choose a folder in Android Files and save the JSON.
+- In a fresh installation: **Restore a saved library backup**; select the JSON. The preview shows item counts and asks before importing.
+- Restore uses a SQLite transaction, skips production prompts already saved with the same artist/song, and avoids duplicate identical lyric drafts.
+- The JSON contains only library content: prompts, lyrics, notes, reference links. It contains **no passwords, ChatGPT credentials or API tokens**.
+- Keep the backup file before uninstalling either app.
+- Old v0.4.1 and earlier versions have no full backup function; use Share as described above or ADB for expert database extraction.
+
+## Features preserved
+Song-specific production prompts, free curated fallback, ChatGPT account connection (subject to eligibility and network connectivity), AI Lyrics Studio, rhythm/hook repair and original Suno-ready song drafts.
+
+## Build
+GitHub workflow runs rhythm-coach/share-import JVM tests then builds the APK. It verifies the package is **com.dennis.sunoprompts.studio**, preventing accidental replacement of the original app. Output is `SunoPrompts-Studio-v0.4.2-debug.apk`.
+
+## Future signing
+A permanent signing key stored as GitHub Actions encrypted secrets is still needed for reliable in-place updates of the Studio package. Future builds using different temporary debug keys will be unable to update this APK, but its JSON library export/restore provides a supported recovery path. Do not put a private signing key in a public source repository.
+---
 # Suno Prompts v0.4.1 — Music-Matched Lyrics
 
 This update improves the existing AI Lyrics Studio, keeping all existing production prompts, lyrics folders and draft versions.
