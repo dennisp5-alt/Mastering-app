@@ -98,9 +98,9 @@ final class LyricRhythmCoach {
             r.estimatedChorusSyllables>=r.estimatedVerseSyllables)
             concerns.add("Dance-rock chorus may be denser than verses; check where chants and sustained melodic answers contrast");
         if(choruses.size()>0 && choruses.size()<4)concerns.add("Very short chorus; check that the title hook is clear");
-        if(danceRock(norm(production)) && choruses.size()>=4 && shortChorus*4>=choruses.size()*3 && longerChorus==0 && mediumChorus==0){
+        if(danceRock(norm(production)) && choruses.size()>=4 && shortChorus*4>=choruses.size()*3 && longerChorus==0 && mediumChorus<=1){
             r.chantOnlyWarning=true;
-            concerns.add("CHORUS TOO CHANT-ONLY: at least 75% of lines are <=5 syllables with no longer melodic answer. Mix short calls with a few 7–12 syllable rising or sustained-response lines, leaving space for instrument replies");
+            concerns.add("CHORUS TOO CHANT-ONLY: at least 75% of lines are <=5 syllables with no substantial melodic answer. Mix short calls with a few 7–12 syllable rising or sustained-response lines, leaving space for instrument replies");
         }
         if(concerns.isEmpty())concerns.add("No obvious text-density warning; listen for actual stress, melody and groove after Suno renders it");
         r.summary="ADVISORY TEXT CHECK — NOT AUDIO MEASUREMENT\n\n"+
