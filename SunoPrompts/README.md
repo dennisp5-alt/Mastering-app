@@ -1,3 +1,36 @@
+# Suno Prompts Studio v0.5.0 — Lyrics-first Production
+
+## What changed
+- **Stronger musicality in AI Lyrics Studio:** for aggressive dance-rock and similar genres, songwriting no longer equates short syllable counts with musical effectiveness. Choruses alternate short percussive calls, longer melodic answers, sustained vowels, backing-vocal responses and dynamic contrast. The AI silently reviews lyrical singability, chorus lift and narrative preservation before returning a draft.
+- **Chant-only offline warning:** the syllable-based advisory detects a chorus where nearly every line is a 1–5 syllable shout with no melodic answer, as in the earlier Count Us Through example. It is a text heuristic, not a melody or audio measurement.
+- **Lyrics → Studio Production:** open ANY saved lyric draft to generate an original Suno v6 production style from the actual text and the user's genre/era/vocal instructions. This creates a 1000-character style, Exclude list and arrangement notes. No lyric words are changed.
+- **One-tap Generate Lyrics + Matching Suno Sound:** explicitly uses two ChatGPT-plan AI requests in sequence. If the second call fails, the finished lyric draft is still saved.
+- Every new lyrics-first sound is saved as a version attached to its lyrics draft, not under a colliding artist/song production prompt. Edit/Copy/Share/Delete independently; warn if original lyrics changed afterward.
+- SQLite upgrade from 2 → 3 only adds a `lyric_productions` table; existing artist folders, prompts and lyrics remain intact. Full-library JSON backup format 2 includes production versions, while Restore still accepts format 1 from Studio 0.4.2.
+- App package remains `com.dennis.sunoprompts.studio`. No private account credentials are stored in library backups.
+
+## Safe installation — READ THIS FIRST
+Studio v0.4.2 was built with a temporary CI debug signing certificate. The v0.5.0 APK is likely signed differently and may trigger "App not installed" if installed over 0.4.2. **Do not uninstall before exporting your data.**
+
+1. In your working v0.4.2 **Suno Prompts Studio** app, tap **Back up my full library** and save `SunoPromptsStudio-Library.json` in Downloads or Documents. Verify the JSON exists using the phone's Files app.
+2. Attempt to install 0.5.0 over 0.4.2 if you want, but do not delete anything on failure.
+3. If Android reports a conflicting signature, and the backup is safely saved, uninstall **Suno Prompts Studio** (the new Studio package only, not the separate original Suno Prompts app), then install v0.5.0.
+4. Open Studio v0.5.0 → **Restore a saved library backup** → select your JSON → review counts → Import.
+5. ChatGPT sign-in credentials do not transfer; reconnect using the app's account screen if necessary.
+
+The long-term signing fix is a persistent private Android release signing key held in GitHub Actions encrypted secrets. Until configured, debug builds may continue to be incompatible for in-place upgrades. Never commit a private signing key to the repo.
+
+## New feature test
+1. Open a saved lyrics draft such as the original factory escape / Count Us Through song.
+2. Tap **Check phrasing and hook density (offline)**. It should identify a flat chorus consisting almost entirely of very short shouts.
+3. Tap **AI Rhythm + Hook Repair**, choosing aggressive 1984 dance-rock and emphasizing melodic phrase lift. The original lyrics must remain unchanged; the repaired version is a separate saved draft.
+4. In the saved draft, tap **AI • Create production from these lyrics**. Supply genre, production era and instrument/vocal direction.
+5. Review the linked 1000-character style, Exclude prompt and producer notes. Copy to Suno. Generate a new draft from Home using **Generate lyrics + matching Suno sound (2 AI requests)**.
+
+Note: Live ChatGPT account connection and audio results must be tested on the user's phone. The successful CI tests cannot prove musical quality or sign-in account eligibility.
+
+---
+
 # Suno Prompts Studio v0.4.2 — Safe Side-by-Side Install
 
 This release uses Android package **com.dennis.sunoprompts.studio**, independent from the old **com.dennis.sunoprompts**. Both can exist on the same Samsung phone simultaneously. This is a workaround for old debug builds signed with different temporary keys. The app data is NOT automatically shared across packages, because Android isolates apps' private files.
