@@ -345,7 +345,7 @@ public final class MainActivity extends Activity {
             card.setClickable(true);
         }
         spacing(body,14);
-        body.addView(text("Suno Prompts Studio v0.4.2 • Side-by-side install, Android Share import, full JSON library backup and restore.",12,FAINT,false));
+        body.addView(text("Suno Prompts Studio v0.5 • Lyrics-first production, melodic chorus repair and full library backups.",12,FAINT,false));
     }
 
     private void showArtist(String artist){
@@ -725,6 +725,45 @@ public final class MainActivity extends Activity {
             }
         }catch(Exception ignored){}
         spacing(body,12);
+        LinearLayout productionPanel=panel(body);
+        productionPanel.addView(text("PRODUCTION PROMPTS FOR THESE LYRICS",12,LILAC,true));
+        spacing(productionPanel,9);
+        productionPanel.addView(text("Design the band, groove and vocal arrangement around the actual words. Each version is linked to this lyric draft and can be edited independently.",13,SOFT,false));
+        spacing(productionPanel,13);
+        TextView music=action(chat.canUsePlan()?"AI • Create production from these lyrics":"Connect ChatGPT for lyrics-first production",true);
+        productionPanel.addView(music);
+        music.setOnClickListener(v->{
+            if(!chat.canUsePlan()){showAccount();return;}
+            if(!editor.getText().toString().equals(l.body)){
+                toast("Save the lyrics first so the production matches the saved version.");
+                return;
+            }
+            LyricsClient.Brief brief=LyricsClient.Brief.fromJson(l.brief);
+            String originalDirection=brief.styleGuide.isEmpty()?
+                (brief.genre+"; "+brief.vocal+"; "+brief.rhythm).trim():brief.styleGuide;
+            LinearLayout layout=vertical();
+            layout.setPadding(px(20),px(10),px(20),0);
+            layout.addView(text("The AI will arrange an original record around this draft's verses, hook, bridge and vocal phrasing. It will not change any lyric words.",14,SOFT,false));
+            spacing(layout,12);
+            EditText direction=input("Genre, era, tempo feel, vocal tone, instrument parts and mix",
+                originalDirection,true);
+            field(layout,"How should this song sound?",direction);
+            ScrollView scrolling=new ScrollView(this);scrolling.addView(layout);
+            new AlertDialog.Builder(this)
+                .setTitle("Lyrics → Studio Production")
+                .setView(scrolling)
+                .setNegativeButton("Cancel",null)
+                .setPositiveButton("Generate",(dialog,which)->generateLyricsProduction(l,value(direction)))
+                .show();
+        });
+        java.util.ArrayList<PromptStore.LyricProduction> availableProductions=store.productionsForLyrics(l.id);
+        if(!availableProductions.isEmpty())spacing(productionPanel,12);
+        for(PromptStore.LyricProduction production:availableProductions){
+            TextView item=action("♫  "+production.mode+"  ›",false);
+            productionPanel.addView(item);spacing(productionPanel,8);
+            item.setOnClickListener(v->showLyricProductionDetail(production.id));
+        }
+        spacing(body,12);
         TextView repair=action(chat.canUsePlan()?"AI Rhythm + Hook Repair (save a new draft)":"Connect ChatGPT for Rhythm + Hook Repair",true);
         body.addView(repair);
         repair.setOnClickListener(v->{
@@ -777,6 +816,109 @@ public final class MainActivity extends Activity {
             .setNegativeButton("Cancel",null)
             .setPositiveButton("Delete",(dialog,which)->{
                 store.deleteLyrics(l.id);showArtist(l.artist);
+            }).show());
+    }
+
+    private void generateLyricsProduction(PromptStore.Lyrics lyrics,String direction){
+        if(working){toast("Another operation is active.");return;}
+        if(!chat.canUsePlan()){showAccount();return;}
+        working=true;
+        tasks.execute(()->{
+            try{
+                String token=chat.accessToken();
+                java.util.ArrayList<ChatGptPrompts.Model> catalog=ChatGptPrompts.models(token);
+                String selected=getSharedPreferences("suno_settings",MODE_PRIVATE)
+                    .getString("chat_model","");
+                boolean chosen=false;
+                for(ChatGptPrompts.Model m:catalog)if(m.id.equals(selected)){chosen=true;break;}
+                if(!chosen)selected=catalog.get(0).id;
+                LyricsClient.Brief brief=LyricsClient.Brief.fromJson(lyrics.brief);
+                PromptStore.LyricProduction p=LyricsProductionClient.generate(
+                    token,selected,lyrics.id,lyrics.song,lyrics.body,brief,direction);
+                // Never overwrite an existing user-edited production or a song's old production profile.
+                long id=store.saveLyricProduction(p);
+                runOnUiThread(()->{
+                    working=false;showLyricProductionDetail(id);
+                });
+            }catch(Exception ex){
+                String reason=ex.getMessage()==null?"No production prompt was returned.":ex.getMessage();
+                runOnUiThread(()->{
+                    working=false;
+                    new AlertDialog.Builder(this).setTitle("Production wasn't saved")
+                        .setMessage(reason+"\n\nYour lyrics and existing productions remain unchanged.")
+                        .setPositiveButton("OK",null).show();
+                });
+            }
+        });
+    }
+
+    private void showLyricProductionDetail(long productionId){
+        PromptStore.LyricProduction p=store.getLyricProduction(productionId);
+        if(p==null){showHome();return;}
+        PromptStore.Lyrics lyric=store.getLyrics(p.lyricId);
+        if(lyric==null){showHome();return;}
+        location="lyric-production";activeArtist=lyric.artist;activeId=lyric.id;
+        base("Lyrics-first Sound",lyric.song+"  •  Studio production",
+             lyric.song,()->showLyricsDetail(lyric.id));
+        LinearLayout card=panel(body);
+        card.addView(text("SUNO V6 STYLE",12,LILAC,true));spacing(card,10);
+        EditText style=input("Up to 1000 characters",p.style,true);
+        style.setMinLines(8);card.addView(style);spacing(card,7);
+        TextView charCount=text(p.style.length()+" / 1000 characters",12,SOFT,false);
+        card.addView(charCount);
+        style.addTextChangedListener(new android.text.TextWatcher(){
+            public void beforeTextChanged(CharSequence s,int start,int count,int after){}
+            public void onTextChanged(CharSequence s,int start,int before,int count){
+                charCount.setText(s.length()+" / 1000 characters");
+                charCount.setTextColor(s.length()>1000?0xffffab90:SOFT);
+            }
+            public void afterTextChanged(android.text.Editable e){}
+        });
+        spacing(card,12);
+        TextView copy=action("Copy style for Suno",true);card.addView(copy);
+        copy.setOnClickListener(v->copy(style.getText().toString(),"Production style copied"));
+        spacing(card,15);
+        card.addView(text("EXCLUDE",12,LILAC,true));spacing(card,8);
+        EditText exclude=input("Sounds to exclude",p.exclude,true);
+        card.addView(exclude);spacing(card,12);
+        TextView copyExclude=action("Copy Exclude prompt",false);card.addView(copyExclude);
+        copyExclude.setOnClickListener(v->copy(exclude.getText().toString(),"Exclude copied"));
+        spacing(card,12);
+        TextView save=action("Save edits to this production",true);card.addView(save);
+        save.setOnClickListener(v->{
+            String text=value(style);
+            if(text.isEmpty() || text.length()>1000){
+                toast("Style must be 1–1000 characters.");return;
+            }
+            p.style=text;p.exclude=value(exclude);
+            if(!p.mode.contains("EDITED"))p.mode+=" / EDITED";
+            store.saveLyricProduction(p);
+            toast("Production prompt saved to this lyric draft");
+        });
+        LinearLayout notes=panel(body);
+        notes.addView(text("ARRANGEMENT NOTES",12,LILAC,true));spacing(notes,7);
+        notes.addView(text(p.notes.isEmpty()?"AI producer notes not supplied.":p.notes,14,SOFT,false));
+        if(!LyricsProductionClient.fingerprint(lyric.body).equals(p.sourceHash)){
+            spacing(notes,13);
+            notes.addView(text("SOURCE LYRICS CHANGED: This sound was designed for an earlier version of the draft. Generate a new arrangement if the phrasing or structure changed.",13,0xffffbb88,true));
+        }
+        spacing(body,12);
+        TextView share=action("Share style and Exclude",false);
+        body.addView(share);
+        share.setOnClickListener(v->{
+            Intent send=new Intent(Intent.ACTION_SEND);
+            send.setType("text/plain");
+            send.putExtra(Intent.EXTRA_TEXT,lyric.song+
+                "\n\nSTYLE\n"+style.getText().toString()+"\n\nEXCLUDE\n"+exclude.getText().toString());
+            startActivity(Intent.createChooser(send,"Share Suno production"));
+        });
+        spacing(body,12);
+        TextView delete=action("Delete this arrangement only",false);body.addView(delete);
+        delete.setOnClickListener(v->new AlertDialog.Builder(this).setTitle("Delete production?")
+            .setMessage("The original lyrics and other arrangements will stay saved.")
+            .setNegativeButton("Cancel",null)
+            .setPositiveButton("Delete",(dialog,which)->{
+                store.deleteLyricProduction(p.id);showLyricsDetail(lyric.id);
             }).show());
     }
 
@@ -919,7 +1061,8 @@ public final class MainActivity extends Activity {
     }
 
     @Override public void onBackPressed() {
-        if("detail".equals(location)||"lyrics-detail".equals(location)){showArtist(activeArtist);}
+        if("lyric-production".equals(location)){showLyricsDetail(activeId);}
+        else if("detail".equals(location)||"lyrics-detail".equals(location)){showArtist(activeArtist);}
         else if("lyrics-form".equals(location)){if(activeArtist.isEmpty())showHome();else showArtist(activeArtist);}
         else if("artist".equals(location)||"create".equals(location)||"account".equals(location)){showHome();}
         else super.onBackPressed();
