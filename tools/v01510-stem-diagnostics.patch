@@ -1,0 +1,378 @@
+diff -ruN '--exclude=RELEASE_NOTES_v0.15.9.md' patchcheck1510/RELEASE_NOTES_v0.15.10.md next1510/RELEASE_NOTES_v0.15.10.md
+--- patchcheck1510/RELEASE_NOTES_v0.15.10.md	1970-01-01 00:00:00.000000000 +0000
++++ next1510/RELEASE_NOTES_v0.15.10.md	2026-10-12 00:30:31.670518514 +0000
+@@ -0,0 +1,10 @@
++# Dennis AI Mastering Lab v0.15.10 — Stem Intelligence Diagnostics (TEST)
++
++- Preserve all stereo mastering DSP from v0.15.7/v0.15.9.
++- Stem-only and stereo+stem inspections remain read-only.
++- Add independent activity-window checks for sparse instruments, retaining existing correlation, timing and polarity gates.
++- Distinguish insufficient evidence from a confirmed unsafe stem.
++- Report active fraction and active-signal RMS.
++- Examine short common tail differences with actual authoritative WAV tail samples. Diagnostics never override strict duration gating.
++- Show duration and per-stem evidence details in the app.
++- Side-by-side test app ID: com.dennis.aimasteringlab.test1510.
+diff -ruN '--exclude=RELEASE_NOTES_v0.15.9.md' patchcheck1510/app/build.gradle next1510/app/build.gradle
+--- patchcheck1510/app/build.gradle	2026-10-12 00:31:58.647122546 +0000
++++ next1510/app/build.gradle	2026-10-12 00:30:31.670390116 +0000
+@@ -7,11 +7,11 @@
+     compileSdk 34
+ 
+     defaultConfig {
+-        applicationId 'com.dennis.aimasteringlab.test159'
++        applicationId 'com.dennis.aimasteringlab.test1510'
+         minSdk 29
+         targetSdk 34
+-        versionCode 36
+-        versionName '0.15.9'
++        versionCode 37
++        versionName '0.15.10'
+     }
+ 
+     buildFeatures {
+diff -ruN '--exclude=RELEASE_NOTES_v0.15.9.md' patchcheck1510/app/src/main/java/com/dennis/aimasteringlab/StemAlignmentValidator.java next1510/app/src/main/java/com/dennis/aimasteringlab/StemAlignmentValidator.java
+--- patchcheck1510/app/src/main/java/com/dennis/aimasteringlab/StemAlignmentValidator.java	2026-10-02 10:52:59.000000000 +0000
++++ next1510/app/src/main/java/com/dennis/aimasteringlab/StemAlignmentValidator.java	2026-10-12 00:30:31.669926994 +0000
+@@ -32,6 +32,9 @@
+         boolean polarityRisk;
+         int informativeProbes;
+         int positivePolarityProbes;
++        int adaptiveProbesAttempted;
++        int adaptiveProbesInformative;
++        String evidenceStatus = "NOT_EVALUATED";
+         double minimumEnvelopeCorrelation = Double.NaN;
+         double minimumLagMs = Double.NaN;
+         double maximumLagMs = Double.NaN;
+@@ -72,6 +75,7 @@
+     private static final int BUFFER_FRAMES = 4096;
+     private static final double HOP_SECONDS = 0.005;
+     private static final double PROBE_SECONDS = 6.0;
++    private static final int MAX_ADAPTIVE_PROBES = 8;
+     private static final int MAX_LAG_WINDOWS = 2;
+     private static final int MAX_STEMS = 64;
+     private static final double MIN_ENVELOPE_CORRELATION = 0.10;
+@@ -163,13 +167,20 @@
+ 
+         int common = Math.min(mix.envelope.length, stem.envelope.length);
+         int probeLength = Math.max(120, (int) Math.round(PROBE_SECONDS / HOP_SECONDS));
++        for (int probeIndex = 0; probeIndex < POSITIONS.length; probeIndex++) {
++            result.probes.add(measureProbe(mix, stem, common, probeLength,
++                    POSITIONS[probeIndex], LABELS[probeIndex]));
++        }
++        // Sparse instruments may not play at five fixed song positions.
++        // Only attempt additional independent windows around detected activity;
++        // do not substitute activity for real timing/polarity evidence.
++        if (countInformative(result.probes) < 3) {
++            addActivityProbes(result, mix, stem, common, probeLength);
++        }
+         double firstLag = Double.NaN;
+         double lastLag = Double.NaN;
+         double minimumCorrelation = Double.POSITIVE_INFINITY;
+-        for (int probeIndex = 0; probeIndex < POSITIONS.length; probeIndex++) {
+-            Probe probe = measureProbe(mix, stem, common, probeLength,
+-                    POSITIONS[probeIndex], LABELS[probeIndex]);
+-            result.probes.add(probe);
++        for (Probe probe : result.probes) {
+             if (!probe.informative) continue;
+             result.informativeProbes++;
+             minimumCorrelation = Math.min(minimumCorrelation, probe.envelopeCorrelation);
+@@ -185,6 +196,9 @@
+                 result.polarityRisk = true;
+             }
+         }
++        result.evidenceStatus = result.informativeProbes < 3
++                ? "INSUFFICIENT_SIGNAL_EVIDENCE"
++                : result.polarityRisk ? "POLARITY_CONFLICT" : "TIMING_AND_POLARITY_EVALUATED";
+         if (minimumCorrelation < Double.POSITIVE_INFINITY) {
+             result.minimumEnvelopeCorrelation = minimumCorrelation;
+         }
+@@ -192,7 +206,7 @@
+             result.driftMs = lastLag - firstLag;
+         }
+         if (result.informativeProbes < 3) {
+-            result.rejectionReasons.add("fewer than three local timing probes were informative");
++            result.rejectionReasons.add("INSUFFICIENT_EVIDENCE: fewer than three independent active timing probes were informative; this is not proof of a damaged stem");
+         }
+         if (result.positivePolarityProbes < 2) {
+             result.rejectionReasons.add("individual polarity evidence was insufficient");
+@@ -216,13 +230,68 @@
+         }
+         result.secure = result.rejectionReasons.isEmpty();
+         result.verdict = result.secure
+-                ? "PASS: five-position local timing and polarity evidence are secure"
++                ? "PASS: multi-position local timing and polarity evidence are secure"
+                 : (result.analysisSecure
+                     ? "ANALYSIS-ONLY PASS: local timing is within ±5 ms; stem waveform audio remains prohibited"
+-                    : "REJECTED: " + result.rejectionReasons.get(0));
++                    : result.informativeProbes < 3
++                        ? "UNVERIFIED: insufficient independent timing evidence (not proof of a bad stem)"
++                        : "REJECTED: " + result.rejectionReasons.get(0));
+         return result;
+     }
+ 
++    private static int countInformative(List<Probe> probes) {
++        int count = 0;
++        for (Probe p : probes) if (p.informative) count++;
++        return count;
++    }
++
++    /**
++     * Select up to eight nonoverlapping active sections as additional witnesses.
++     * A witness counts only if it independently agrees with the mix in the
++     * original envelope, signed polarity, lag and drift tests.
++     */
++    private static void addActivityProbes(StemResult result, FeatureSeries mix,
++                                          FeatureSeries stem, int common, int length) {
++        if (common < length * 3) return;
++        ArrayList<double[]> ranked = new ArrayList<>();
++        for (int i = 1; i <= 24; i++) {
++            double fraction = i / 25.0;
++            int centre = (int) Math.round(fraction * (common - 1));
++            int start = Math.max(MAX_LAG_WINDOWS,
++                    Math.min(common - length - MAX_LAG_WINDOWS, centre - length / 2));
++            if (start < MAX_LAG_WINDOWS || start + length + MAX_LAG_WINDOWS > common) continue;
++            double strongest = -180.0;
++            for (int j = start; j < start + length; j += 25) {
++                strongest = Math.max(strongest, stem.envelope[j]);
++            }
++            if (strongest < -75.0) continue; // essentially silent for this stem
++            ranked.add(new double[]{strongest, fraction, (start + 0.5 * length) * HOP_SECONDS});
++        }
++        ranked.sort((a,b) -> Double.compare(b[0], a[0]));
++        ArrayList<Double> used = new ArrayList<>();
++        for (Probe probe : result.probes) if (probe.informative) used.add(probe.positionSeconds);
++        for (double[] candidate : ranked) {
++            if (result.adaptiveProbesAttempted >= MAX_ADAPTIVE_PROBES
++                    || countInformative(result.probes) >= 3) break;
++            boolean near = false;
++            for (Double location : used) {
++                if (Math.abs(location - candidate[2]) < PROBE_SECONDS * 1.3) {
++                    near = true;
++                    break;
++                }
++            }
++            if (near) continue;
++            // Reserve every attempted location, including inconclusive ones,
++            // so repeated overlapping segments never inflate confidence.
++            used.add(candidate[2]);
++            Probe probe = measureProbe(mix, stem, common, length,
++                    candidate[1], "active section " + (result.adaptiveProbesAttempted + 1));
++            result.probes.add(probe);
++            result.adaptiveProbesAttempted++;
++            if (probe.informative) result.adaptiveProbesInformative++;
++        }
++    }
++
+     private static Probe measureProbe(FeatureSeries mix, FeatureSeries stem,
+                                       int common, int requestedLength,
+                                       double fraction, String label) {
+diff -ruN '--exclude=RELEASE_NOTES_v0.15.9.md' patchcheck1510/app/src/main/java/com/dennis/aimasteringlab/StemDurationDiagnostics.java next1510/app/src/main/java/com/dennis/aimasteringlab/StemDurationDiagnostics.java
+--- patchcheck1510/app/src/main/java/com/dennis/aimasteringlab/StemDurationDiagnostics.java	1970-01-01 00:00:00.000000000 +0000
++++ next1510/app/src/main/java/com/dennis/aimasteringlab/StemDurationDiagnostics.java	2026-10-12 00:31:11.677531772 +0000
+@@ -0,0 +1,58 @@
++package com.dennis.aimasteringlab;
++
++import java.io.File;
++import java.io.FileInputStream;
++import java.io.IOException;
++import java.util.Locale;
++import org.json.JSONObject;
++
++/** Non-authorising explanation of small common end-of-song discrepancies. */
++final class StemDurationDiagnostics {
++    private StemDurationDiagnostics() {}
++
++    static JSONObject inspect(File mix, AnalysisResult analysis) throws Exception {
++        JSONObject out = new JSONObject();
++        double d = analysis.commonStemTailShortfallSeconds;
++        out.put("strict_duration_mismatches", analysis.stemDurationMismatchCount);
++        out.put("common_shortfall_seconds", d);
++        out.put("largest_absolute_delta_seconds", analysis.largestStemDurationDeltaSeconds);
++        out.put("policy", "Diagnostics only. Duration tolerances and stem-audio eligibility are NOT relaxed.");
++        if (d <= 0.0) {
++            out.put("assessment", analysis.stemDurationMismatchCount == 0
++                    ? "SAMPLE_ALIGNED_DURATION" : "DURATION_DIFFERENCE_UNVERIFIED");
++            return out;
++        }
++        if (d > 0.5) {
++            out.put("assessment", "COMMON_TAIL_SHORTFALL_TOO_LONG_TO_DISMISS");
++            return out;
++        }
++        try (WavFile.Reader reader = WavFile.open(new FileInputStream(mix))) {
++            long tailFrames = Math.max(1, Math.min(reader.info.frames,
++                    (long) Math.ceil(d * reader.info.sampleRate)));
++            reader.skipFrames(reader.info.frames - tailFrames);
++            float[][] buffer = new float[reader.info.channels][4096];
++            double squares = 0.0, peak = 0.0;
++            long n = 0;
++            int frames;
++            while ((frames = reader.readFrames(buffer, 4096)) > 0) {
++                for (int c = 0; c < reader.info.channels; c++) {
++                    for (int i = 0; i < frames; i++) {
++                        double v = buffer[c][i];
++                        if (!Double.isFinite(v)) throw new IOException("Invalid tail sample");
++                        squares += v * v;
++                        peak = Math.max(peak, Math.abs(v));
++                        n++;
++                    }
++                }
++            }
++            double rms = 20.0 * Math.log10(Math.max(1.e-12, Math.sqrt(squares / Math.max(1L,n))));
++            double peakDb = 20.0 * Math.log10(Math.max(1.e-12, peak));
++            out.put("original_missing_tail_rms_dbfs", rms);
++            out.put("original_missing_tail_peak_dbfs", peakDb);
++            out.put("assessment", rms <= -60.0 && peakDb <= -45.0
++                    ? "POSSIBLE_QUIET_TRAILING_TAIL_UNVERIFIED"
++                    : "AUDIBLE_REFERENCE_TAIL_MISSING_FROM_STEMS");
++        }
++        return out;
++    }
++}
+diff -ruN '--exclude=RELEASE_NOTES_v0.15.9.md' patchcheck1510/app/src/main/java/com/dennis/aimasteringlab/StudioStemInspection.java next1510/app/src/main/java/com/dennis/aimasteringlab/StudioStemInspection.java
+--- patchcheck1510/app/src/main/java/com/dennis/aimasteringlab/StudioStemInspection.java	2026-10-12 00:31:58.647314618 +0000
++++ next1510/app/src/main/java/com/dennis/aimasteringlab/StudioStemInspection.java	2026-10-12 00:30:31.670160409 +0000
+@@ -12,7 +12,7 @@
+         if (!archive.isFile() || archive.length() < 22) throw new IOException("No complete stem ZIP was imported");
+         JSONObject report = new JSONObject();
+         report.put("schema", 1).put("mode", "READ_ONLY_STEM_INTELLIGENCE")
+-              .put("app_version", "0.15.9").put("title", title)
++              .put("app_version", "0.15.10").put("title", title)
+               .put("stem_zip_sha256", Hashing.sha256(archive))
+               .put("stem_zip_bytes", archive.length())
+               .put("original_supplied", original != null)
+@@ -51,6 +51,13 @@
+             if (Double.isFinite(item.peakDbfs)) entry.put("sample_peak_dbfs", item.peakDbfs);
+             if (Double.isFinite(item.rmsDbfs)) entry.put("rms_dbfs", item.rmsDbfs);
+             entry.put("clipped_samples", item.clippedSamples);
++            if (Double.isFinite(item.activeRmsDbfs)) entry.put("active_rms_dbfs", item.activeRmsDbfs);
++            if (Double.isFinite(item.activeFraction)) entry.put("active_fraction", item.activeFraction);
++            if (valid) entry.put("signal_evidence", item.rmsDbfs < -85.0
++                    ? "NEAR_SILENT_NO_RELIABLE_INSTRUMENT_EVIDENCE"
++                    : Double.isFinite(item.activeFraction) && item.activeFraction < 0.025
++                        ? "SPARSE_ACTIVITY_MAY_REQUIRE_ADAPTIVE_PROBES"
++                        : "MEASURABLE_SIGNAL_NOT_YET_ALIGNMENT_VERIFIED");
+             if (valid) good++; else rejected++;
+             inventory.put(entry);
+         }
+@@ -66,6 +73,7 @@
+         analysis.stems.addAll(items);
+         StemInventory.compareAgainstMix(analysis);
+         report.put("duration_mismatches", analysis.stemDurationMismatchCount);
++        report.put("duration_diagnostics", StemDurationDiagnostics.inspect(original, analysis));
+         if (rejected > 0 || good != wav) {
+             report.put("decision", "STEMS_REJECTED")
+                   .put("reason", "At least one WAV stem failed integrity/format validation. Original WAV stays authoritative.");
+@@ -99,7 +107,11 @@
+                 for (StemAlignmentValidator.StemResult s : analysis.stemAlignment.stems) {
+                     alignment.put(new JSONObject().put("name", s.path)
+                             .put("secure", s.secure).put("analysis_only_secure", s.analysisSecure)
+-                            .put("verdict", s.verdict));
++                            .put("verdict", s.verdict).put("evidence_status", s.evidenceStatus)
++                            .put("informative_probes", s.informativeProbes)
++                            .put("positive_polarity_probes", s.positivePolarityProbes)
++                            .put("adaptive_probes_attempted", s.adaptiveProbesAttempted)
++                            .put("adaptive_probes_informative", s.adaptiveProbesInformative));
+                 }
+                 report.put("local_alignment", alignment);
+             }
+diff -ruN '--exclude=RELEASE_NOTES_v0.15.9.md' patchcheck1510/app/src/main/java/com/dennis/aimasteringlab/StudioStemLabActivity.java next1510/app/src/main/java/com/dennis/aimasteringlab/StudioStemLabActivity.java
+--- patchcheck1510/app/src/main/java/com/dennis/aimasteringlab/StudioStemLabActivity.java	2026-10-12 00:31:58.647526620 +0000
++++ next1510/app/src/main/java/com/dennis/aimasteringlab/StudioStemLabActivity.java	2026-10-12 00:30:31.670332290 +0000
+@@ -51,7 +51,7 @@
+         root.setPadding(dp(16),dp(12),dp(16),dp(35));
+         scroll.setBackground(StudioVisuals.surface(StudioVisuals.BG,0xFF071D2C,0,0,this));
+         scroll.addView(root);setContentView(scroll);
+-        StudioVisuals.header(this,root);StudioVisuals.section(this,root,"Stem Intelligence Lab • v0.15.9 TEST");
++        StudioVisuals.header(this,root);StudioVisuals.section(this,root,"Stem Intelligence Lab • v0.15.10 TEST");
+         info("READ-ONLY EXPERIMENT. Inspect WAV stem ZIP files with or without a stereo reference. Nothing changes the sound or recipe of your trusted master.",false);
+         projects.clear();projects.addAll(StudioProject.list(new File(getFilesDir(),"studio-projects"),null));
+         ArrayList<String> names=new ArrayList<>();names.add("Stems only — no stereo reference");
+@@ -130,6 +130,25 @@
+             if(re!=null)text.append("\n\nReconstruction: ").append(re.optString("verdict"))
+                     .append("\nCorrelation: ").append(re.opt("waveform_correlation"))
+                     .append("\nResidual SNR: ").append(re.opt("residual_snr_db"));
++            JSONObject duration=j.optJSONObject("duration_diagnostics");
++            if(duration!=null)text.append("\nDuration check: ")
++                    .append(duration.optString("assessment"))
++                    .append("\nStrict duration mismatches: ")
++                    .append(duration.optInt("strict_duration_mismatches"));
++            JSONArray alignment=j.optJSONArray("local_alignment");
++            if(alignment!=null){
++                text.append("\n\nIndividual stem timing and evidence:");
++                for(int i=0;i<alignment.length();i++){
++                    JSONObject entry=alignment.optJSONObject(i);
++                    if(entry==null)continue;
++                    text.append("\n").append(entry.optString("name"))
++                        .append(": ").append(entry.optString("verdict"))
++                        .append(" [").append(entry.optString("evidence_status"))
++                        .append(", probes ").append(entry.optInt("informative_probes"))
++                        .append(", adaptive ").append(entry.optInt("adaptive_probes_informative"))
++                        .append("/").append(entry.optInt("adaptive_probes_attempted")).append("]");
++                }
++            }
+             JSONArray stems=j.optJSONArray("stems");
+             if(stems!=null)for(int i=0;i<stems.length();i++){
+                 JSONObject stem=stems.getJSONObject(i);
+@@ -137,7 +156,7 @@
+                     .append("\n").append(stem.optString("status"))
+                     .append(" — ").append(stem.optString("reason"));
+             }
+-            text.append("\n\nSafety: v0.15.9 never uses stem samples in the finished master.");
++            text.append("\n\nSafety: v0.15.10 never uses stem samples in the finished master.");
+             new AlertDialog.Builder(this).setTitle(j.optString("title","Stem inspection"))
+                     .setMessage(text.toString()).setNegativeButton("Close",null)
+                     .setPositiveButton("EXPORT JSON",(d,w)->{
+diff -ruN '--exclude=RELEASE_NOTES_v0.15.9.md' patchcheck1510/tests/V01510StemDiagnosticsHarness.java next1510/tests/V01510StemDiagnosticsHarness.java
+--- patchcheck1510/tests/V01510StemDiagnosticsHarness.java	1970-01-01 00:00:00.000000000 +0000
++++ next1510/tests/V01510StemDiagnosticsHarness.java	2026-10-12 00:31:43.027982158 +0000
+@@ -0,0 +1,50 @@
++package com.dennis.aimasteringlab;
++
++import java.io.File;
++import java.io.FileInputStream;
++import org.json.JSONObject;
++
++/** Safety regression: adaptive witnesses cannot rehabilitate delayed stems. */
++public final class V01510StemDiagnosticsHarness {
++    static void require(boolean condition, String message) {
++        if (!condition) throw new AssertionError(message);
++    }
++    static AnalysisResult inspect(File mix, File zip) throws Exception {
++        AudioAnalyzer.Progress quiet = (name, progress) -> {};
++        AnalysisResult base = AudioAnalyzer.analyze(mix.getName(),
++                () -> new FileInputStream(mix), quiet);
++        base.stems.addAll(StemInventory.inspect(zip, quiet));
++        StemInventory.compareAgainstMix(base);
++        base.stemReconstruction = StemReconstruction.analyze(
++                () -> new FileInputStream(mix), base, zip, quiet);
++        base.stemAlignment = StemAlignmentValidator.analyze(
++                () -> new FileInputStream(mix), base, zip, quiet);
++        return base;
++    }
++    public static void main(String[] args) throws Exception {
++        File fixtures = new File(args[0]);
++        File mix = new File(fixtures,"StemFixtureMix.wav");
++        AnalysisResult good = inspect(mix, new File(fixtures,"StemFixtureSafe.zip"));
++        require(good.stemAlignment.stemsEvaluated == 2, "two stems inspected");
++        require(good.stemAlignment.secureStems > 0, "valid fixture wrongly rejected");
++        JSONObject duration = StemDurationDiagnostics.inspect(mix, good);
++        require("SAMPLE_ALIGNED_DURATION".equals(duration.getString("assessment")),
++                "exact sample duration not identified");
++        AnalysisResult bad = inspect(mix, new File(fixtures,"StemFixtureDelayed.zip"));
++        StemAlignmentValidator.StemResult late =
++                bad.stemAlignment.find("Electric Guitar.wav");
++        require(late != null && !late.secure && !late.analysisSecure,
++                "20-ms displaced stem was accepted by adaptive probes");
++        require(!StemTrustClassifier.classify(bad).audioDeltaAllowed,
++                "delayed stems became eligible for audio deltas");
++        // The diagnostic may recognize a trailing mismatch but must never waive it.
++        good.commonStemTailShortfallSeconds = 0.20;
++        JSONObject tail = StemDurationDiagnostics.inspect(mix, good);
++        require(tail.has("original_missing_tail_rms_dbfs"), "missing tail measurements");
++        require(tail.getString("policy").contains("NOT relaxed"),
++                "tail diagnosis must not alter safety gate");
++        System.out.println("V01510_STEM_DIAGNOSTICS_PASS good="
++                + good.stemAlignment.secureStems + " delayedRejected=true tail="
++                + tail.getString("assessment"));
++    }
++}
