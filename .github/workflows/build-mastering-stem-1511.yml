@@ -44,7 +44,7 @@ jobs:
           test -f restored/DennisAiMasteringLab-v0.15.10-GitHubBuildSource.zip
           unzip -q restored/DennisAiMasteringLab-v0.15.10-GitHubBuildSource.zip -d project
           grep -q "versionName '0.15.10'" project/app/build.gradle
-          printf '%s  %s\\n' '9c95b16d88a3d27365b14ef86533e81319ba50871a8f519d04654f467d65fb56' 'project/app/src/main/java/com/dennis/aimasteringlab/FullAiMasteringEngine.java' | sha256sum -c -
+          printf '%s  %s\n' '9c95b16d88a3d27365b14ef86533e81319ba50871a8f519d04654f467d65fb56' 'project/app/src/main/java/com/dennis/aimasteringlab/FullAiMasteringEngine.java' | sha256sum -c -
 
       - name: Apply guarded v0.15.11 stem-assisted stereo intelligence
         run: |
@@ -52,7 +52,7 @@ jobs:
           grep -q "versionName '0.15.11'" project/app/build.gradle
           grep -q 'com.dennis.aimasteringlab.test1511' project/app/build.gradle
           grep -q 'NO_RENDER_OR_SELECTION' project/app/src/main/java/com/dennis/aimasteringlab/StemAssistedStereoIntelligence.java
-          printf '%s  %s\\n' '9c95b16d88a3d27365b14ef86533e81319ba50871a8f519d04654f467d65fb56' 'project/app/src/main/java/com/dennis/aimasteringlab/FullAiMasteringEngine.java' | sha256sum -c -
+          printf '%s  %s\n' '9c95b16d88a3d27365b14ef86533e81319ba50871a8f519d04654f467d65fb56' 'project/app/src/main/java/com/dennis/aimasteringlab/FullAiMasteringEngine.java' | sha256sum -c -
 
       - name: Run focused host regressions
         run: |
