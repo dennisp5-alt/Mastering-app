@@ -137,13 +137,13 @@ final class SunoStyleFitter {
             reference=end>=0?s.substring(0,end+1):take(s,125);
         }
         StringBuilder result=new StringBuilder();
-        append(result,reference,135);
-        append(result,dna.optString("groove",""),150);
-        append(result,dna.optString("musicians",""),270);
-        append(result,dna.optString("vocal",""),145);
-        append(result,dna.optString("arrangement",""),200);
-        append(result,dna.optString("mix",""),125);
-        append(result,dna.optString("distinctive_details",""),115);
+        append(result,reference,105);
+        append(result,dna.optString("groove",""),130);
+        append(result,dna.optString("musicians",""),220);
+        append(result,dna.optString("vocal",""),125);
+        append(result,dna.optString("arrangement",""),175);
+        append(result,dna.optString("mix",""),115);
+        append(result,dna.optString("distinctive_details",""),85);
         String compact=normalise(result.toString());
         if(compact.length()<430 || compact.length()>MAX)
             throw new Exception("Local music-DNA compression could not generate a complete Suno-length prompt");
