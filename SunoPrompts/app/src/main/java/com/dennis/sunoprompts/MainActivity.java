@@ -345,7 +345,7 @@ public final class MainActivity extends Activity {
             card.setClickable(true);
         }
         spacing(body,14);
-        body.addView(text("Suno Prompts Studio v0.5.1 • Offline chant checks for imported lyrics, editable music reference and lyrics-first production.",12,FAINT,false));
+        body.addView(text("Suno Prompts Studio v0.5.2 • Curated song-specific Studio DNA producer, reviewed Suno prompts and explicit AI model selection.",12,FAINT,false));
     }
 
     private void showArtist(String artist){
@@ -389,17 +389,24 @@ public final class MainActivity extends Activity {
         EditText notes=input("Optional: warmer mix, detailed stereo, era, vocal direction…","",true);
         field(form,"Artist",artist);field(form,"Song title",song);
         field(form,"Your production direction (optional)",notes);
-        TextView generateAi=action(chat.canUsePlan()?"Generate with ChatGPT plan":"Connect ChatGPT for detailed prompts",true);
+        TextView generateAi=action(chat.canUsePlan()?"Generate Studio DNA with ChatGPT (2 requests)":"Connect ChatGPT for detailed prompts",true);
         form.addView(generateAi);spacing(form,12);
         TextView generate=action("Use FREE offline/reference generator",false);
         form.addView(generate);
-        TextView help=text("ChatGPT generation uses your existing eligible plan allowance; no separate OpenAI API credits. Sign in and approve plan usage first. Free local reference profiles remain available when offline or at your usage limit. Both modes save to the same artist folders.",13,SOFT,false);
+        TextView help=text("Studio DNA AI uses TWO requests from your eligible ChatGPT plan: (1) music DNA and (2) playable Suno arrangement. Reviewed song references are included automatically where available; other songs use broader artist/metadata guidance. Free song references cost nothing. No original recording audio is analysed.",13,SOFT,false);
         spacing(form,15);form.addView(help);
         generateAi.setOnClickListener(v->{
             if(!chat.canUsePlan()){showAccount();return;}
             String a=value(artist),s=value(song),n=value(notes);
             if(a.isEmpty()||s.isEmpty()){toast("Enter an artist and song.");return;}
-            generateWithChatGpt(a,s,n,0);
+            PromptStore.Prompt previous=store.findPrompt(a,s);
+            if(previous!=null){
+                new AlertDialog.Builder(this).setTitle("Replace this saved song?")
+                    .setMessage(a+" — "+s+" already has a production prompt. Creating another with the same artist/song will replace its style and notes. Make a library backup if you need the previous version.")
+                    .setNegativeButton("Cancel",null)
+                    .setPositiveButton("Generate and replace",(dialog,which)->
+                        generateWithChatGpt(a,s,n,previous.id)).show();
+            }else generateWithChatGpt(a,s,n,0);
         });
         generate.setOnClickListener(v->{
             String a=value(artist),s=value(song),n=value(notes);
@@ -480,7 +487,7 @@ public final class MainActivity extends Activity {
         improve.setOnClickListener(v->{
             if(!chat.canUsePlan()){showAccount();return;}
             new AlertDialog.Builder(this).setTitle("Replace with ChatGPT prompt?")
-                .setMessage("A new researched prompt will replace the saved style, Exclude and notes for this song. Copy any edits you want to keep.")
+                .setMessage("This uses TWO ChatGPT plan requests and replaces this saved song's style, Exclude and notes only if both succeed and local quality checks pass. Back up or copy edits you want to keep.")
                 .setNegativeButton("Cancel",null)
                 .setPositiveButton("Generate",(dialog,which)->generateWithChatGpt(p.artist,p.song,"",p.id)).show();
         });
@@ -1021,30 +1028,85 @@ public final class MainActivity extends Activity {
 
     private void generateWithChatGpt(String artist,String song,String notes,long replacementId) {
         if(working){toast("Another operation is active.");return;}
+        // NEVER choose the first listed AI model silently: plan availability and
+        // model quality vary. A previous explicit selection is persisted locally.
+        String chosen=getSharedPreferences("suno_settings",MODE_PRIVATE)
+            .getString("chat_model","");
+        if(chosen.isEmpty()){
+            working=true;
+            tasks.execute(()->{
+                try{
+                    java.util.ArrayList<ChatGptPrompts.Model> models=
+                        ChatGptPrompts.models(chat.accessToken());
+                    String[] labels=new String[models.size()];
+                    for(int i=0;i<models.size();i++)
+                        labels[i]=models.get(i).label+" ("+models.get(i).id+")";
+                    runOnUiThread(()->{
+                        working=false;
+                        new AlertDialog.Builder(this).setTitle("Choose the production AI model")
+                            .setMessage("Select which account-available model will write the Studio DNA. Your choice is saved. This is independent of which model runs this ChatGPT conversation.")
+                            .setItems(labels,(dialog,which)->{
+                                getSharedPreferences("suno_settings",MODE_PRIVATE).edit()
+                                    .putString("chat_model",models.get(which).id).apply();
+                                generateWithChatGpt(artist,song,notes,replacementId);
+                            }).setNegativeButton("Cancel",null).show();
+                    });
+                }catch(Exception ex){
+                    runOnUiThread(()->{
+                        working=false;
+                        new AlertDialog.Builder(this).setTitle("Could not choose model")
+                            .setMessage(ex.getMessage()==null?"Model list unavailable.":ex.getMessage())
+                            .setPositiveButton("OK",null).show();
+                    });
+                }
+            });
+            return;
+        }
         working=true;
+        String profileName=SongProfiles.find(artist,song)!=null?
+            "Reviewed SONG-SPECIFIC musical reference found.":
+            (PromptTemplates.artistGuide(artist)!=null?
+                "Artist-level production guide; no reviewed reference for this exact song.":
+                "No reviewed song-specific music profile. Research may be limited.");
         new AlertDialog.Builder(this)
-            .setTitle("ChatGPT plan generation")
-            .setMessage("Researching "+song+" by "+artist+". Only artist, song, creative notes and public research will be sent to OpenAI. If the request fails, your current prompt remains unchanged.")
+            .setTitle("Studio DNA producer • 2 AI requests")
+            .setMessage(profileName+"\n\nThe AI will first plan the musical DNA, then write and quality-check the Suno style. Selected model: "+
+                chosen+". No original audio is analysed. A failed quality check will not replace your saved prompt.")
             .setPositiveButton("OK",null).show();
         tasks.execute(()->{
             try{
-                // Authenticate and select from the account's model catalog.
                 String token=chat.accessToken();
                 java.util.ArrayList<ChatGptPrompts.Model> models=ChatGptPrompts.models(token);
-                String preferred=getSharedPreferences("suno_settings",MODE_PRIVATE).getString("chat_model","");
-                String selected=models.get(0).id;
-                for(ChatGptPrompts.Model m:models)if(m.id.equals(preferred)){selected=m.id;break;}
-                ResearchClient.Research research=ResearchClient.lookup(artist,song);
-                PromptStore.Prompt generated=ChatGptPrompts.generate(token,selected,artist,song,notes,research);
+                String preferred=getSharedPreferences("suno_settings",MODE_PRIVATE)
+                    .getString("chat_model","");
+                boolean valid=false;
+                for(ChatGptPrompts.Model model:models)
+                    if(model.id.equals(preferred)){valid=true;break;}
+                if(!valid){
+                    getSharedPreferences("suno_settings",MODE_PRIVATE).edit()
+                        .remove("chat_model").apply();
+                    throw new Exception("Your previously selected model is no longer available to this account. Try Generate again to choose another.");
+                }
+                // When a reviewed song reference exists, do not wait on three
+                // metadata websites just to pass non-musical information to the AI.
+                ResearchClient.Research research;
+                if(SongProfiles.find(artist,song)!=null){
+                    research=new ResearchClient.Research();
+                    research.warnings="Using reviewed musical interpretation; original audio has not been analysed. Online catalogue lookups skipped for this curated song.";
+                }else{
+                    research=ResearchClient.lookup(artist,song);
+                }
+                PromptStore.Prompt generated=ChatGptPrompts.generate(
+                    token,preferred,artist,song,notes,research);
                 if(replacementId!=0)generated.id=replacementId;
                 long id=store.save(generated);
                 runOnUiThread(()->{working=false;showDetail(id);});
-            }catch(Exception e){
-                String message=e.getMessage()==null?"Unknown ChatGPT request error":e.getMessage();
+            }catch(Exception ex){
+                String error=ex.getMessage()==null?"Unknown production-generation error":ex.getMessage();
                 runOnUiThread(()->{
                     working=false;
-                    new AlertDialog.Builder(this).setTitle("Prompt was not changed")
-                        .setMessage(message)
+                    new AlertDialog.Builder(this).setTitle("Studio DNA did not save")
+                        .setMessage(error+"\n\nAll existing song and lyric drafts remain unchanged.")
                         .setPositiveButton("OK",null).show();
                 });
             }
