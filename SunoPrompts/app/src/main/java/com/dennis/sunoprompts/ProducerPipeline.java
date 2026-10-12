@@ -45,7 +45,7 @@ final class ProducerPipeline {
         "section-by-section playing instructions, lyric-space, coherence of instrumentation and "+
         "non-invented facts; revise internally if shallow. "+
         "Return ONLY valid JSON with string fields style, exclude, analysis. "+
-        "Style is one ready-to-paste Suno v6 paragraph, 760-1000 characters preferred, 1000 HARD MAX; "+
+        "Style is one ready-to-paste Suno v6 paragraph, aim for 800-900 characters (leave a generous safety buffer), 1000 HARD MAX; count ALL characters including spaces and punctuation before replying. Remove generic adjectives rather than musical instructions if over budget; "+
         "exclude is short targeted defects <=250 characters; analysis is a brief distinction between "+
         "song-specific reviewed interpretation, metadata evidence and creative estimates.";
 
@@ -162,7 +162,12 @@ final class ProducerPipeline {
         JSONObject dna=ChatGptPrompts.completeJson(token,model,DNA_RULES,firstRequest(c));
         String dnaSummary=inspectDna(dna);
         JSONObject finalJson=ChatGptPrompts.completeJson(token,model,SUNO_RULES,secondRequest(c,dna));
-        String style=finalJson.optString("style","").trim();
+        String originalStyle=finalJson.optString("style","").trim();
+        // The AI can exceed the requested limit despite repeated instructions.
+        // Repack locally from actual sentences / first-pass DNA: no third
+        // ChatGPT request and no loss of an otherwise useful completed result.
+        SunoStyleFitter.Result fitted=SunoStyleFitter.fit(originalStyle,dna,c);
+        String style=fitted.style;
         Quality report=quality(style,c);
         if(!report.pass)throw new Exception(
             "Production quality check rejected this AI result: "+report.detail+
@@ -177,10 +182,16 @@ final class ProducerPipeline {
             "";
         output.mode="STUDIO DNA AI — "+model;
         output.analysis="TWO-PASS PRODUCER WORKFLOW — 2 ChatGPT plan requests; no original audio supplied or analysed.\n"+
+            "STYLE LENGTH: "+style.length()+"/1000 characters. "+
+            (fitted.condensed()?"The AI returned "+fitted.originalCharacters+
+                " characters; condensed locally without another AI request ("+fitted.method+").":
+                "Original AI output within Suno limit.")+"\n"+
             "Source priority: "+(c.reviewed!=null?"curated song-specific interpretation":c.guide!=null?"artist-level guide":"public catalogue metadata and informed inference")+
             ".\n\nMUSICAL DNA:\n"+dnaSummary+
             "\n\nPRODUCER REVIEW:\n"+report.detail+
             "\n\nFINAL AI NOTES:\n"+finalJson.optString("analysis","")+
+            (fitted.condensed()?"\n\nORIGINAL OVERLONG AI STYLE (for comparison only; NOT valid for Suno until shortened):\n"+
+                originalStyle:"")+
             "\n\nCURATED/RESEARCH CONTEXT:\n"+c.reference()+
             "\n\nCATALOGUE CONTEXT:\n"+c.research;
         return output;
