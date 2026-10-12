@@ -50,15 +50,21 @@ final class LyricsProductionClient {
         JSONObject result=ChatGptPrompts.completeJson(token,model,instructions(),input);
         String style=result.optString("style","").trim();
         if(style.length()<250)throw new Exception("The production style was too brief. No prompt was saved.");
-        // If above the Suno limit, reject rather than chopping important instrumentation mid-sentence.
-        if(style.length()>1000)
-            throw new Exception("The AI exceeded Suno's 1000-character style limit ("+
-                style.length()+"). Nothing was overwritten; try again.");
+        // Honor Suno's character limit without discarding an otherwise useful paid response.
+        // Prefer a whole sentence near the limit, then a natural word boundary.
+        boolean reduced=false;
+        if(style.length()>1000){
+            int cut=Math.max(style.lastIndexOf(". ",999),style.lastIndexOf("; ",999));
+            if(cut<750)cut=style.lastIndexOf(' ',999);
+            if(cut<700)cut=1000;
+            style=style.substring(0,Math.min(cut==1000?1000:cut+1,1000)).trim();
+            reduced=true;
+        }
         PromptStore.LyricProduction p=new PromptStore.LyricProduction();
         p.lyricId=lyricId;p.style=style;
         p.exclude=result.optString("exclude","").trim();
         if(p.exclude.length()>350)p.exclude=p.exclude.substring(0,350).trim();
-        p.notes=result.optString("notes","").trim();
+        p.notes=result.optString("notes","").trim()+(reduced?"\nStyle condensed to Suno 1000-character limit; check ending before use.":"");
         p.sourceHash=fingerprint(lyrics);
         p.mode="LYRICS-FIRST AI PRODUCTION — "+model;
         return p;
