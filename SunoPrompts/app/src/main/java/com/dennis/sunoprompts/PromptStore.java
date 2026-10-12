@@ -113,6 +113,13 @@ final class PromptStore extends SQLiteOpenHelper {
         }
         return result;
     }
+    synchronized boolean hasExactLyrics(String artist,String song,String text){
+        try(Cursor c=getReadableDatabase().rawQuery(
+            "SELECT 1 FROM lyrics WHERE artist=? COLLATE NOCASE AND song=? COLLATE NOCASE AND lyric_body=? LIMIT 1",
+            new String[]{artist,song,text})){
+            return c.moveToFirst();
+        }
+    }
     synchronized int lyricCount(){
         try(Cursor c=getReadableDatabase().rawQuery("SELECT COUNT(*) FROM lyrics",null)){
             return c.moveToFirst()?c.getInt(0):0;
