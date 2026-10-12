@@ -1,3 +1,27 @@
+# Suno Prompts v0.4.1 — Music-Matched Lyrics
+
+This update improves the existing AI Lyrics Studio, keeping all existing production prompts, lyrics folders and draft versions.
+
+## Production-specific lyrics
+- Choose a reference song's **saved production DNA** even if your new original song has a different title.
+- Set an independent reference recording name (for musical character only), vocal rhythmic attack and breathing instructions. The reference recording's existing hook or copyrighted lyrics must not be copied.
+- AI songwriting directions vary with the musical production: tightly stressed, chant-like new-wave dance-rock; natural story-led country; groove-led dance-pop; expressive ballad phrasing.
+- An optional **offline text rhythm check** flags high syllable density, verse/chorus imbalance and missing sections. This is a rough English lyric-density heuristic, **not real music/audio measurement**.
+- **AI Rhythm + Hook Repair** revises an existing user-owned draft against a selected production style; it makes a NEW draft and never overwrites the previous version.
+- Users must save current editor edits before requesting repair so nothing can be lost.
+- A saved song prompt's **Write original lyrics for this sound** shortcut preloads its musical production description.
+
+## Test case
+A new original escape-and-loyalty story placed in an aggressive early-1980s dance-rock production should produce clipped verses, shorter urgent call/response chorus lines and a fresh hook, rather than generic country-narrative singalong lyrics. This is an arrangement-matching target; it is **not** a request to reproduce any Duran Duran song.
+
+## Testing
+The Android GitHub Actions workflow executes `testDebugUnitTest` for the rhythm coach and compiles the complete app before publishing its release APK.
+
+## Installation and account access
+Version 0.4.1 uses the same app ID and SQLite database (schema v2). ChatGPT account connection still depends on successful OpenAI OAuth sign-in and eligible plan usage. GitHub debug builds may use differing signatures; **do not uninstall a version with valuable saved prompts** unless you've copied them elsewhere first.
+
+---
+
 # Suno Prompts v0.4.0 — Song Production & Lyrics Studio
 
 Independent Android app, package `com.dennis.sunoprompts`, Android API 26+.
