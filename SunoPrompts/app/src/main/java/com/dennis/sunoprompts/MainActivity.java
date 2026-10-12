@@ -175,7 +175,7 @@ public final class MainActivity extends Activity {
             card.setClickable(true);
         }
         spacing(body,14);
-        body.addView(text("v0.3 • Free offline reference prompts plus optional ChatGPT plan generation. No separate API key or token purchase required.",12,FAINT,false));
+        body.addView(text("v0.4 • Original AI Lyrics Studio, separate drafts and Suno prompts. ChatGPT connection optional; saved work stays offline.",12,FAINT,false));
     }
 
     private void showArtist(String artist){
@@ -495,6 +495,7 @@ public final class MainActivity extends Activity {
         body.addView(another);
         another.setOnClickListener(v->{
             if(!chat.canUsePlan()){showAccount();return;}
+            if(!editor.getText().toString().equals(l.body)){toast("Save your lyric edits before creating another variation.");return;}
             new AlertDialog.Builder(this)
                 .setTitle("New lyric variation?")
                 .setMessage("Generates a fresh draft from the same songwriter brief. This existing version and its edits will remain saved.")
