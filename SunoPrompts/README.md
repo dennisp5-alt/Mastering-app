@@ -1,3 +1,16 @@
+# Suno Prompts Studio v0.5.1 — Imported Lyrics Offline Check
+
+## Fix prompted by on-device testing
+- The user's imported *Wild Boys / Count Us Through* draft previously showed 18/21 short chorus lines (median ~3 syllables) but incorrectly reported “No obvious text-density warning.” This happened because imported songs lacked a recorded production style and chant detection only ran for recognised dance-rock prompts.
+- Now the **offline text analysis** reports a *possible chant-only chorus* when 75%+ of chorus lines are <=5 syllables with no extended melodic answer, **even if genre is absent**. It explains that repetitive shouts may be musically intentional in some genres and is advisory rather than a verdict. When a production profile says dance-rock, the warning becomes more specific.
+- **Set musical reference for offline check**, available inside any lyric draft: enter a musical genre/era, reference recording, optional detailed style prompt, or select **any saved production prompt** from an existing artist folder. Saving updates the draft's songwriter brief, not its words. All of this works offline and uses no ChatGPT plan allowance.
+- The checker also explicitly tells users when it lacks a musical profile, and suggests adding one.
+- Regression tests verify (a) the old 18/21 short-line imported chorus is flagged without genre, (b) the AI-repaired chorus with short calls plus longer responses isn't falsely marked chant-only.
+
+## Safe upgrading from Studio v0.5.0
+GitHub still builds with an ephemeral debug signing certificate. Before downloading or uninstalling ANY Studio version, use **Back up my full library** on your current working version, save the JSON to Downloads and verify the file exists. If Android refuses the upgrade due to signing, and only after checking the backup, uninstall **Suno Prompts Studio**, install v0.5.1 and **Restore a saved library backup**. Do not uninstall the separate original Suno Prompts app. Your ChatGPT connection may require signing in again.
+
+---
 # Suno Prompts Studio v0.5.0 — Lyrics-first Production
 
 ## What changed
