@@ -855,7 +855,7 @@ public final class MainActivity extends Activity {
         spacing(body,12);
         TextView delete=action("Delete this lyrics draft",false);body.addView(delete);
         delete.setOnClickListener(v->new AlertDialog.Builder(this).setTitle("Delete lyric draft?")
-            .setMessage("Only this lyrics draft will be deleted. Other drafts and production prompts are unaffected.")
+            .setMessage("This deletes this lyric draft AND its linked lyrics-first production arrangements. Other lyric drafts and separate saved song production prompts remain unaffected.")
             .setNegativeButton("Cancel",null)
             .setPositiveButton("Delete",(dialog,which)->{
                 store.deleteLyrics(l.id);showArtist(l.artist);
