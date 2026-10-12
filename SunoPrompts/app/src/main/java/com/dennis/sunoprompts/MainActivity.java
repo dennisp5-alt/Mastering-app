@@ -22,6 +22,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.Map;
+import org.json.JSONObject;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -137,12 +138,16 @@ public final class MainActivity extends Activity {
         LinearLayout welcome=panel(body);
         welcome.addView(text("YOUR PRODUCTION LIBRARY",12,LILAC,true));
         spacing(welcome,8);
-        welcome.addView(text(total+" saved song prompts",27,WHITE,true));
+        welcome.addView(text(total+" saved studio items",27,WHITE,true));
         spacing(welcome,6);
         welcome.addView(text("Research recordings, build original Suno v6 production prompts and keep every song under its artist.",14,SOFT,false));
         spacing(welcome,14);
         TextView create=action("+  New song prompt",true);
         welcome.addView(create);create.setOnClickListener(v->showCreate(""));
+        spacing(welcome,12);
+        TextView lyricsHome=action("✍  AI Lyrics Studio",false);
+        welcome.addView(lyricsHome);
+        lyricsHome.setOnClickListener(v->showLyricsForm("",""));
         spacing(body,7);
         LinearLayout controls=horizontal();
         TextView settings=action(chat.canUsePlan()?"✓ ChatGPT plan connected":"Connect ChatGPT plan",false);
@@ -164,7 +169,7 @@ public final class MainActivity extends Activity {
             LinearLayout info=vertical();info.setPadding(px(12),0,0,0);
             row.addView(info,new LinearLayout.LayoutParams(0,-2,1));
             info.addView(text(name,17,WHITE,true));
-            info.addView(text(entry.getValue()+" song "+(entry.getValue()==1?"prompt":"prompts"),13,SOFT,false));
+            info.addView(text(entry.getValue()+" saved "+(entry.getValue()==1?"item":"items"),13,SOFT,false));
             row.addView(text("›",28,LILAC,true));
             card.setOnClickListener(v->showArtist(name));
             card.setClickable(true);
@@ -178,13 +183,29 @@ public final class MainActivity extends Activity {
         base(artist,"ARTIST FOLDER","Library",this::showHome);
         TextView create=action("+  Research another song",true);
         body.addView(create);create.setOnClickListener(v->showCreate(artist));
+        spacing(body,10);
+        TextView lyricsNew=action("+  Write original lyrics",false);
+        body.addView(lyricsNew);lyricsNew.setOnClickListener(v->showLyricsForm(artist,""));
         spacing(body,18);
-        for(PromptStore.Prompt p:store.byArtist(artist)){
+        java.util.ArrayList<PromptStore.Prompt> songPrompts=store.byArtist(artist);
+        if(!songPrompts.isEmpty()){body.addView(text("PRODUCTION PROMPTS",12,LILAC,true));spacing(body,10);}
+        for(PromptStore.Prompt p:songPrompts){
             LinearLayout card=panel(body);
             card.addView(text(p.song,18,WHITE,true));spacing(card,4);
             card.addView(text(p.mode+"   •   Tap to open",12,SOFT,false));
             card.setOnClickListener(v->showDetail(p.id));
             card.setClickable(true);
+        }
+        java.util.ArrayList<PromptStore.Lyrics> drafts=store.lyricsByArtist(artist);
+        if(!drafts.isEmpty()){
+            spacing(body,14);
+            body.addView(text("LYRICS DRAFTS",12,LILAC,true));spacing(body,10);
+        }
+        for(PromptStore.Lyrics draft:drafts){
+            LinearLayout card=panel(body);
+            card.addView(text(draft.song,18,WHITE,true));spacing(card,4);
+            card.addView(text(draft.mode+"   •   Tap to edit",12,SOFT,false));
+            card.setOnClickListener(v->showLyricsDetail(draft.id));
         }
     }
 
@@ -294,6 +315,10 @@ public final class MainActivity extends Activity {
                 .setPositiveButton("Generate",(dialog,which)->generateWithChatGpt(p.artist,p.song,"",p.id)).show();
         });
         spacing(body,12);
+        TextView lyricsForSound=action("✍  Write original lyrics for this sound",true);
+        body.addView(lyricsForSound);
+        lyricsForSound.setOnClickListener(v->showLyricsForm(p.artist,value(style)));
+        spacing(body,12);
         TextView refresh=action("Replace with latest FREE production prompt",false);
         body.addView(refresh);
         refresh.setOnClickListener(v->new AlertDialog.Builder(this)
@@ -327,6 +352,167 @@ public final class MainActivity extends Activity {
                 .setMessage("Remove "+p.song+" from "+p.artist+"? This cannot be undone.")
                 .setNegativeButton("Cancel",null)
                 .setPositiveButton("Delete",(dialog,which)->{store.remove(p.id);showArtist(p.artist);}).show());
+    }
+
+    /** Creates a fresh lyrics draft. The artist name is organisational/style context only. */
+    private void showLyricsForm(String folderPreset,String productionStyle){
+        location="lyrics-form";activeArtist=folderPreset;
+        base("Lyrics Studio","ORIGINAL SONGWRITING • SUNO-READY","Library",this::showHome);
+        LinearLayout card=panel(body);
+        card.addView(text("SONGWRITER BRIEF",12,LILAC,true));spacing(card,12);
+        EditText folder=input("Optional — e.g. AC/DC, Country, Original Songs",folderPreset,false);
+        EditText song=input("New original song title","",false);
+        EditText story=input("Tell the story: people, setting, conflict, emotion, key details…","",true);
+        EditText hook=input("Optional title hook or memorable chorus phrase","",true);
+        EditText genre=input("Genre and mood, e.g. 1990s Australian country-rock, uplifting","",false);
+        EditText voice=input("Male/female/duet, vocal register, accent and delivery","",false);
+        EditText structure=input("Verse 1, Pre-Chorus, Chorus, Verse 2, Chorus, Bridge, Final Chorus, Outro",
+                                 "Verse 1, Chorus, Verse 2, Chorus, Bridge, Final Chorus, Outro",true);
+        EditText rhyme=input("Natural, conversational, singable line lengths, gentle end rhymes",
+                             "Natural conversational rhymes, varied line length, no forced rhymes",true);
+        EditText avoid=input("Words or ideas to avoid","neon; empty clichés; meaningless filler",false);
+        EditText production=input("Existing Suno style prompt or music production notes",productionStyle,true);
+        production.setMinLines(4);
+        field(card,"Artist reference / library folder (optional)",folder);
+        field(card,"New song title",song);
+        field(card,"Story / scenario / subject (required)",story);
+        field(card,"Chorus hook (optional)",hook);
+        field(card,"Genre and emotional tone",genre);
+        field(card,"Vocal delivery",voice);
+        field(card,"Song structure",structure);
+        field(card,"Rhyme and syllable pacing",rhyme);
+        field(card,"Avoid these words or themes",avoid);
+        field(card,"Production style the lyrics must fit",production);
+        TextView generate=action(chat.canUsePlan()?"Generate original lyrics with ChatGPT":"Connect ChatGPT to generate lyrics",true);
+        card.addView(generate);
+        spacing(card,12);
+        TextView manual=action("Start a blank lyrics draft (offline)",false);
+        card.addView(manual);
+        TextView explanation=text(
+            "Generates a new, editable draft each time. Earlier drafts and production prompts are preserved. " +
+            "The source artist is a style reference only; the lyrics will be original. ChatGPT generation uses eligible plan allowance.",
+            13,SOFT,false);
+        spacing(card,14);card.addView(explanation);
+        final java.util.function.Supplier<LyricsClient.Brief> brief=()->{
+            LyricsClient.Brief b=new LyricsClient.Brief();
+            b.artist=value(folder);b.title=value(song);b.story=value(story);
+            b.hook=value(hook);b.genre=value(genre);b.vocal=value(voice);
+            b.structure=value(structure);b.rhyme=value(rhyme);
+            b.avoid=value(avoid);b.styleGuide=value(production);
+            if(b.styleGuide.isEmpty() && !b.artist.isEmpty()){
+                PromptStore.Prompt linked=store.findPrompt(b.artist,b.title);
+                if(linked!=null)b.styleGuide=linked.style;
+            }
+            return b;
+        };
+        generate.setOnClickListener(v->{
+            if(!chat.canUsePlan()){showAccount();return;}
+            LyricsClient.Brief b=brief.get();
+            if(b.title.isEmpty() || b.story.isEmpty()){
+                toast("Enter a new song title and a specific story or subject.");return;
+            }
+            generateLyrics(b);
+        });
+        manual.setOnClickListener(v->{
+            LyricsClient.Brief b=brief.get();
+            if(b.title.isEmpty()){toast("Enter a song title.");return;}
+            PromptStore.Lyrics l=new PromptStore.Lyrics();
+            l.artist=b.artist.isEmpty()?"Original Songs":b.artist;
+            l.song=b.title;l.brief=b.toJson("");l.body="[Verse 1]\n\n[Chorus]\n\n[Verse 2]\n\n[Chorus]\n\n[Bridge]\n\n[Final Chorus]\n";
+            l.mode="MANUAL LYRICS DRAFT";
+            long id=store.saveLyrics(l);
+            showLyricsDetail(id);
+        });
+    }
+
+    private void generateLyrics(LyricsClient.Brief brief){
+        if(working){toast("An operation is already running.");return;}
+        if(!chat.canUsePlan()){showAccount();return;}
+        working=true;
+        tasks.execute(()->{
+            try{
+                String token=chat.accessToken();
+                java.util.ArrayList<ChatGptPrompts.Model> models=ChatGptPrompts.models(token);
+                String preferred=getSharedPreferences("suno_settings",MODE_PRIVATE).getString("chat_model","");
+                String model=models.get(0).id;
+                for(ChatGptPrompts.Model m:models)if(m.id.equals(preferred)){model=m.id;break;}
+                PromptStore.Lyrics result=LyricsClient.generate(token,model,brief);
+                long id=store.saveLyrics(result);
+                runOnUiThread(()->{working=false;showLyricsDetail(id);});
+            }catch(Exception e){
+                String message=e.getMessage()==null?"Unknown lyrics-generation error":e.getMessage();
+                runOnUiThread(()->{
+                    working=false;
+                    new AlertDialog.Builder(this)
+                        .setTitle("Lyrics were not generated")
+                        .setMessage(message+"\n\nAny previously saved lyrics and song prompts remain unchanged.")
+                        .setPositiveButton("OK",null).show();
+                });
+            }
+        });
+    }
+
+    private void showLyricsDetail(long id){
+        PromptStore.Lyrics l=store.getLyrics(id);
+        if(l==null){showHome();return;}
+        activeId=id;activeArtist=l.artist;location="lyrics-detail";
+        base(l.song,l.artist+"  •  "+l.mode,l.artist,()->showArtist(l.artist));
+        LinearLayout panel=panel(body);
+        panel.addView(text("SUNO LYRICS",12,LILAC,true));spacing(panel,10);
+        EditText editor=input("Original lyrics with Suno section tags",l.body,true);
+        editor.setMinLines(15);panel.addView(editor);spacing(panel,13);
+        TextView copy=action("Copy lyrics for Suno",true);panel.addView(copy);
+        copy.setOnClickListener(v->copy(editor.getText().toString(),"Lyrics copied to clipboard"));
+        spacing(panel,10);
+        TextView save=action("Save edited lyrics",false);panel.addView(save);
+        save.setOnClickListener(v->{
+            if(value(editor).isEmpty()){toast("Lyrics cannot be blank.");return;}
+            l.body=editor.getText().toString();
+            if(!l.mode.contains("EDITED"))l.mode=l.mode+" / EDITED";
+            store.saveLyrics(l);toast("Lyrics draft saved");
+        });
+        spacing(panel,10);
+        TextView share=action("Share lyrics",false);panel.addView(share);
+        share.setOnClickListener(v->{
+            Intent intent=new Intent(Intent.ACTION_SEND);
+            intent.setType("text/plain");
+            intent.putExtra(Intent.EXTRA_TEXT,l.song+"\n\n"+editor.getText().toString());
+            startActivity(Intent.createChooser(intent,"Share original lyrics"));
+        });
+        LinearLayout notes=panel(body);
+        notes.addView(text("SONGWRITER BRIEF",12,LILAC,true));spacing(notes,9);
+        LyricsClient.Brief b=LyricsClient.Brief.fromJson(l.brief);
+        notes.addView(text(b.describe(),13,SOFT,false));
+        try{
+            String producerNotes=new JSONObject(l.brief).optString("notes","");
+            if(!producerNotes.isEmpty()){
+                spacing(notes,10);
+                notes.addView(text("AI ARRANGEMENT NOTES\n"+producerNotes,13,SOFT,false));
+            }
+        }catch(Exception ignored){}
+        spacing(body,12);
+        TextView another=action(chat.canUsePlan()?"Generate new lyrical variation":"Connect ChatGPT for another variation",true);
+        body.addView(another);
+        another.setOnClickListener(v->{
+            if(!chat.canUsePlan()){showAccount();return;}
+            new AlertDialog.Builder(this)
+                .setTitle("New lyric variation?")
+                .setMessage("Generates a fresh draft from the same songwriter brief. This existing version and its edits will remain saved.")
+                .setNegativeButton("Cancel",null)
+                .setPositiveButton("Generate",(dialog,which)->{
+                    LyricsClient.Brief same=LyricsClient.Brief.fromJson(l.brief);
+                    if(same.title.isEmpty()) {toast("This draft has no saved songwriter brief.");return;}
+                    generateLyrics(same);
+                }).show();
+        });
+        spacing(body,12);
+        TextView delete=action("Delete this lyrics draft",false);body.addView(delete);
+        delete.setOnClickListener(v->new AlertDialog.Builder(this).setTitle("Delete lyric draft?")
+            .setMessage("Only this lyrics draft will be deleted. Other drafts and production prompts are unaffected.")
+            .setNegativeButton("Cancel",null)
+            .setPositiveButton("Delete",(dialog,which)->{
+                store.deleteLyrics(l.id);showArtist(l.artist);
+            }).show());
     }
 
     private void generateWithChatGpt(String artist,String song,String notes,long replacementId) {
@@ -468,7 +654,8 @@ public final class MainActivity extends Activity {
     }
 
     @Override public void onBackPressed() {
-        if("detail".equals(location)){showArtist(activeArtist);}
+        if("detail".equals(location)||"lyrics-detail".equals(location)){showArtist(activeArtist);}
+        else if("lyrics-form".equals(location)){if(activeArtist.isEmpty())showHome();else showArtist(activeArtist);}
         else if("artist".equals(location)||"create".equals(location)||"account".equals(location)){showHome();}
         else super.onBackPressed();
     }
