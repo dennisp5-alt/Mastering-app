@@ -739,6 +739,60 @@ public final class MainActivity extends Activity {
             store.saveLyrics(l);toast("Lyrics draft saved");
         });
         spacing(panel,10);
+        TextView profile=action("Set musical reference for offline check",false);
+        panel.addView(profile);
+        profile.setOnClickListener(v->{
+            if(!editor.getText().toString().equals(l.body)){
+                toast("Save lyric edits first so the song's musical reference is retained.");return;
+            }
+            LyricsClient.Brief current=LyricsClient.Brief.fromJson(l.brief);
+            LinearLayout content=vertical();content.setPadding(px(20),px(10),px(20),0);
+            content.addView(text("Attach a genre and production profile to this lyric draft. This works entirely offline and does not alter the lyrics.",13,SOFT,false));
+            spacing(content,12);
+            EditText genre=input("e.g. 1984 British new-wave dance-rock",current.genre,false);
+            field(content,"Musical genre / era",genre);
+            EditText reference=input("e.g. The Wild Boys (musical influence only)",current.referenceTrack,false);
+            field(content,"Reference recording (optional)",reference);
+            EditText styleProfile=input("Describe drums, guitars, synths, groove, vocal dynamics",current.styleGuide,true);
+            styleProfile.setMinLines(4);
+            field(content,"Detailed musical production profile",styleProfile);
+            TextView choose=action("Choose any saved production prompt",false);
+            content.addView(choose);spacing(content,12);
+            choose.setOnClickListener(w->{
+                java.util.ArrayList<PromptStore.Prompt> options=new java.util.ArrayList<>();
+                for(String artistFolder:store.artists().keySet())options.addAll(store.byArtist(artistFolder));
+                if(options.isEmpty()){toast("No saved production prompts yet. Enter your sound manually.");return;}
+                String[] labels=new String[options.size()];
+                for(int i=0;i<options.size();i++){
+                    PromptStore.Prompt source=options.get(i);
+                    labels[i]=source.artist+" — "+source.song;
+                }
+                new AlertDialog.Builder(this).setTitle("Choose a musical reference")
+                    .setItems(labels,(dialog,which)->{
+                        PromptStore.Prompt source=options.get(which);
+                        reference.setText(source.song);
+                        styleProfile.setText(source.style);
+                    }).setNegativeButton("Cancel",null).show();
+            });
+            ScrollView scroll=new ScrollView(this);scroll.addView(content);
+            new AlertDialog.Builder(this).setTitle("Music reference for this draft")
+                .setView(scroll).setNegativeButton("Cancel",null)
+                .setPositiveButton("Save musical reference",(dialog,which)->{
+                    current.artist=l.artist;
+                    current.title=l.song;
+                    current.genre=value(genre);
+                    current.referenceTrack=value(reference);
+                    current.styleGuide=value(styleProfile);
+                    current.rhythm=LyricRhythmCoach.suggest(current.combinedProduction());
+                    String notes="";
+                    try{notes=new JSONObject(l.brief).optString("notes","");}catch(Exception ignored){}
+                    l.brief=current.toJson(notes);
+                    store.saveLyrics(l);
+                    showLyricsDetail(l.id);
+                    toast("Music reference saved — run the offline check again");
+                }).show();
+        });
+        spacing(panel,10);
         TextView qc=action("Check phrasing and hook density (offline)",false);
         panel.addView(qc);
         qc.setOnClickListener(v->{
