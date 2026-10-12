@@ -8,6 +8,9 @@ on:
       - 'tools/DennisAiMasteringLab-v0.15.9-picker.patch.gz.b64'
       - '.github/workflows/build-mastering-stem159.yml'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -250,3 +253,16 @@ jobs:
             DennisAiMasteringLab-v0.15.9-GitHubBuildSource.zip
             DennisAiMasteringLab-v0.15.9-CHECKSUMS.sha256
           retention-days: 30
+
+      - name: Record CI build status for verification
+        if: always()
+        continue-on-error: true
+        run: |
+          APK_READY=no
+          if [ -s DennisAiMasteringLab-v0.15.9-StemWavPicker-TEST.apk ]; then APK_READY=yes; fi
+          printf 'run_id=%s\ncommit=%s\napk_ready=%s\n' "$GITHUB_RUN_ID" "$GITHUB_SHA" "$APK_READY" > tools/StemWavPicker-v0.15.9-CI-status.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/StemWavPicker-v0.15.9-CI-status.txt
+          git commit -m "Record v0.15.9 Stem WAV Picker CI run" || true
+          git push || true
