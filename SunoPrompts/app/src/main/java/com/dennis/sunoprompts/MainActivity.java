@@ -175,7 +175,7 @@ public final class MainActivity extends Activity {
             card.setClickable(true);
         }
         spacing(body,14);
-        body.addView(text("v0.4 • Original AI Lyrics Studio, separate drafts and Suno prompts. ChatGPT connection optional; saved work stays offline.",12,FAINT,false));
+        body.addView(text("v0.4.1 • Rhythm-aware Lyrics Studio, original drafts, offline phrasing check and optional AI revision.",12,FAINT,false));
     }
 
     private void showArtist(String artist){
@@ -362,6 +362,7 @@ public final class MainActivity extends Activity {
         card.addView(text("SONGWRITER BRIEF",12,LILAC,true));spacing(card,12);
         EditText folder=input("Optional — e.g. AC/DC, Country, Original Songs",folderPreset,false);
         EditText song=input("New original song title","",false);
+        EditText reference=input("Optional — reference recording name, e.g. The Wild Boys","",false);
         EditText story=input("Tell the story: people, setting, conflict, emotion, key details…","",true);
         EditText hook=input("Optional title hook or memorable chorus phrase","",true);
         EditText genre=input("Genre and mood, e.g. 1990s Australian country-rock, uplifting","",false);
@@ -370,19 +371,41 @@ public final class MainActivity extends Activity {
                                  "Verse 1, Chorus, Verse 2, Chorus, Bridge, Final Chorus, Outro",true);
         EditText rhyme=input("Natural, conversational, singable line lengths, gentle end rhymes",
                              "Natural conversational rhymes, varied line length, no forced rhymes",true);
+        EditText rhythm=input("Specific rhythmic delivery and hook attack",
+            LyricRhythmCoach.suggest(productionStyle+" "+folderPreset),true);
         EditText avoid=input("Words or ideas to avoid","neon; empty clichés; meaningless filler",false);
         EditText production=input("Existing Suno style prompt or music production notes",productionStyle,true);
         production.setMinLines(4);
         field(card,"Artist reference / library folder (optional)",folder);
         field(card,"New song title",song);
+        field(card,"Musical reference song (optional, never copy its words)",reference);
         field(card,"Story / scenario / subject (required)",story);
         field(card,"Chorus hook (optional)",hook);
         field(card,"Genre and emotional tone",genre);
         field(card,"Vocal delivery",voice);
         field(card,"Song structure",structure);
         field(card,"Rhyme and syllable pacing",rhyme);
+        field(card,"Vocal rhythm, breath gaps and chorus attack",rhythm);
         field(card,"Avoid these words or themes",avoid);
         field(card,"Production style the lyrics must fit",production);
+        TextView chooseStyle=action("Choose saved song's production DNA",false);
+        card.addView(chooseStyle);
+        chooseStyle.setOnClickListener(v->{
+            String folderName=value(folder);
+            if(folderName.isEmpty()){toast("Enter an artist/library folder first.");return;}
+            java.util.ArrayList<PromptStore.Prompt> available=store.byArtist(folderName);
+            if(available.isEmpty()){toast("This artist folder has no production prompts saved yet.");return;}
+            String[] items=new String[available.size()];
+            for(int i=0;i<available.size();i++)items[i]=available.get(i).song;
+            new AlertDialog.Builder(this).setTitle("Use production style from")
+                .setItems(items,(dialog,which)->{
+                    PromptStore.Prompt chosen=available.get(which);
+                    production.setText(chosen.style);
+                    reference.setText(chosen.song);
+                    rhythm.setText(LyricRhythmCoach.suggest(chosen.style));
+                }).setNegativeButton("Cancel",null).show();
+        });
+        spacing(card,15);
         TextView generate=action(chat.canUsePlan()?"Generate original lyrics with ChatGPT":"Connect ChatGPT to generate lyrics",true);
         card.addView(generate);
         spacing(card,12);
@@ -398,6 +421,7 @@ public final class MainActivity extends Activity {
             b.artist=value(folder);b.title=value(song);b.story=value(story);
             b.hook=value(hook);b.genre=value(genre);b.vocal=value(voice);
             b.structure=value(structure);b.rhyme=value(rhyme);
+            b.referenceTrack=value(reference);b.rhythm=value(rhythm);
             b.avoid=value(avoid);b.styleGuide=value(production);
             if(b.styleGuide.isEmpty() && !b.artist.isEmpty()){
                 PromptStore.Prompt linked=store.findPrompt(b.artist,b.title);
@@ -452,6 +476,36 @@ public final class MainActivity extends Activity {
         });
     }
 
+    private void reviseLyrics(LyricsClient.Brief brief,String originalText,String instructions){
+        if(working){toast("Another task is still running.");return;}
+        working=true;
+        tasks.execute(()->{
+            try{
+                String token=chat.accessToken();
+                java.util.ArrayList<ChatGptPrompts.Model> models=ChatGptPrompts.models(token);
+                String preferred=getSharedPreferences("suno_settings",MODE_PRIVATE).getString("chat_model","");
+                String model=models.get(0).id;
+                for(ChatGptPrompts.Model m:models)if(m.id.equals(preferred)){model=m.id;break;}
+                PromptStore.Lyrics result=LyricsClient.revise(token,model,brief,originalText,instructions);
+                // Always new row; no mutation of source lyrics.
+                result.id=0;
+                long id=store.saveLyrics(result);
+                runOnUiThread(()->{
+                    working=false;showLyricsDetail(id);
+                    toast("New rhythm-matched lyrics draft saved; original remains in the folder.");
+                });
+            }catch(Exception ex){
+                String reason=ex.getMessage()==null?"AI did not complete the lyric revision.":ex.getMessage();
+                runOnUiThread(()->{
+                    working=false;
+                    new AlertDialog.Builder(this).setTitle("Revision not saved")
+                        .setMessage(reason+"\n\nYour existing draft is still available.")
+                        .setPositiveButton("OK",null).show();
+                });
+            }
+        });
+    }
+
     private void showLyricsDetail(long id){
         PromptStore.Lyrics l=store.getLyrics(id);
         if(l==null){showHome();return;}
@@ -472,6 +526,16 @@ public final class MainActivity extends Activity {
             store.saveLyrics(l);toast("Lyrics draft saved");
         });
         spacing(panel,10);
+        TextView qc=action("Check phrasing and hook density (offline)",false);
+        panel.addView(qc);
+        qc.setOnClickListener(v->{
+            LyricsClient.Brief qcBrief=LyricsClient.Brief.fromJson(l.brief);
+            LyricRhythmCoach.Report report=LyricRhythmCoach.inspect(
+                editor.getText().toString(),qcBrief.combinedProduction());
+            new AlertDialog.Builder(this).setTitle("Songwriting rhythm check")
+                .setMessage(report.summary).setPositiveButton("OK",null).show();
+        });
+        spacing(panel,10);
         TextView share=action("Share lyrics",false);panel.addView(share);
         share.setOnClickListener(v->{
             Intent intent=new Intent(Intent.ACTION_SEND);
@@ -490,6 +554,32 @@ public final class MainActivity extends Activity {
                 notes.addView(text("AI ARRANGEMENT NOTES\n"+producerNotes,13,SOFT,false));
             }
         }catch(Exception ignored){}
+        spacing(body,12);
+        TextView repair=action(chat.canUsePlan()?"AI Rhythm + Hook Repair (save a new draft)":"Connect ChatGPT for Rhythm + Hook Repair",true);
+        body.addView(repair);
+        repair.setOnClickListener(v->{
+            if(!chat.canUsePlan()){showAccount();return;}
+            LyricsClient.Brief repairBrief=LyricsClient.Brief.fromJson(l.brief);
+            if(repairBrief.title.isEmpty())repairBrief.title=l.song;
+            if(repairBrief.artist.isEmpty())repairBrief.artist=l.artist;
+            LinearLayout repairLayout=vertical();
+            repairLayout.setPadding(px(20),px(10),px(20),0);
+            TextView explanation=text("Keep your characters and plot. Tighten verse attacks, chorus hooks, breaths and syllables to fit this production. A NEW lyrics version is saved; this one stays untouched.",13,SOFT,false);
+            repairLayout.addView(explanation);spacing(repairLayout,12);
+            EditText styleOverride=input("Production style for this revision",repairBrief.styleGuide,true);
+            field(repairLayout,"Production DNA (can be pasted or changed)",styleOverride);
+            EditText directions=input("What should improve?",LyricRhythmCoach.focus(repairBrief.combinedProduction())+
+                " Keep the original storyline and emotional bridge; avoid copying the reference recording's hook.",true);
+            field(repairLayout,"Additional musical direction",directions);
+            ScrollView scroll=new ScrollView(this);scroll.addView(repairLayout);
+            new AlertDialog.Builder(this).setTitle("Rhythm + Hook Repair")
+                .setView(scroll).setNegativeButton("Cancel",null)
+                .setPositiveButton("Create new version",(dialog,which)->{
+                    repairBrief.styleGuide=value(styleOverride);
+                    repairBrief.rhythm=LyricRhythmCoach.suggest(repairBrief.combinedProduction());
+                    reviseLyrics(repairBrief,editor.getText().toString(),value(directions));
+                }).show();
+        });
         spacing(body,12);
         TextView another=action(chat.canUsePlan()?"Generate new lyrical variation":"Connect ChatGPT for another variation",true);
         body.addView(another);
