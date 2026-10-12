@@ -345,7 +345,7 @@ public final class MainActivity extends Activity {
             card.setClickable(true);
         }
         spacing(body,14);
-        body.addView(text("Suno Prompts Studio v0.5 • Lyrics-first production, melodic chorus repair and full library backups.",12,FAINT,false));
+        body.addView(text("Suno Prompts Studio v0.5.1 • Offline chant checks for imported lyrics, editable music reference and lyrics-first production.",12,FAINT,false));
     }
 
     private void showArtist(String artist){
