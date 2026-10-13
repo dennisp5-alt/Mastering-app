@@ -19,6 +19,10 @@ on:
       - '.github/workflows/build-perf157.yml'
       - 'tools/v0157-performance-diagnostics.patch'
 
+permissions:
+  contents: read
+  statuses: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -254,3 +258,18 @@ jobs:
             DennisAiMasteringLab-v0.15.7-perf1-GitHubBuildSource.zip
             DennisAiMasteringLab-v0.15.7-perf1-CHECKSUMS.sha256
           retention-days: 30
+      
+      - name: Publish status and build-run URL
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUTCOME: ${{ job.status }}
+        run: |
+          status="failure"
+          if [ "$OUTCOME" = "success" ]; then status="success"; fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state="$status" \
+            -f context="DAML v0.15.7 performance profiler" \
+            -f description="APK compilation and unchanged-DSP tests: $OUTCOME" \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
