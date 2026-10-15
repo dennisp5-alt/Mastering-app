@@ -1,0 +1,37 @@
+--- a/app/src/main/java/com/dennis/aimasteringlab/ProfessionalMasteringRenderer.java
++++ b/app/src/main/java/com/dennis/aimasteringlab/ProfessionalMasteringRenderer.java
+@@ -265,6 +265,10 @@
+         BandPass harshBand = new BandPass(rate, 1600.0, 3200.0);
+         TrackingDynamicEq tracking = isVocal(mode) ? new TrackingDynamicEq(model, duration,
+                 mode == Mode.VOCAL_ARTIFACT_GENTLE ? .60 : 1.0) : null;
++        // All five side-event controls are empty in the two vocal-only modes.
++        // Their stateful bandpasses cannot affect audio, evidence, or scoring.
++        // Do not process those unused filters; retain the exact correction math.
++        final boolean vocalOnly = isVocal(mode);
+         Stats stats = new Stats();
+         stats.events = depthVocal.count() + depthHigh.count()
+                 + phase25.count() + phase60.count() + phase100.count()
+@@ -324,11 +328,18 @@
+                     stats.maximumNominalEditDb = Math.max(
+                             stats.maximumNominalEditDb, total);
+ 
+-                    double sideVocal = depthVocalBand.process(side);
+-                    double sideHigh = depthHighBand.process(side);
+-                    double side25 = phase25Band.process(side);
+-                    double side60 = phase60Band.process(side);
+-                    double side100 = phase100Band.process(side);
++                    double sideVocal = 0.0;
++                    double sideHigh = 0.0;
++                    double side25 = 0.0;
++                    double side60 = 0.0;
++                    double side100 = 0.0;
++                    if (!vocalOnly) {
++                        sideVocal = depthVocalBand.process(side);
++                        sideHigh = depthHighBand.process(side);
++                        side25 = phase25Band.process(side);
++                        side60 = phase60Band.process(side);
++                        side100 = phase100Band.process(side);
++                    }
+                     double midSib = sibilanceBand.process(mid);
+                     double midPlosive = plosiveBand.process(mid);
+                     double midHarsh = harshBand.process(mid);
