@@ -1,0 +1,121 @@
+name: Build Dennis Stem Lab Modern v0.5.0 DEV (isolated)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/dennis-stem-lab-modern-v050
+    paths:
+      - .github/workflows/build-dennis-stem-lab-modern-v050.yml
+      - experiments/dennis-stem-lab-modern-v050/v050-modern.patch.gz.b64
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout isolated experiment branch
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK 34
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
+
+      - name: Set up Gradle 8.6
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.6'
+
+      - name: Restore exact trusted v0.15.7 source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p restored project
+          gh run download 37899462151 --repo dennisp5-alt/Mastering-app --name DennisAiMasteringLab-v0.15.7-Source --dir restored
+          test -f restored/DennisAiMasteringLab-v0.15.7-GitHubBuildSource.zip
+          printf '%s  %s\n' '0bc7390fba6db3fa746d3a554555bbba9e7745068276929b529924426080eede' 'restored/DennisAiMasteringLab-v0.15.7-GitHubBuildSource.zip' | sha256sum -c -
+          unzip -q restored/DennisAiMasteringLab-v0.15.7-GitHubBuildSource.zip -d project
+          grep -q "versionName '0.15.7'" project/app/build.gradle
+
+      - name: Apply exact separate-app integration patch
+        run: |
+          base64 --decode experiments/dennis-stem-lab-modern-v050/v050-modern.patch.gz.b64 | gzip -dc > /tmp/stemlab-v050.patch
+          printf '%s  %s\n' '4f3a83cc2ce4c45daf4d2adde4b07d7ea1eb18afd81f41d1cf768e86c519b8fd' '/tmp/stemlab-v050.patch' | sha256sum -c -
+          src=project/app/src/main/java/com/dennis/aimasteringlab
+          find "$src" -maxdepth 1 -name '*.java' ! -name 'StudioActivity.java' -type f | sort | xargs sha256sum > /tmp/trusted-java.sha256
+          patch --batch --fuzz=0 -p1 -d project < /tmp/stemlab-v050.patch
+          sha256sum -c /tmp/trusted-java.sha256
+          grep -q "applicationId 'com.dennis.stemlab.modern'" project/app/build.gradle
+          grep -q "versionName '0.5.0-dev'" project/app/build.gradle
+          grep -q 'IMPORT STEM ZIP' project/app/src/main/java/com/dennis/aimasteringlab/StudioActivity.java
+          grep -q 'STEMS_ONLY' project/app/src/main/java/com/dennis/aimasteringlab/StemOnlyImport.java
+
+      - name: Generate deterministic two-stem and unsafe fixtures
+        run: |
+          mkdir -p host-fixtures host-classes
+          python3 - <<'PY'
+          import array, math, pathlib, sys, wave, zipfile
+          base=pathlib.Path('host-fixtures')
+          sr=48000
+          for name,freq,level in [('Vocals.wav',231,0.16),('Instrumental.wav',110,0.22)]:
+              buf=array.array('h')
+              for k in range(sr*18):
+                  v=int(32767*level*math.sin((2*math.pi*freq*k)/sr))
+                  buf.extend([v,v])
+              if sys.byteorder!='little': buf.byteswap()
+              with wave.open(str(base/name),'wb') as wav:
+                  wav.setnchannels(2);wav.setsampwidth(2);wav.setframerate(sr);wav.writeframes(buf.tobytes())
+          with zipfile.ZipFile(base/'safe.zip','w',compression=zipfile.ZIP_DEFLATED) as z:
+              for name in ('Vocals.wav','Instrumental.wav'): z.write(base/name,name)
+          with zipfile.ZipFile(base/'unsafe.zip','w',compression=zipfile.ZIP_DEFLATED) as z:
+              z.write(base/'Vocals.wav','../Vocals.wav')
+          PY
+
+      - name: Compile and run isolated stem mastering host regressions
+        run: |
+          javac -encoding UTF-8 -d host-classes             -sourcepath project/app/src/main/java:project/tests             project/app/src/main/java/com/dennis/aimasteringlab/StemOnlyImport.java             project/app/src/main/java/com/dennis/aimasteringlab/StemPremixBuilder.java             project/app/src/main/java/com/dennis/aimasteringlab/StemStudioPreflight.java             project/tests/V050StemOnlyIntegrationHarness.java             project/tests/BuildConfig.java             project/tests/org/json/*.java
+          java -cp host-classes com.dennis.aimasteringlab.V050StemOnlyIntegrationHarness host-fixtures/safe.zip host-fixtures/unsafe.zip
+
+      - name: Build separate offline Android DEV APK
+        working-directory: project
+        run: gradle --no-daemon :app:assembleDebug
+
+      - name: Verify APK archive and package
+        run: |
+          cp project/app/build/outputs/apk/debug/app-debug.apk DennisStemLab-Modern-v0.5.0-DEV.apk
+          unzip -tq DennisStemLab-Modern-v0.5.0-DEV.apk
+          sha256sum DennisStemLab-Modern-v0.5.0-DEV.apk > DennisStemLab-Modern-v0.5.0-CHECKSUMS.sha256
+          test -s DennisStemLab-Modern-v0.5.0-DEV.apk
+
+      - name: Package reproducible source
+        run: |
+          (cd project && zip -qr ../DennisStemLab-Modern-v0.5.0-GitHubBuildSource.zip . -x '.gradle/*' 'build/*' 'app/build/*' '*.jks' '*.keystore' '*.apk')
+          sha256sum DennisStemLab-Modern-v0.5.0-GitHubBuildSource.zip >> DennisStemLab-Modern-v0.5.0-CHECKSUMS.sha256
+
+      - name: Upload separate DEV test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DennisStemLab-Modern-v0.5.0-DEV-APK
+          path: |
+            DennisStemLab-Modern-v0.5.0-DEV.apk
+            DennisStemLab-Modern-v0.5.0-CHECKSUMS.sha256
+          retention-days: 30
+
+      - name: Upload complete recoverable source
+        uses: actions/upload-artifact@v4
+        with:
+          name: DennisStemLab-Modern-v0.5.0-Source
+          path: |
+            DennisStemLab-Modern-v0.5.0-GitHubBuildSource.zip
+            DennisStemLab-Modern-v0.5.0-CHECKSUMS.sha256
+          retention-days: 30
