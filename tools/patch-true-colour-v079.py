@@ -257,7 +257,7 @@ s=s.replace(old,new,1)
 # Replace single-source mapping with maps computed from all four completed previews.
 old='''            final Bitmap map=buildIssueMap(originalPreview);
             runOnUiThread(()->{
-                if(comparisonOpen && generation==workGeneration){issueMap[0]=map;mapLegend.setText("Issue map ready • RED clipping • AMBER low contrast • natural sky protected • detection only");}
+                if(comparisonOpen && generation==workGeneration){issueMap[0]=map;mapLegend.setText("Issue map ready • RED clipping • AMBER low contrast • BLUE colour imbalance • detection only");}
                 else if(map!=null)map.recycle();
             });
 '''
