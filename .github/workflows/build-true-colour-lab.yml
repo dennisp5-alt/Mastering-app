@@ -1,10 +1,10 @@
-name: Build AutoFix True Colour Lab v0.7.3 TEST
+name: Build AutoFix True Colour Lab v0.7.4 TEST
 
 on:
   workflow_dispatch:
   push:
     paths:
-      - 'AutoFix-True-Colour-Lab-v0.7.3-TEST-GitHubBuildSource.zip'
+      - 'tools/patch-true-colour-v074.py'
       - '.github/workflows/build-true-colour-lab.yml'
 
 permissions:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    name: True Colour Lab v0.7.3 TEST
+    name: True Colour Lab v0.7.4 TEST
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -60,7 +60,7 @@ jobs:
           test -n "$SDKMANAGER" && test -x "$SDKMANAGER" || { echo "::error::sdkmanager not found"; exit 1; }
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
-      - name: Run deterministic engine tests
+      - name: Apply UI contrast corrections\n        run: python3 tools/patch-true-colour-v074.py "${{ steps.project.outputs.project }}"\n      - name: Run deterministic engine tests
         working-directory: ${{ steps.project.outputs.project }}
         shell: bash
         run: chmod +x run-tests.sh && ./run-tests.sh
@@ -73,23 +73,23 @@ jobs:
         run: |
           set -euo pipefail
           PROJECT="${{ steps.project.outputs.project }}"
-          APK="$PROJECT/release/AutoFix-True-Colour-Lab-v0.7.3-TEST.apk"
+          APK="$PROJECT/release/AutoFix-True-Colour-Lab-v0.7.4-TEST.apk"
           test -f "$APK" || { echo "::error::Signed TEST APK not found"; exit 1; }
           SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
           AAPT="$SDK/build-tools/34.0.0/aapt"
           BADGING="$($AAPT dump badging "$APK" | head -n 1)"
           echo "$BADGING"
-          echo "$BADGING" | grep -q "versionCode='11'" || { echo "::error::APK versionCode is not 11"; exit 1; }
-          echo "$BADGING" | grep -q "versionName='0.7.3'" || { echo "::error::APK versionName is not 0.7.3"; exit 1; }
+          echo "$BADGING" | grep -q "versionCode='12'" || { echo "::error::APK versionCode is not 12"; exit 1; }
+          echo "$BADGING" | grep -q "versionName='0.7.4'" || { echo "::error::APK versionName is not 0.7.4"; exit 1; }
           rm -rf artifact && mkdir artifact
-          cp "$APK" artifact/AutoFix-True-Colour-Lab-v0.7.3-TEST.apk
-          sha256sum artifact/AutoFix-True-Colour-Lab-v0.7.3-TEST.apk > artifact/AutoFix-True-Colour-Lab-v0.7.3-TEST-SHA256.txt
+          cp "$APK" artifact/AutoFix-True-Colour-Lab-v0.7.4-TEST.apk
+          sha256sum artifact/AutoFix-True-Colour-Lab-v0.7.4-TEST.apk > artifact/AutoFix-True-Colour-Lab-v0.7.3-TEST-SHA256.txt
       - name: Upload TEST APK
         uses: actions/upload-artifact@v4
         with:
           name: AutoFix-True-Colour-Lab-v0.7.3-TEST
           path: |
-            artifact/AutoFix-True-Colour-Lab-v0.7.3-TEST.apk
+            artifact/AutoFix-True-Colour-Lab-v0.7.4-TEST.apk
             artifact/AutoFix-True-Colour-Lab-v0.7.3-TEST-SHA256.txt
           if-no-files-found: error
           retention-days: 30
