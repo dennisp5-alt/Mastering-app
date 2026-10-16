@@ -254,15 +254,11 @@ old='''            zoomImage.setImageBitmap(showingMap[0]?issueMap[0]:variants[0
 new='''            zoomImage.setImageBitmap(showingMap[0]?issueMap[mapMode[0]]:variants[mapMode[0]]);'''
 assert old in s
 s=s.replace(old,new,1)
-# Replace single-source mapping with maps computed from all four completed previews.
-old='''            final Bitmap map=buildIssueMap(originalPreview);
-            runOnUiThread(()->{
-                if(comparisonOpen && generation==workGeneration){issueMap[0]=map;mapLegend.setText("Issue map ready • RED clipping • AMBER low contrast • BLUE colour imbalance • detection only");}
-                else if(map!=null)map.recycle();
-            });
-'''
-assert old in s
-s=s.replace(old,'',1)
+# Remove v0.7.7 single-source map callback, independent of v0.7.8 legend changes.
+map_start=s.index('            final Bitmap map=buildIssueMap(originalPreview);')
+map_end=s.index('            Bitmap[] result=new Bitmap[3];',map_start)
+assert map_start>=0 and map_end>map_start
+s=s[:map_start]+s[map_end:]
 needle='''                    diagnostics.setText(comparisonStats(variants[0],variants[1],variants[2],variants[3]));'''
 assert needle in s
 s=s.replace(needle,needle+'''
