@@ -61,7 +61,8 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
       - name: Apply UI contrast corrections
-        run: python3 tools/patch-true-colour-v074.py "${{ steps.project.outputs.project }}"\n      - name: Run deterministic engine tests
+        run: python3 tools/patch-true-colour-v074.py "${{ steps.project.outputs.project }}"
+      - name: Run deterministic engine tests
         working-directory: ${{ steps.project.outputs.project }}
         shell: bash
         run: chmod +x run-tests.sh && ./run-tests.sh
