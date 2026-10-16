@@ -324,7 +324,7 @@ print("Applied v0.7.9 mode-aware diagnostics and shadow noise cues; engines unch
 # definitive classifier. Edge metric counts strong adjacent luminance changes.
 anchor='''        out.append("Preview-sampled measurements; not full-resolution export QC.");'''
 assert anchor in s
-s=s.replace(anchor,'''        out.append("PREVIEW QUALITY INDICATORS\\\\n");
+s=s.replace(anchor,'''        out.append("PREVIEW QUALITY INDICATORS\\n");
         for(int k=0;k<all.length;k++){
             Bitmap b=all[k];
             if(b==null)continue;
@@ -356,10 +356,10 @@ s=s.replace(anchor,'''        out.append("PREVIEW QUALITY INDICATORS\\\\n");
                    .append(" clip ").append(100*clippedCount/samples).append("%")
                    .append(" edges ").append(100*edgeCount/samples).append("%")
                    .append(" shadow texture ").append(flatCount>0?100*noisyCount/flatCount:0)
-                   .append("% (").append(flatCount).append(" patches)\\\\n");
+                   .append("% (").append(flatCount).append(" patches)\\n");
             }
         }
-        out.append("Indicators are estimates, not proof of defects.\\\\n");
+        out.append("Indicators are estimates, not proof of defects.\\n");
 ''' + anchor,1)
 # Ensure original map has a helpful ready state even if no coloured regions.
 s=s.replace('Mode-aware issue map ready • RED clipping • AMBER low contrast • PURPLE possible shadow noise • diagnostic only',
