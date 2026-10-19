@@ -1,0 +1,33 @@
+name: Photo Master AI Source Inspection
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/photo-master-ai-source-inspection.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read original Photo Master AI UI architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/photo-source
+          unzip -q PhotoMasterAI-v0.4.1-Source.zip -d /tmp/photo-source
+          MAIN="$(find /tmp/photo-source -name MainActivity.java | head -1)"
+          echo "MAIN FILE: $MAIN"
+          wc -l "$MAIN"
+          echo "== Controls and processing methods =="
+          grep -n -Ei 'process|master|button|findViewById|setOnClick|Switch|checkbox|Spinner|RadioGroup|Result|save|report|AI MAX' "$MAIN" | head -160 || true
+          echo "== MainActivity first 330 lines =="
+          sed -n '1,330p' "$MAIN"
+          echo "== Android resources =="
+          find /tmp/photo-source -path '*/res/layout/*' -type f | head -12
+          echo "== Gradle build =="
+          sed -n '1,130p' /tmp/photo-source/PhotoMasterAI/app/build.gradle
