@@ -61,8 +61,7 @@ public final class AdaptiveNeuralColour {
                     throw new IllegalStateException("Unstable pretrained LUT coefficient");
 
             final float[] lut = fuseBases(context, coeff);
-            final PhotoAnalysis before = baseline.analysis != null
-                    ? baseline.analysis : PhotoAnalysis.analyse(mastered);
+            final PhotoAnalysis before = PhotoAnalysis.analyse(mastered);
             String rejection = "no strength passed QC";
             for (float strength : STRENGTHS) {
                 Correction correction = render(original, mastered, lut, strength);
@@ -120,7 +119,7 @@ public final class AdaptiveNeuralColour {
     private static PhotoMasterEngine.Result withReport(PhotoMasterEngine.Result base, String report) {
         return new PhotoMasterEngine.Result(base.bitmap,
                 base.report + "\n\nNEURAL COLOUR EXPERIMENT\n• " + report,
-                base.analysis);
+                PhotoAnalysis.analyse(base.bitmap));
     }
 
     private static float[] inferCoefficients(Context ctx, Bitmap source) throws Exception {
