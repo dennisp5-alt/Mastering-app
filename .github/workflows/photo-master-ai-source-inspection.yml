@@ -26,7 +26,7 @@ jobs:
           echo "== Controls and processing methods =="
           grep -n -Ei 'process|master|button|findViewById|setOnClick|Switch|checkbox|Spinner|RadioGroup|Result|save|report|AI MAX' "$MAIN" | head -160 || true
           echo "== MainActivity first 330 lines =="
-          sed -n '1,330p' "$MAIN"
+          sed -n '295,465p' "$MAIN"
           echo "== Android resources =="
           find /tmp/photo-source -path '*/res/layout/*' -type f | head -12
           echo "== Gradle build =="
