@@ -760,7 +760,7 @@ jobs:
           grep -q "AI MAX + STUDIO" "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
           grep -q "StudioFinish.apply(originalBitmap, neuralOrBaseline)" "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
           grep -q "renderP3" "$PROJECT/app/src/main/java/com/dennis/photomasterai/AdaptiveNeuralColour.java"
-          grep -q "MIN_DETAIL_RETAINED = .985" "$PROJECT/app/src/main/java/com/dennis/photomasterai/StudioFinishPolicy.java"
+          grep -q "MIN_DETAIL_RETAINED = 0.985" "$PROJECT/app/src/main/java/com/dennis/photomasterai/StudioFinishPolicy.java"
 
       - name: Test Studio Master safety and photographic tonal limits
         shell: bash
