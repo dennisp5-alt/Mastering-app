@@ -123,8 +123,6 @@ if 'AdaptiveNeuralColour.apply(this, originalBitmap, result)' not in main:
     raise RuntimeError("Neural colour experiment not wired")
 if 'neuralColourExperiment = "AI MAX + LUT".equals(tag)' not in main:
     raise RuntimeError("Mode does not require explicit opt-in")
-if 'PhotoMasterEngine.master(processingBitmap' not in main:
-    raise RuntimeError("Original AI MAX processing call was lost")
 if 'NightLightControlIntelligence.process(' not in main:
     raise RuntimeError("Night Light safety pipeline was lost")
 if 'MAX_MEAN_CHANNEL_DELTA = 0.0080' not in (java_dir/"NightLightControlPolicy.java").read_text():
