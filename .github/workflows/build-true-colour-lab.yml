@@ -82,7 +82,7 @@ jobs:
           BADGING="$($AAPT dump badging "$APK" | head -n 1)"
           echo "$BADGING"
           echo "$BADGING" | grep -q "versionCode='19'" || { echo "::error::APK versionCode is not 19"; exit 1; }
-          echo "$BADGING" | grep -q "versionName='0.8.0'" || { echo "::error::APK versionName is not 0.8.0"; exit 1; }
+          echo "$BADGING" | grep -q "versionName='0.8.1'" || { echo "::error::APK versionName is not 0.8.0"; exit 1; }
           rm -rf artifact && mkdir artifact
           cp "$APK" artifact/AutoFix-True-Colour-Lab-v0.8.1-TEST.apk
           sha256sum artifact/AutoFix-True-Colour-Lab-v0.8.1-TEST.apk > artifact/AutoFix-True-Colour-Lab-v0.8.1-TEST-SHA256.txt
