@@ -28,7 +28,7 @@ public final class NeuralFormatRegressionHostChecks {
                 + "\n• Neural inference/total %.0f ms (total including render and QC)"
                 + "\n• AI MAX baseline preserved as rollback candidate"
                 + "\n• Colour pipeline: sRGB neural LUT path",
-                .40,.2,.3,.5,68.45,.005,5,98.55,1,1,433.0);
+                .40,.2,.3,.5,68.45,.005,5,98.55,1.0,1.0,433.0);
         String complete=safeInfo+trace.toString();
         check(complete.contains("ACCEPTED • ONNX"),"acceptance missing");
         check(complete.contains("detail 98.55%"),"trial percentage missing");
