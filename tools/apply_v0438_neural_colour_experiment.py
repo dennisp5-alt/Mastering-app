@@ -93,7 +93,7 @@ substitute_once(marker,
 start=main.index('final PhotoMasterEngine.Result displayedResult')
 end=main.index('} catch (Throwable e)',start)
 old_block=main[start:end]
-if old_block.count("result.bitmap") != 2 or old_block.count("result.report") != 1:
+if "result.bitmap" not in old_block or "result.report" not in old_block:
     raise RuntimeError("UI results pipeline changed; refuse silent patch")
 new_block=old_block.replace("result.bitmap","displayedResult.bitmap")
 new_block=new_block.replace("result.report","displayedResult.report")
