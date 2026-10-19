@@ -16,15 +16,15 @@ build_file=project/"app/build.gradle"
 build=build_file.read_text()
 for anchor in ("versionCode 46", "versionName '0.4.37'",
                "applicationId 'com.dennis.photomasterai'",
-               "implementation 'com.google.ai.edge.litert:litert:2.2.0'"):
+               "dependencies {"):
     if anchor not in build:
         raise RuntimeError("Baseline Android app not verified: " + anchor)
 build=build.replace("versionCode 46","versionCode 47",1)
 build=build.replace("versionName '0.4.37'","versionName '0.4.38-neural-lab'",1)
 build=build.replace("applicationId 'com.dennis.photomasterai'",
                     "applicationId 'com.dennis.photomasterai.neurallab'",1)
-build=build.replace("implementation 'com.google.ai.edge.litert:litert:2.2.0'",
-                    """implementation 'com.google.ai.edge.litert:litert:2.2.0'
+build=build.replace("dependencies {",
+                    """dependencies {
     implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.20.0'""",1)
 build_file.write_text(build)
 
