@@ -90,8 +90,8 @@ substitute_once(marker,
                                 : result;
 ''',
     "independent candidate after AI MAX")
-start=main.indexOf('final PhotoMasterEngine.Result displayedResult')
-end=main.indexOf('} catch (Throwable e)',start)
+start=main.index('final PhotoMasterEngine.Result displayedResult')
+end=main.index('} catch (Throwable e)',start)
 old_block=main[start:end]
 if old_block.count("result.bitmap") != 2 or old_block.count("result.report") != 1:
     raise RuntimeError("UI results pipeline changed; refuse silent patch")
