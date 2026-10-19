@@ -1,0 +1,161 @@
+
+    /**
+     * P3-safe additive neural correction:
+     *
+     * 1. getPixels() provides colour-managed sRGB samples for the pretrained
+     *    classifier/LUT and for the existing photo QC.
+     * 2. copyPixelsToBuffer() captures the authoritative untouched, encoded
+     *    native Display P3 RGBA bytes of the completed AI MAX master.
+     * 3. Transform *deltas* (edited sRGB minus baseline sRGB) to P3 and add
+     *    them to native P3 values. This preserves native source gamut/chroma,
+     *    unlike re-encoding the clipped sRGB master or relabelling sRGB as P3.
+     * 4. Fit changes to both the P3 gamut and the existing +/-12/255 cap.
+     * 5. Keep candidate P3 profile, preserve alpha, then run unchanged QC.
+     *
+     * Only ARGB_8888 / tightly packed / opaque P3 masters up to 12.6 MP
+     * are attempted. All incompatible inputs are withheld, never retagged.
+     */
+    private static Correction renderP3(
+            Bitmap original, Bitmap mastered, float[] lut, float strength) {
+        final int w = mastered.getWidth(), h = mastered.getHeight();
+        if (mastered.getConfig() != Bitmap.Config.ARGB_8888
+                || (long) w * h > 12_600_000L
+                || mastered.getRowBytes() != (long) w * 4)
+            throw new IllegalStateException("P3-native copy unsupported at this size/config");
+
+        final ColorSpace p3 = ColorSpace.get(ColorSpace.Named.DISPLAY_P3);
+        final ColorSpace srgb = ColorSpace.get(ColorSpace.Named.SRGB);
+        final ByteBuffer nativePixels = ByteBuffer.allocateDirect(mastered.getByteCount());
+        mastered.copyPixelsToBuffer(nativePixels);
+        nativePixels.rewind();
+
+        // Confirm RGBA byte layout against Android colour-aware getColor()
+        // before interpreting native bytes. This is device dependent.
+        for (int i=0; i<6; i++) {
+            int x = (int) ((long) (w-1) * (i+1) / 7);
+            int y = (int) ((long) (h-1) * (i+2) / 8);
+            int off = (y*w + x)*4;
+            android.graphics.Color actual = mastered.getColor(x,y);
+            if (!actual.getColorSpace().equals(p3)
+                    || Math.abs(actual.red() - (nativePixels.get(off)&255)/255f) > .015f
+                    || Math.abs(actual.green() - (nativePixels.get(off+1)&255)/255f) > .015f
+                    || Math.abs(actual.blue() - (nativePixels.get(off+2)&255)/255f) > .015f
+                    || (nativePixels.get(off+3)&255) != 255) {
+                throw new IllegalStateException("Native P3 pixel layout cannot be verified");
+            }
+        }
+
+        final ColorSpace.Connector srgbToP3 = ColorSpace.connect(srgb,p3);
+        final ByteBuffer output = ByteBuffer.allocateDirect(mastered.getByteCount());
+        final float[] before = new float[3];
+        final float[] after = new float[3];
+        final float[] step = new float[3];
+        final float[] value = new float[3];
+        final int rows = Math.min(h,32);
+        final int[] originals = new int[w*rows];
+        final int[] masteredSrgb = new int[w*rows];
+        long edited=0;
+        double meanMove=0;
+        int maxEdit=0;
+        final float maxP3 = MAX_CHANNEL_EDIT/255f;
+        for(int top=0;top<h;top+=rows) {
+            int count=Math.min(rows,h-top);
+            original.getPixels(originals,0,w,0,top,w,count);
+            mastered.getPixels(masteredSrgb,0,w,0,top,w,count);
+            for (int i=0;i<w*count;i++) {
+                int off=((top*w)+i)*4;
+                int op=originals[i], bp=masteredSrgb[i];
+                int r=(op>>16)&255, g=(op>>8)&255, b=op&255;
+                int br=(bp>>16)&255, bg=(bp>>8)&255, bb=bp&255;
+                int ar=nativePixels.get(off)&255;
+                int ag=nativePixels.get(off+1)&255;
+                int ab=nativePixels.get(off+2)&255;
+                int alpha=nativePixels.get(off+3)&255;
+                if (alpha != 255)
+                    throw new IllegalStateException("P3 master contains unsupported transparency");
+                float lum=.2126f*br+.7152f*bg+.0722f*bb;
+                float lo=Math.min(br,Math.min(bg,bb));
+                float hi=Math.max(br,Math.max(bg,bb));
+                float saturation=(hi-lo)/Math.max(1f,hi);
+                float protect=smooth((lum-22f)/70f)
+                        *(1f-smooth((lum-175f)/75f))
+                        *(1f-.65f*smooth((saturation-.50f)/.45f));
+                if ((r>g*1.24f && b>g*1.12f && r>80)
+                        || (r>95 && g>55 && b>32 && r>g && g>b && (r-b)<110))
+                    protect *= .38f;
+                float gain=strength*protect;
+
+                int nr=Math.max(0,Math.min(255,
+                        br+clampedDiff((sample(lut,0,r,g,b)-r)*gain)));
+                int ng=Math.max(0,Math.min(255,
+                        bg+clampedDiff((sample(lut,1,r,g,b)-g)*gain)));
+                int nb=Math.max(0,Math.min(255,
+                        bb+clampedDiff((sample(lut,2,r,g,b)-b)*gain)));
+
+                if (nr == br && ng == bg && nb == bb) {
+                    output.put((byte)ar).put((byte)ag).put((byte)ab).put((byte)alpha);
+                    continue;
+                }
+
+                before[0]=br/255f; before[1]=bg/255f; before[2]=bb/255f;
+                after[0]=nr/255f; after[1]=ng/255f; after[2]=nb/255f;
+                srgbToP3.transform(before);
+                srgbToP3.transform(after);
+                for(int c=0;c<3;c++) step[c]=after[c]-before[c];
+
+                value[0]=ar/255f;
+                value[1]=ag/255f;
+                value[2]=ab/255f;
+                float fit=1f;
+                for(int c=0;c<3;c++) {
+                    float d=step[c];
+                    if (!Float.isFinite(d))
+                        throw new IllegalStateException("Nonfinite sRGB to P3 transform");
+                    if (d > 0f) fit=Math.min(fit,(1f-value[c])/d);
+                    if (d < 0f) fit=Math.min(fit,-value[c]/d);
+                    if (Math.abs(d)>1e-8f)
+                        fit=Math.min(fit,maxP3/Math.abs(d));
+                }
+                fit=Math.max(0f,Math.min(1f,fit));
+                int rr=clampByte(Math.round(255f*(value[0]+fit*step[0])));
+                int gg=clampByte(Math.round(255f*(value[1]+fit*step[1])));
+                int bbOut=clampByte(Math.round(255f*(value[2]+fit*step[2])));
+                int dr=Math.abs(rr-ar), dg=Math.abs(gg-ag), db=Math.abs(bbOut-ab);
+                if (dr+dg+db != 0) edited++;
+                meanMove+=(dr+dg+db)/(3.0*255.0);
+                maxEdit=Math.max(maxEdit,Math.max(dr,Math.max(dg,db)));
+                output.put((byte)rr).put((byte)gg).put((byte)bbOut).put((byte)alpha);
+            }
+        }
+
+        output.flip();
+        Bitmap candidate = Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888,true,p3);
+        try {
+            if (candidate.getRowBytes() != w*4)
+                throw new IllegalStateException("P3 destination row stride unexpected");
+            candidate.copyPixelsFromBuffer(output);
+            if (!p3.equals(candidate.getColorSpace()))
+                throw new IllegalStateException("P3 destination colour profile missing");
+
+            // Check a deterministic sample; colours must survive raw P3 transfer.
+            for (int i=0;i<6;i++) {
+                int x=(int)((long)(w-1)*(i+1)/7);
+                int y=(int)((long)(h-1)*(i+2)/8);
+                int off=(y*w+x)*4;
+                android.graphics.Color actual=candidate.getColor(x,y);
+                if (!actual.getColorSpace().equals(p3)
+                        || Math.abs(actual.red()-(output.get(off)&255)/255f)>.015f
+                        || Math.abs(actual.green()-(output.get(off+1)&255)/255f)>.015f
+                        || Math.abs(actual.blue()-(output.get(off+2)&255)/255f)>.015f)
+                    throw new IllegalStateException("P3 candidate pixel mismatch");
+            }
+            return new Correction(candidate,edited,meanMove/(w*(double)h),maxEdit);
+        } catch(Throwable problem) {
+            candidate.recycle();
+            throw problem;
+        }
+    }
+
+    private static int clampByte(int n) {
+        return Math.max(0,Math.min(255,n));
+    }
