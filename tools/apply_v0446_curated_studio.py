@@ -78,7 +78,7 @@ mainfile.write_text(s)
 # Independently validate compiled policy limits, signing and colour safeguards.
 for name,anchors in {
     "AutoTonePolicy.java":("MIN_DETAIL_RETAINED = .985","MAX_MEAN_CHANNEL_CHANGE = .023"),
-    "StudioFinishPolicy.java":("MIN_DETAIL_RETAINED = 0.985","MAX_RING_INCREASE = .006"),
+    "StudioFinishPolicy.java":("MIN_DETAIL_RETAINED = 0.985","MAX_RING_INCREASE = 0.006"),
     "SelectiveColourPolicy.java":("MAX_PINK_CHANNEL_DELTA = 5","MIN_DETAIL_RETAINED = .985"),
     "AdaptiveNeuralColour.java":("MAX_RING_INCREASE = .006","MAX_CHANNEL_EDIT = 12"),
     "NightLightControlPolicy.java":("MAX_MEAN_CHANNEL_DELTA = 0.0080",),
