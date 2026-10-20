@@ -3,14 +3,17 @@ public final class PastelHighlightPolicyHostChecks {
     private static void ok(boolean b,String label) {
         if(!b) throw new AssertionError(label);
     }
-    private static void identical(int[] px,int r,int g,int b,String why) {
-        ok(px[0]==r&&px[1]==g&&px[2]==b,why);
+    private static void identical(int px,int r,int g,int b,String why) {
+        ok(px == ((r<<16)|(g<<8)|b),why);
     }
+    private static int red(int px) { return (px>>16)&255; }
+    private static int green(int px) { return (px>>8)&255; }
+    private static int blue(int px) { return px&255; }
     public static void main(String[] args) {
         // Strong selective protection should never invent a new peak.
-        int[] pastel=PastelHighlightPolicy.rescue(231,198,221,252,214,238,1f);
-        ok(pastel[0]<252,"strong clipped-looking pink highlight softened");
-        ok(pastel[0]>=231&&pastel[1]>=198&&pastel[2]>=221,
+        int pastel=PastelHighlightPolicy.rescue(231,198,221,252,214,238,1f);
+        ok(red(pastel)<252,"strong clipped-looking pink highlight softened");
+        ok(red(pastel)>=231&&green(pastel)>=198&&blue(pastel)>=221,
                 "no overcorrection below original");
         // Uniform candidate unchanged if it is already safe.
         identical(PastelHighlightPolicy.rescue(220,192,210,233,202,223,1f),
@@ -27,11 +30,11 @@ public final class PastelHighlightPolicyHostChecks {
                 50,248,70,"green retained");
         for(int s=0;s<=255;s+=13)
             for(int e=s;e<=255;e+=13){
-                int[] out=PastelHighlightPolicy.rescue(s,s*9/10,s*19/20,
+                int out=PastelHighlightPolicy.rescue(s,s*9/10,s*19/20,
                         e,Math.min(255,e*9/10+3),
                         Math.min(255,e*19/20+3),1f);
-                ok(out[0]>=s && out[0]<=e,"red monotonic bounded");
-                ok(out[1]>=Math.min(s*9/10,Math.min(255,e*9/10+3)),
+                ok(red(out)>=s && red(out)<=e,"red monotonic bounded");
+                ok(green(out)>=Math.min(s*9/10,Math.min(255,e*9/10+3)),
                         "green never overshot");
             }
         System.out.println("PastelHighlightPolicy deterministic host checks PASSED");
