@@ -1412,7 +1412,7 @@ jobs:
           - Preserve native P3 handling, NAFNet denoising, signing, export.
           - Experimental; compare original scene outputs and device times.
 
-          v0.4.45 PASTEL PROTECTION & HARD-GATE QC
+          v0.4.45 PASTEL PROTECTION & HARD-GATE QC (ALLOCATION-FREE)
           - Reference final bright pink/pastel highlight headroom to original
             sRGB photo; only pixels with source detail to preserve qualify.
           - Leave native Display P3 route unchanged and fail closed.
@@ -1492,7 +1492,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          TAG="photo-master-ai-v0.4.45-pastel-fastpath-r1"
+          TAG="photo-master-ai-v0.4.45-pastel-fastpath-r2"
           APK="artifact/PhotoMasterAI-v0.4.45-PASTEL-FASTPATH.apk"
           SHA="artifact/PhotoMasterAI-v0.4.45-PASTEL-FASTPATH-SHA256.txt"
           NOTES="artifact/PhotoMasterAI-v0.4.45-Performance-Notes.txt"
