@@ -1176,7 +1176,7 @@ jobs:
 
           echo "$BADGING" \
             | grep -q \
-            "versionCode='52'"
+            "versionCode='53'"
 
           echo "$BADGING" \
             | grep -q \
