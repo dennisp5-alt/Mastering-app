@@ -25,6 +25,33 @@ buildfile.write_text(build.replace("versionCode 52", "versionCode 53", 1).replac
     "versionName '0.4.44-studio-fastpath'", 1))
 java = root / "app/src/main/java/com/dennis/photomasterai"
 
+# Cache QC against bitmap identity only; mutable inputs must not be cached.
+(java / "PhotoAnalysisCache.java").write_text("""package com.dennis.photomasterai;
+
+import android.graphics.Bitmap;
+import java.util.WeakHashMap;
+
+final class PhotoAnalysisCache {
+    private static final ThreadLocal<WeakHashMap<Bitmap, PhotoAnalysis>> CACHE =
+            ThreadLocal.withInitial(WeakHashMap::new);
+
+    private PhotoAnalysisCache() {}
+
+    static PhotoAnalysis analyse(Bitmap image) {
+        WeakHashMap<Bitmap, PhotoAnalysis> map = CACHE.get();
+        PhotoAnalysis existing = map.get(image);
+        if (existing != null) return existing;
+        PhotoAnalysis computed = PhotoAnalysis.analyse(image);
+        map.put(image, computed);
+        return computed;
+    }
+
+    static void clear() {
+        CACHE.remove();
+    }
+}
+""")
+
 def load(name):
     file = java / name
     return file, file.read_text()
@@ -39,43 +66,52 @@ def one(text, old, new, label, number=1):
 # next stage receives. Reuse it; null still takes the original analysis path.
 file, s = load("IntelligentAuto.java")
 s = one(s, "PhotoAnalysis before=PhotoAnalysis.analyse(base.bitmap);",
-    "PhotoAnalysis before=base.analysis != null ? base.analysis : PhotoAnalysis.analyse(base.bitmap);",
+    "PhotoAnalysis before=PhotoAnalysisCache.analyse(base.bitmap);",
     "Auto Light/WB before QC", 2)
 s = one(s, "PhotoAnalysis.analyse(base.bitmap));",
-    "(base.analysis != null ? base.analysis : PhotoAnalysis.analyse(base.bitmap)));",
+    "(PhotoAnalysisCache.analyse(base.bitmap)));",
     "Auto report fallback")
+s = one(s, "PhotoAnalysis after=PhotoAnalysis.analyse(candidate.bitmap);",
+    "PhotoAnalysis after=PhotoAnalysisCache.analyse(candidate.bitmap);",
+    "Auto candidate QC cache", 2)
 file.write_text(s)
 
 file, s = load("StudioFinish.java")
 s = one(s, "PhotoAnalysis before=PhotoAnalysis.analyse(mastered);",
-    "PhotoAnalysis before=baseline.analysis != null ? baseline.analysis : PhotoAnalysis.analyse(mastered);",
+    "PhotoAnalysis before=PhotoAnalysisCache.analyse(mastered);",
     "Studio before QC")
 s = one(s, "PhotoAnalysis.analyse(base.bitmap));",
-    "(base.analysis != null ? base.analysis : PhotoAnalysis.analyse(base.bitmap)));",
+    "(PhotoAnalysisCache.analyse(base.bitmap)));",
     "Studio report fallback")
+s = one(s, "PhotoAnalysis after=PhotoAnalysis.analyse(c.image);",
+    "PhotoAnalysis after=PhotoAnalysisCache.analyse(c.image);",
+    "Studio candidate QC cache")
 file.write_text(s)
 
 file, s = load("CumulativeColourGuard.java")
 s = one(s, "PhotoAnalysis before=PhotoAnalysis.analyse(reference);",
-    "PhotoAnalysis before=baseline.analysis != null ? baseline.analysis : PhotoAnalysis.analyse(reference);",
+    "PhotoAnalysis before=PhotoAnalysisCache.analyse(reference);",
     "Cumulative baseline QC")
 s = one(s, "PhotoAnalysis preGuard=PhotoAnalysis.analyse(candidate);",
-    "PhotoAnalysis preGuard=studio.analysis != null ? studio.analysis : PhotoAnalysis.analyse(candidate);",
+    "PhotoAnalysis preGuard=PhotoAnalysisCache.analyse(candidate);",
     "Cumulative candidate QC")
 s = one(s, "PhotoAnalysis.analyse(reference));",
-    "(baseline.analysis != null ? baseline.analysis : PhotoAnalysis.analyse(reference)));",
+    "(PhotoAnalysisCache.analyse(reference)));",
     "Cumulative rollback QC")
 s = one(s, "PhotoAnalysis.analyse(result.bitmap));",
-    "(result.analysis != null ? result.analysis : PhotoAnalysis.analyse(result.bitmap)));",
+    "(PhotoAnalysisCache.analyse(result.bitmap)));",
     "Cumulative message QC")
+s = one(s, "PhotoAnalysis after=PhotoAnalysis.analyse(guard.image);",
+    "PhotoAnalysis after=PhotoAnalysisCache.analyse(guard.image);",
+    "Guard final QC cache")
 file.write_text(s)
 
 file, s = load("AdaptiveNeuralColour.java")
 s = one(s, "final PhotoAnalysis before = PhotoAnalysis.analyse(mastered);",
-    "final PhotoAnalysis before = baseline.analysis != null ? baseline.analysis : PhotoAnalysis.analyse(mastered);",
+    "final PhotoAnalysis before = PhotoAnalysisCache.analyse(mastered);",
     "Neural before QC")
 s = one(s, "PhotoAnalysis.analyse(base.bitmap));",
-    "(base.analysis != null ? base.analysis : PhotoAnalysis.analyse(base.bitmap)));",
+    "(PhotoAnalysisCache.analyse(base.bitmap)));",
     "Neural rollback QC")
 
 # Model coefficients and LUT basis mathematics remain byte-for-byte unchanged.
@@ -144,6 +180,9 @@ helper = """    // The model is immutable; the process owns its ONNX session unt
 s = one(s, anchor, helper + anchor, "Insert immutable model caches")
 s = one(s, 'byte[] bytes = readAsset(ctx, "lut_basis_33.bin");',
     "byte[] bytes = lutBasis(ctx);", "Reuse identical LUT bytes")
+s = one(s, "PhotoAnalysis after = PhotoAnalysis.analyse(correction.bitmap);",
+    "PhotoAnalysis after = PhotoAnalysisCache.analyse(correction.bitmap);",
+    "Neural candidate QC cache")
 file.write_text(s)
 
 # Expose reliable on-device timings: these encompass full-resolution
@@ -218,9 +257,13 @@ s = one(s,
                                                 (studioPerfT4 - studioPerfT3) / 1e6,
                                                 (studioPerfT5 - studioPerfT4) / 1e6,
                                                 (studioPerfT5 - studioPerfT0) / 1e6),
-                                        guardedResult.analysis)
+                                        PhotoAnalysisCache.analyse(guardedResult.bitmap))
                                 : guardedResult;""",
     "Guard and end-to-end Studio diagnostics")
+s = one(s, "                // Explicitly retire successful intermediate candidates",
+    "                PhotoAnalysisCache.clear();\n\n"
+    "                // Explicitly retire successful intermediate candidates",
+    "End-of-photo cache cleanup")
 file.write_text(s)
 
 # Fail closed if either branch/mode or a safety setting disappeared.
