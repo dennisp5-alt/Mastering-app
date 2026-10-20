@@ -118,8 +118,8 @@ s=replace_once(s,
                 if(r!=r1 || g!=g1 || b!=b1)status.affected++;''',
     "In-place pastel source headroom, sRGB only")
 s=replace_once(s,
-    '''                    + "\\n• Stage QC %s",''',
-    '''                    + "\\n• Original-referenced bright pastel pixels moderated %d"
+    '''                    +"\\n• Stage QC %s",''',
+    '''                    +"\\n• Original-referenced bright pastel pixels moderated %d"
                     + "\\n• Stage QC %s",''',
     "Final guard diagnostic")
 s=replace_once(s,
