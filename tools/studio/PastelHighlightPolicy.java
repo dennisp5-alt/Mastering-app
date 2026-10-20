@@ -11,9 +11,9 @@ public final class PastelHighlightPolicy {
     private static int maximum(int r,int g,int b) {
         return Math.max(r,Math.max(g,b));
     }
-    public static int[] rescue(
+    public static int rescue(
             int sr,int sg,int sb, int r,int g,int b, float existingPinkMask) {
-        int[] unchanged = {r,g,b};
+        int unchanged = pack(r,g,b);
         int originalPeak=maximum(sr,sg,sb);
         int newPeak=maximum(r,g,b);
         // Original already near clipped: no detail can be recovered by
@@ -29,9 +29,10 @@ public final class PastelHighlightPolicy {
                 (existingPinkMask-.35f)/.55f);
         float mix=.80f*sourceHeadroom*bloom*increase*selection;
         if(mix <= 0.0001f) return unchanged;
-        return new int[]{
-            roundBlend(r,sr,mix),roundBlend(g,sg,mix),roundBlend(b,sb,mix)
-        };
+        return pack(roundBlend(r,sr,mix),roundBlend(g,sg,mix),roundBlend(b,sb,mix));
+    }
+    private static int pack(int r,int g,int b) {
+        return (r<<16)|(g<<8)|b;
     }
     private static int roundBlend(int candidate,int source,float mix) {
         return Math.max(0,Math.min(255,
