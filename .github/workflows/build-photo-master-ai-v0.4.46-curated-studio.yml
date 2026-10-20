@@ -1,0 +1,1555 @@
+name: Build Photo Master AI v0.4.46 Curated Studio
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-photo-master-ai-v0.4.46-curated-studio.yml'
+      - 'tools/apply_v0446_curated_studio.py'
+      - 'tools/apply_v0445_quality_performance.py'
+      - 'tools/studio/PastelHighlightPolicy.java'
+      - 'tools/studio/PastelHighlightPolicyHostChecks.java'
+      - 'tools/apply_v0444_studio_performance.py'
+      - 'tools/apply_v0443_cumulative_colour_guard.py'
+      - 'tools/studio/CumulativeColourGuard.java'
+      - 'tools/studio/SelectiveColourPolicy.java'
+      - 'tools/studio/SelectiveColourPolicyHostChecks.java'
+      - 'tools/apply_v0442_auto_light_wb.py'
+      - 'tools/studio/AutoTonePolicy.java'
+      - 'tools/studio/IntelligentAuto.java'
+      - 'tools/studio/AutoTonePolicyHostChecks.java'
+      - 'tools/apply_v0441_neural_formatter_fix.py'
+      - 'tools/studio/NeuralFormatRegressionHostChecks.java'
+      - 'tools/apply_v0440_studio_lab.py'
+      - 'tools/studio/StudioFinish.java'
+      - 'tools/studio/StudioFinishPolicy.java'
+      - 'tools/apply_v0439_p3_neural_lab.py'
+      - 'tools/neural_colour/DisplayP3RenderMethod.txt'
+      - 'tools/apply_v0438_neural_colour_experiment.py'
+      - 'tools/neural_colour/AdaptiveNeuralColour.java'
+      - 'tools/apply_v0437_distributed_streetlights.py'
+      - 'tools/apply_v0436_night_spatial_continuity.py'
+      - 'tools/apply_stable_signing.py'
+      - 'tools/apply_v0434_night_texture.py'
+      - 'tools/apply_v0435_night_adaptive_backoff.py'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Photo Master AI v0.4.46 Curated Studio
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository with history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Recover exact successful v0.4.32 source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          V0432_COMMIT="736bb4bcb7dc3efe7dec8143cbb1a822affa97ce"
+
+          git cat-file -e "${V0432_COMMIT}^{commit}" || {
+            echo "::error::Successful v0.4.32 commit unavailable"
+            exit 1
+          }
+
+          git show \
+            "${V0432_COMMIT}:.github/workflows/build-photo-master-ai-v0.4.32-night-light-detail-guard.yml" \
+            > /tmp/v0432.yml
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          lines = Path('/tmp/v0432.yml').read_text().splitlines()
+
+          def extract_step(name, destination):
+              start = None
+
+              for i, line in enumerate(lines):
+                  if line.strip() == '- name: ' + name:
+                      start = i
+                      break
+
+              if start is None:
+                  raise RuntimeError(
+                      'Workflow step not found: ' + name
+                  )
+
+              run = None
+
+              for i in range(start, len(lines)):
+                  if lines[i].strip() == 'run: |':
+                      run = i
+                      break
+
+                  if (
+                      i > start
+                      and lines[i].startswith('      - name:')
+                  ):
+                      break
+
+              if run is None:
+                  raise RuntimeError(
+                      'Run block not found: ' + name
+                  )
+
+              body = []
+
+              for line in lines[run + 1:]:
+                  if line.startswith('      - name:'):
+                      break
+
+                  if not line.strip():
+                      body.append('')
+
+                  elif line.startswith('          '):
+                      body.append(line[10:])
+
+                  else:
+                      raise RuntimeError(
+                          'Unexpected indentation while extracting: '
+                          + name
+                      )
+
+              Path(destination).write_text(
+                  '\n'.join(body) + '\n'
+              )
+
+          extract_step(
+              'Recover exact successful v0.4.31 source',
+              '/tmp/recover-v0431.sh'
+          )
+
+          extract_step(
+              'Apply v0.4.32 Night Light Detail Guard',
+              '/tmp/apply-v0432.sh'
+          )
+          PY
+
+          bash /tmp/recover-v0431.sh
+
+          PROJECT="$(
+            find photomaster-v044-build \
+              -type f \
+              \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \) \
+              -printf '%h\n' \
+              | head -n 1
+          )"
+
+          test -n "$PROJECT" || {
+            echo "::error::Recovered project not found"
+            exit 1
+          }
+
+          export PROJECT
+
+          bash /tmp/apply-v0432.sh
+
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+
+          grep -q "versionCode 41" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q "versionName '0.4.32'" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q "effectiveStrength" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+          grep -q "edgeProtection" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+          grep -q "localEdgeStrength" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
+
+          grep -q "protectedEdgePixels" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
+
+          grep -q "MAX_MEAN_CHANNEL_DELTA = 0.0080" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+          grep -q "MAX_CHANNEL_CODE_DELTA = 8" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
+
+          echo "Exact successful v0.4.32 source recovered"
+
+      - name: Apply v0.4.33 Night Light QC Accounting Fix
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          project = Path(os.environ['PROJECT'])
+
+          # -------------------------------------------------------
+          # VERSION
+          # -------------------------------------------------------
+
+          build_file = project / 'app/build.gradle'
+          build = build_file.read_text()
+
+          if 'versionCode 41' not in build:
+              raise RuntimeError(
+                  'v0.4.32 versionCode not found'
+              )
+
+          if "versionName '0.4.32'" not in build:
+              raise RuntimeError(
+                  'v0.4.32 versionName not found'
+              )
+
+          build = build.replace(
+              'versionCode 41',
+              'versionCode 42',
+              1
+          )
+
+          build = build.replace(
+              "versionName '0.4.32'",
+              "versionName '0.4.33'",
+              1
+          )
+
+          build_file.write_text(build)
+
+          # -------------------------------------------------------
+          # POLICY ACCOUNTING HELPERS
+          # -------------------------------------------------------
+
+          policy_file = project / (
+              'app/src/main/java/com/dennis/'
+              'photomasterai/NightLightControlPolicy.java'
+          )
+
+          policy = policy_file.read_text()
+
+          if 'MAX_MEAN_CHANNEL_DELTA = 0.0080' not in policy:
+              raise RuntimeError(
+                  'Night Light mean-delta safety ceiling changed unexpectedly'
+              )
+
+          helper_anchor = (
+              '    private static void add('
+          )
+
+          if helper_anchor not in policy:
+              raise RuntimeError(
+                  'Night Light policy helper anchor not found'
+              )
+
+          accounting_helpers = r'''
+              public static double globalMeanChannelDelta(
+                      double channelDeltaSum,
+                      long totalPixels) {
+
+                  if (
+                      totalPixels <= 0
+                              || !Double.isFinite(
+                                      channelDeltaSum)
+                              || channelDeltaSum <= 0.0) {
+
+                      return 0.0;
+                  }
+
+                  return channelDeltaSum
+                          / (double)
+                          totalPixels;
+              }
+
+              public static double activeMeanChannelDelta(
+                      double channelDeltaSum,
+                      long activePixels) {
+
+                  if (
+                      activePixels <= 0
+                              || !Double.isFinite(
+                                      channelDeltaSum)
+                              || channelDeltaSum <= 0.0) {
+
+                      return 0.0;
+                  }
+
+                  return channelDeltaSum
+                          / (double)
+                          activePixels;
+              }
+
+          '''
+
+          policy = policy.replace(
+              helper_anchor,
+              accounting_helpers + helper_anchor,
+              1
+          )
+
+          policy, rename_count = re.subn(
+              r'\bmeanChannelDelta\b',
+              'globalMeanChannelDelta',
+              policy
+          )
+
+          if rename_count < 3:
+              raise RuntimeError(
+                  'Night Light policy mean-delta rename incomplete'
+              )
+
+          old_reason = (
+              '"mean channel delta %.4f > %.4f"'
+          )
+
+          new_reason = (
+              '"global mean channel delta %.4f > %.4f"'
+          )
+
+          if old_reason not in policy:
+              raise RuntimeError(
+                  'Night Light QC reason anchor not found'
+              )
+
+          policy = policy.replace(
+              old_reason,
+              new_reason,
+              1
+          )
+
+          policy_file.write_text(policy)
+
+          # -------------------------------------------------------
+          # ENGINE ACCOUNTING FIX
+          # -------------------------------------------------------
+
+          engine_file = project / (
+              'app/src/main/java/com/dennis/'
+              'photomasterai/NightLightControlIntelligence.java'
+          )
+
+          engine = engine_file.read_text()
+
+          old_mean_pattern = re.compile(
+              r'double\s+meanChannelDelta\s*=\s*'
+              r'summary\.channelDeltaCount\s*>\s*0\s*'
+              r'\?\s*summary\.channelDeltaSum\s*'
+              r'/\s*summary\.channelDeltaCount\s*'
+              r':\s*0\.0\s*;'
+          )
+
+          new_mean_block = r'''double globalMeanChannelDelta =
+                          NightLightControlPolicy
+                                  .globalMeanChannelDelta(
+                                          summary.channelDeltaSum,
+                                          summary.totalPixels);
+
+                  double activeMeanChannelDelta =
+                          NightLightControlPolicy
+                                  .activeMeanChannelDelta(
+                                          summary.channelDeltaSum,
+                                          summary.activePixels);'''
+
+          engine, mean_count = old_mean_pattern.subn(
+              new_mean_block,
+              engine,
+              count=1
+          )
+
+          if mean_count != 1:
+              raise RuntimeError(
+                  'Night Light mean-delta accounting replacement failed'
+              )
+
+          # -------------------------------------------------------
+          # QC MUST USE GLOBAL MEAN
+          # -------------------------------------------------------
+
+          qc_pattern = re.compile(
+              r'(hotspotReduction,\s*'
+              r'darkSkyMeanDelta,\s*'
+              r'activeFraction,\s*)'
+              r'meanChannelDelta'
+              r'(\s*,\s*'
+              r'summary\.maxChannelDelta\s*'
+              r'\)\s*;)'
+          )
+
+          engine, qc_count = qc_pattern.subn(
+              r'\1globalMeanChannelDelta\2',
+              engine,
+              count=1
+          )
+
+          if qc_count != 1:
+              raise RuntimeError(
+                  'Night Light QC global-mean routing failed'
+              )
+
+          # -------------------------------------------------------
+          # REPORT GLOBAL + ACTIVE MEAN SEPARATELY
+          # -------------------------------------------------------
+
+          old_report_literal = (
+              '"• Active pixels %.1f%% | dark-sky movement %.5f '
+              '| mean channel delta %.4f | max channel delta %.4f%n"'
+          )
+
+          new_report_literal = (
+              '"• Active pixels %.1f%% | dark-sky movement %.5f '
+              '| global mean channel delta %.4f '
+              '| active mean channel delta %.4f '
+              '| max channel delta %.4f%n"'
+          )
+
+          if old_report_literal not in engine:
+              raise RuntimeError(
+                  'Night Light mean-delta report anchor not found'
+              )
+
+          engine = engine.replace(
+              old_report_literal,
+              new_report_literal,
+              1
+          )
+
+          report_args_pattern = re.compile(
+              r'(activeFraction\s*\*\s*100\.0,\s*'
+              r'darkSkyMeanDelta,\s*)'
+              r'meanChannelDelta'
+              r'(\s*,\s*'
+              r'summary\.maxChannelDelta\s*'
+              r'\)\s*\);)'
+          )
+
+          report_args_replacement = (
+              r'\1globalMeanChannelDelta,'
+              '\n'
+              '                                  '
+              'activeMeanChannelDelta'
+              r'\2'
+          )
+
+          engine, report_count = report_args_pattern.subn(
+              report_args_replacement,
+              engine,
+              count=1
+          )
+
+          if report_count != 1:
+              raise RuntimeError(
+                  'Night Light global/active report routing failed'
+              )
+
+          engine_file.write_text(engine)
+
+          # -------------------------------------------------------
+          # ACCOUNTING HOST CHECKS
+          # -------------------------------------------------------
+
+          host_file = project / (
+              'tools/'
+              'NightLightQcAccountingHostChecks.java'
+          )
+
+          host_file.write_text(r'''package com.dennis.photomasterai;
+
+          public final class NightLightQcAccountingHostChecks {
+
+              public static void main(
+                      String[] args) {
+
+                  long totalPixels =
+                          1000;
+
+                  long activePixels =
+                          229;
+
+                  double activeMeanTarget =
+                          0.0239;
+
+                  double channelDeltaSum =
+                          activeMeanTarget
+                                  * activePixels;
+
+                  double globalMean =
+                          NightLightControlPolicy
+                                  .globalMeanChannelDelta(
+                                          channelDeltaSum,
+                                          totalPixels);
+
+                  double activeMean =
+                          NightLightControlPolicy
+                                  .activeMeanChannelDelta(
+                                          channelDeltaSum,
+                                          activePixels);
+
+                  require(
+                          Math.abs(
+                                  globalMean
+                                          - 0.0054731)
+                                  < 0.0000001,
+                          "global mean accounting incorrect");
+
+                  require(
+                          Math.abs(
+                                  activeMean
+                                          - 0.0239)
+                                  < 0.0000001,
+                          "active mean accounting incorrect");
+
+                  require(
+                          globalMean
+                                  < NightLightControlPolicy
+                                          .MAX_MEAN_CHANNEL_DELTA,
+                          "global movement should remain below existing QC ceiling");
+
+                  require(
+                          activeMean
+                                  > NightLightControlPolicy
+                                          .MAX_MEAN_CHANNEL_DELTA,
+                          "regression setup must distinguish active from global mean");
+
+                  NightLightControlPolicy.QcResult correctBasis =
+                          NightLightControlPolicy.evaluateCandidate(
+                                  0.0403,
+                                  0.0397,
+                                  0.0081,
+                                  0.0081,
+                                  0.0169,
+                                  0.0169,
+                                  0.844,
+                                  0.813,
+                                  0.194,
+                                  0.194,
+                                  0.000,
+                                  0.000,
+                                  0.000,
+                                  0.000,
+                                  0.0248,
+                                  0.0000,
+                                  0.229,
+                                  globalMean,
+                                  0.0314);
+
+                  require(
+                          correctBasis.accepted,
+                          "safe representative candidate should pass on global accounting");
+
+                  NightLightControlPolicy.QcResult wrongBasis =
+                          NightLightControlPolicy.evaluateCandidate(
+                                  0.0403,
+                                  0.0397,
+                                  0.0081,
+                                  0.0081,
+                                  0.0169,
+                                  0.0169,
+                                  0.844,
+                                  0.813,
+                                  0.194,
+                                  0.194,
+                                  0.000,
+                                  0.000,
+                                  0.000,
+                                  0.000,
+                                  0.0248,
+                                  0.0000,
+                                  0.229,
+                                  activeMean,
+                                  0.0314);
+
+                  require(
+                          !wrongBasis.accepted,
+                          "active-pixel mean must not masquerade as global mean");
+
+                  require(
+                          wrongBasis.reason.contains(
+                                  "global mean channel delta"),
+                          "QC accounting rejection label missing");
+
+                  require(
+                          NightLightControlPolicy
+                                  .globalMeanChannelDelta(
+                                          1.0,
+                                          0)
+                                  == 0.0,
+                          "zero total-pixel denominator must return zero");
+
+                  require(
+                          NightLightControlPolicy
+                                  .activeMeanChannelDelta(
+                                          1.0,
+                                          0)
+                                  == 0.0,
+                          "zero active-pixel denominator must return zero");
+
+                  System.out.println(
+                          "NightLightQcAccountingHostChecks passed");
+              }
+
+              private static void require(
+                      boolean condition,
+                      String message) {
+
+                  if (!condition)
+                      throw new AssertionError(
+                              message);
+              }
+          }
+          ''')
+
+          print(
+              'v0.4.33 applied: Night Light QC accounting now uses '
+              'image-wide mean channel movement while retaining '
+              'active-pixel movement as a diagnostic; '
+              'all safety ceilings remain unchanged'
+          )
+          PY
+
+          grep -q "versionCode 42" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q "versionName '0.4.33'" \
+            "$PROJECT/app/build.gradle"
+
+          grep -q "MAX_MEAN_CHANNEL_DELTA = 0.0080" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+          grep -q "MAX_CHANNEL_DELTA = 0.0320" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+          grep -q "globalMeanChannelDelta" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+          grep -q "activeMeanChannelDelta" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+          grep -q "global mean channel delta" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+          grep -q "globalMeanChannelDelta" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
+
+          grep -q "activeMeanChannelDelta" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
+
+          grep -q "global mean channel delta" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
+
+          grep -q "active mean channel delta" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
+
+          grep -q "NightLightQcAccountingHostChecks" \
+            "$PROJECT/tools/NightLightQcAccountingHostChecks.java"
+
+          grep -q "MAX_CHANNEL_CODE_DELTA = 8" \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
+
+      - name: Apply v0.4.34 Night Light Texture Preservation
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+
+          python3             tools/apply_v0434_night_texture.py             "$PROJECT"
+
+          grep -q "versionCode 43"             "$PROJECT/app/build.gradle"
+
+          grep -q "versionName '0.4.34'"             "$PROJECT/app/build.gradle"
+
+          grep -q "textureProtection"             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+          grep -q "cap = 0.225"             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+          grep -q "localTextureStrength"             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
+
+          grep -q "MAX_MEAN_CHANNEL_DELTA = 0.0080"             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+      - name: Apply v0.4.35 Night Light Adaptive Safe Strength
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+
+          python3             tools/apply_v0435_night_adaptive_backoff.py             "$PROJECT"
+
+          grep -q "versionCode 44"             "$PROJECT/app/build.gradle"
+
+          grep -q "versionName '0.4.35'"             "$PROJECT/app/build.gradle"
+
+          grep -q "MAX_ADAPTIVE_ATTEMPTS"             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+          grep -q "adaptiveStrengthFactor"             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+          grep -q "adaptive safe-strength search exhausted"             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
+
+          grep -q "Night-light control ACCEPTED — adaptive strength"             "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
+
+      - name: Apply v0.4.36 Night Light Spatial Continuity
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+
+          python3 tools/apply_v0436_night_spatial_continuity.py "$PROJECT"
+
+          grep -q "versionCode 45" "$PROJECT/app/build.gradle"
+          grep -q "versionName '0.4.36'" "$PROJECT/app/build.gradle"
+          grep -q "cellFeather" "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+          grep -q "haloPixels" "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
+          grep -q "localMeanLuma" "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
+          grep -q "NightLightSpatialContinuityHostChecks" "$PROJECT/tools/NightLightSpatialContinuityHostChecks.java"
+          grep -q "MAX_MEAN_CHANNEL_DELTA = 0.0080" "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+          grep -q "MAX_CHANNEL_DELTA = 0.0320" "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+      - name: Apply v0.4.37 distributed streetlight detection
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+
+          python3 tools/apply_v0437_distributed_streetlights.py "$PROJECT"
+
+          grep -q "versionCode 46" "$PROJECT/app/build.gradle"
+          grep -q "versionName '0.4.37'" "$PROJECT/app/build.gradle"
+          grep -q "distributedStreetlightPlan" "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+          grep -q "distributedLampCells" "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlIntelligence.java"
+          grep -q "NightLightDistributedStreetlightHostChecks" "$PROJECT/tools/NightLightDistributedStreetlightHostChecks.java"
+          grep -q "MAX_MEAN_CHANNEL_DELTA = 0.0080" "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+          grep -q "MAX_CHANNEL_DELTA = 0.0320" "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+      - name: Create isolated Neural Colour Lab source
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+          python3 tools/apply_v0438_neural_colour_experiment.py "$PROJECT"
+          grep -q "versionCode 47" "$PROJECT/app/build.gradle"
+          grep -q "versionName '0.4.38-neural-lab'" "$PROJECT/app/build.gradle"
+          grep -q "applicationId 'com.dennis.photomasterai.neurallab'" "$PROJECT/app/build.gradle"
+          grep -q "AI MAX + LUT" "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+          grep -q "AdaptiveNeuralColour.apply(this, originalBitmap, result)" "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+          grep -q "MAX_MEAN_CHANNEL_DELTA = 0.0080" "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+      - name: Add native Display P3 neural delta and profile safeguards
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+          python3 tools/apply_v0439_p3_neural_lab.py "$PROJECT"
+          grep -q "versionCode 48" "$PROJECT/app/build.gradle"
+          grep -q "versionName '0.4.39-p3-neural-lab'" "$PROJECT/app/build.gradle"
+          grep -q "applicationId 'com.dennis.photomasterai.neurallab.p3'" "$PROJECT/app/build.gradle"
+          grep -q "AI MAX + LUT" "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+          grep -q "P3-safe additive neural correction" "$PROJECT/app/src/main/java/com/dennis/photomasterai/AdaptiveNeuralColour.java"
+          grep -q "MIN_DETAIL_RETAINED = .985" "$PROJECT/app/src/main/java/com/dennis/photomasterai/AdaptiveNeuralColour.java"
+          grep -q "MAX_RING_INCREASE = .006" "$PROJECT/app/src/main/java/com/dennis/photomasterai/AdaptiveNeuralColour.java"
+          grep -q "MAX_MEAN_CHANNEL_DELTA = 0.0080" "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+          grep -q "MAX_CHANNEL_DELTA = 0.0320" "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+      - name: Apply v0.4.40 unified studio finish, neural diagnostics and QC
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+          python3 tools/apply_v0440_studio_lab.py "$PROJECT"
+          grep -q "versionCode 49" "$PROJECT/app/build.gradle"
+          grep -q "versionName '0.4.40-studio-lab'" "$PROJECT/app/build.gradle"
+          grep -q "applicationId 'com.dennis.photomasterai.studiolab'" "$PROJECT/app/build.gradle"
+          grep -q "AI MAX + STUDIO" "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+          grep -q "StudioFinish.apply(originalBitmap, neuralOrBaseline)" "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+          grep -q "renderP3" "$PROJECT/app/src/main/java/com/dennis/photomasterai/AdaptiveNeuralColour.java"
+          grep -q "MIN_DETAIL_RETAINED = 0.985" "$PROJECT/app/src/main/java/com/dennis/photomasterai/StudioFinishPolicy.java"
+
+      - name: Test Studio Master safety and photographic tonal limits
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+          javac -d /tmp/studio-hostchecks \
+            "$PROJECT/app/src/main/java/com/dennis/photomasterai/StudioFinishPolicy.java" \
+            "$PROJECT/tools/StudioFinishPolicyHostChecks.java"
+          java -cp /tmp/studio-hostchecks \
+            com.dennis.photomasterai.StudioFinishPolicyHostChecks
+
+      - name: Patch and verify v0.4.41 accepted-neural report safety
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+          python3 tools/apply_v0441_neural_formatter_fix.py "$PROJECT"
+          javac -d /tmp/neural-format-checks \
+            tools/studio/NeuralFormatRegressionHostChecks.java
+          java -cp /tmp/neural-format-checks \
+            com.dennis.photomasterai.NeuralFormatRegressionHostChecks
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          root=Path(os.environ['PROJECT'])
+          s=(root/'app/src/main/java/com/dennis/photomasterai/AdaptiveNeuralColour.java').read_text()
+          start=s.index('String info = String.format(Locale.US,')
+          end=s.index('return new PhotoMasterEngine.Result(',start)
+          assert 'attemptTrace.toString()' not in s[start:end], (
+              'Preformatted percent signs found inside String.format argument')
+          assert '+ info + attemptTrace.toString()' in s, (
+              'Accepted LUT result no longer includes trial diagnostics')
+          build=(root/'app/build.gradle').read_text()
+          assert "versionCode 50" in build
+          assert "versionName '0.4.41-studio-lab'" in build
+          assert "applicationId 'com.dennis.photomasterai.studiolab'" in build
+          studio=(root/'app/src/main/java/com/dennis/photomasterai/StudioFinishPolicy.java').read_text()
+          assert 'MIN_DETAIL_RETAINED = 0.985' in studio
+          print('PASS accepted-neural report formatting and unchanged Studio QA limits')
+          PY
+
+      - name: Apply and verify Auto Light + Auto White Balance with unchanged QC
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+          python3 tools/apply_v0442_auto_light_wb.py "$PROJECT"
+          javac -d /tmp/autotone-host-check \
+            tools/studio/AutoTonePolicy.java \
+            tools/studio/AutoTonePolicyHostChecks.java
+          java -cp /tmp/autotone-host-check \
+            com.dennis.photomasterai.AutoTonePolicyHostChecks
+          grep -q "versionCode 51" "$PROJECT/app/build.gradle"
+          grep -q "versionName '0.4.42-studio-auto-wb-lab'" "$PROJECT/app/build.gradle"
+          grep -q "applicationId 'com.dennis.photomasterai.studiolab'" "$PROJECT/app/build.gradle"
+          grep -q "AUTO LIGHT" "$PROJECT/app/src/main/java/com/dennis/photomasterai/IntelligentAuto.java"
+          grep -q "AUTO WHITE BALANCE" "$PROJECT/app/src/main/java/com/dennis/photomasterai/IntelligentAuto.java"
+          grep -q "IntelligentAuto.autoWhiteBalance" "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+          grep -q "MAX_MEAN_CHANNEL_DELTA = 0.0080" "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+
+      - name: Apply and test regional cumulative colour QC
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+          python3 tools/apply_v0443_cumulative_colour_guard.py "$PROJECT"
+          javac -d /tmp/colour-guard-test \
+            tools/studio/SelectiveColourPolicy.java \
+            tools/studio/SelectiveColourPolicyHostChecks.java
+          java -cp /tmp/colour-guard-test \
+            com.dennis.photomasterai.SelectiveColourPolicyHostChecks
+          grep -q "versionCode 52" "$PROJECT/app/build.gradle"
+          grep -q "versionName '0.4.43-studio-colour-guard'" "$PROJECT/app/build.gradle"
+          grep -q "applicationId 'com.dennis.photomasterai.studiolab'" "$PROJECT/app/build.gradle"
+          grep -q "CumulativeColourGuard.apply(" "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+          grep -q "MAX_PINK_CHANNEL_DELTA = 5" "$PROJECT/app/src/main/java/com/dennis/photomasterai/SelectiveColourPolicy.java"
+          grep -q "MIN_DETAIL_RETAINED = .985" "$PROJECT/app/src/main/java/com/dennis/photomasterai/SelectiveColourPolicy.java"
+          grep -q "MAX_MEAN_CHANNEL_DELTA = 0.0080" "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+          echo "Original four-stage Studio pipeline and downstream regional QC verified"
+
+      - name: Apply v0.4.44 pixel-preserving performance fast path
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+          python3 tools/apply_v0444_studio_performance.py "$PROJECT"
+          grep -q "versionCode 53" "$PROJECT/app/build.gradle"
+          grep -q "versionName '0.4.44-studio-fastpath'" "$PROJECT/app/build.gradle"
+          grep -q "applicationId 'com.dennis.photomasterai.studiolab'" "$PROJECT/app/build.gradle"
+          grep -q 'cachedClassifier' "$PROJECT/app/src/main/java/com/dennis/photomasterai/AdaptiveNeuralColour.java"
+          grep -q 'STUDIO PERFORMANCE' "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+          grep -q 'MAX_PINK_CHANNEL_DELTA = 5' "$PROJECT/app/src/main/java/com/dennis/photomasterai/SelectiveColourPolicy.java"
+          grep -q 'MIN_DETAIL_RETAINED = .985' "$PROJECT/app/src/main/java/com/dennis/photomasterai/SelectiveColourPolicy.java"
+          grep -q 'MAX_MEAN_CHANNEL_DELTA = 0.0080' "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+          echo "v0.4.44 warm AI colour model, reusable QC, unchanged pixel algorithms and safety gates verified"
+
+      - name: Apply v0.4.45 early QC and protect pastel highlights
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+          python3 tools/apply_v0445_quality_performance.py "$PROJECT"
+          javac -d /tmp/pastel-guard-hostchecks \
+            tools/studio/SelectiveColourPolicy.java \
+            tools/studio/PastelHighlightPolicy.java \
+            tools/studio/PastelHighlightPolicyHostChecks.java
+          java -cp /tmp/pastel-guard-hostchecks \
+            com.dennis.photomasterai.PastelHighlightPolicyHostChecks
+          grep -q "versionCode 54" "$PROJECT/app/build.gradle"
+          grep -q "versionName '0.4.45-pastel-qc-fastpath'" "$PROJECT/app/build.gradle"
+          grep -q "applicationId 'com.dennis.photomasterai.studiolab'" "$PROJECT/app/build.gradle"
+          grep -q "PastelHighlightPolicy.rescue" "$PROJECT/app/src/main/java/com/dennis/photomasterai/CumulativeColourGuard.java"
+          grep -q "MIN_DETAIL_RETAINED = .985" "$PROJECT/app/src/main/java/com/dennis/photomasterai/SelectiveColourPolicy.java"
+          grep -q "MAX_PINK_CHANNEL_DELTA = 5" "$PROJECT/app/src/main/java/com/dennis/photomasterai/SelectiveColourPolicy.java"
+          grep -q "MAX_MEAN_CHANNEL_DELTA = 0.0080" "$PROJECT/app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java"
+          echo "Photo Master AI v0.4.45 safety and quality checks retained"
+
+      - name: Apply and test v0.4.46 curated Studio / AI MAX interface
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+        run: |
+          set -euo pipefail
+          python3 tools/apply_v0446_curated_studio.py "$PROJECT"
+          grep -q "versionCode 55" "$PROJECT/app/build.gradle"
+          grep -q "versionName '0.4.46-curated-studio'" "$PROJECT/app/build.gradle"
+          grep -q "applicationId 'com.dennis.photomasterai.studiolab'" "$PROJECT/app/build.gradle"
+          grep -q 'String\[\] labels = {"AI MAX + STUDIO", "AI MAX"};' "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+          grep -q 'private boolean studioMasterExperiment = true;' "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+          grep -q 'CumulativeColourGuard.apply(' "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+          grep -q 'STUDIO PERFORMANCE' "$PROJECT/app/src/main/java/com/dennis/photomasterai/MainActivity.java"
+          echo "Curated Studio default and unchanged image processing verified"
+
+      - name: Recover and verify approved AutoPhoto neural LUT models
+        shell: bash
+        env:
+          PROJECT: ${{ steps.source.outputs.project }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/autophoto-reference
+          gh release download autophoto-quality-preserving-v0.4.7 \
+            --repo dennisp5-alt/s23-ultra-camera-app \
+            --pattern 'app-debug.apk' \
+            --dir /tmp/autophoto-reference
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile,hashlib,os
+          reference=Path('/tmp/autophoto-reference/app-debug.apk')
+          assert reference.stat().st_size>1_000_000
+          output=Path(os.environ['PROJECT'])/'app/src/main/assets'
+          output.mkdir(parents=True,exist_ok=True)
+          expected={
+              'lut_classifier.onnx':(1084888,'52fa4fcd1a9ac92148207f850cb046993567cab23c21df902b3ff2dac0d92acc'),
+              'lut_basis_33.bin':(1293732,'f2279e4b88cd9d5e50c2f72e37b99a7dad050ac5b32af8add5b0f933448594d7')
+          }
+          with zipfile.ZipFile(reference) as z:
+              for name,(size,digest) in expected.items():
+                  data=z.read('assets/'+name)
+                  assert len(data)==size and hashlib.sha256(data).hexdigest()==digest, 'Pretrained model mismatch: '+name
+                  (output/name).write_bytes(data)
+                  print('Pinned neural model: '+name)
+          PY
+          rm -f /tmp/autophoto-reference/app-debug.apk
+
+      - name: Fetch pinned NAFNet-SIDD model
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+
+          ASSETS="$PROJECT/app/src/main/assets"
+          MODEL="$ASSETS/nafnet_sidd_width32_fp16.tflite"
+
+          mkdir -p "$ASSETS"
+
+          URL='https://huggingface.co/litert-community/NAFNet-SIDD-width32-LiteRT/resolve/main/nafnet_sidd_width32_fp16.tflite?download=true'
+
+          curl \
+            --fail \
+            --location \
+            --retry 5 \
+            --retry-all-errors \
+            --connect-timeout 30 \
+            --output "$MODEL.tmp" \
+            "$URL"
+
+          mv "$MODEL.tmp" "$MODEL"
+
+          test "$(stat -c%s "$MODEL")" -eq 62454048 || {
+            echo "::error::Unexpected NAFNet model size"
+            exit 1
+          }
+
+          echo \
+            'f8fbaa422411683c53e802cf7cc7cf9be0a0de00886ad4af057232e26b172a0c  '"$MODEL" \
+            | sha256sum -c -
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Run all safety host checks
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf host-checks
+          mkdir host-checks
+
+          javac -d host-checks \
+            app/src/main/java/com/dennis/photomasterai/DeepPixelRepair.java \
+            app/src/main/java/com/dennis/photomasterai/RepairSafetyPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralDenoisePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/SocialSourcePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NeuralIntegrityPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/OpticalFringePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/VignettingPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/PersonEvidencePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/HighRingFinishingPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/GeometryPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/LocalTonePolicy.java \
+            app/src/main/java/com/dennis/photomasterai/MixedLightColourPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/PerceptualImprovementPolicy.java \
+            app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java \
+            tools/DeepPixelRepairHostChecks.java \
+            tools/RepairSafetyPolicyHostChecks.java \
+            tools/NeuralDenoisePolicyHostChecks.java \
+            tools/SocialSourcePolicyHostChecks.java \
+            tools/SmoothSurfaceGuardHostChecks.java \
+            tools/NeuralIntegrityPolicyHostChecks.java \
+            tools/OpticalFringePolicyHostChecks.java \
+            tools/VignettingPolicyHostChecks.java \
+            tools/PersonEvidencePolicyHostChecks.java \
+            tools/HighBlendDetailGuardHostChecks.java \
+            tools/HighRingFinishingPolicyHostChecks.java \
+            tools/GeometryPolicyHostChecks.java \
+            tools/LocalTonePolicyHostChecks.java \
+            tools/MixedLightColourPolicyHostChecks.java \
+            tools/MixedLightContinuityPolicyHostChecks.java \
+            tools/PerceptualImprovementPolicyHostChecks.java \
+            tools/NightLightControlPolicyHostChecks.java \
+            tools/NightLightDetailGuardHostChecks.java \
+            tools/NightLightQcAccountingHostChecks.java
+
+          for C in \
+            DeepPixelRepairHostChecks \
+            RepairSafetyPolicyHostChecks \
+            NeuralDenoisePolicyHostChecks \
+            SocialSourcePolicyHostChecks \
+            SmoothSurfaceGuardHostChecks \
+            NeuralIntegrityPolicyHostChecks \
+            OpticalFringePolicyHostChecks \
+            VignettingPolicyHostChecks \
+            PersonEvidencePolicyHostChecks \
+            HighBlendDetailGuardHostChecks \
+            HighRingFinishingPolicyHostChecks \
+            GeometryPolicyHostChecks \
+            LocalTonePolicyHostChecks \
+            MixedLightColourPolicyHostChecks \
+            MixedLightContinuityPolicyHostChecks \
+            PerceptualImprovementPolicyHostChecks \
+            NightLightControlPolicyHostChecks \
+            NightLightDetailGuardHostChecks \
+            NightLightQcAccountingHostChecks
+          do
+            java \
+              -cp host-checks \
+              "com.dennis.photomasterai.$C"
+          done
+
+      - name: Run v0.4.34 texture preservation host check
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf host-checks-v0434
+          mkdir host-checks-v0434
+
+          javac -d host-checks-v0434             app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java             tools/NightLightTexturePreservationHostChecks.java
+
+          java             -cp host-checks-v0434             com.dennis.photomasterai.NightLightTexturePreservationHostChecks
+
+      - name: Run v0.4.35 adaptive backoff host check
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf host-checks-v0435
+          mkdir host-checks-v0435
+
+          javac -d host-checks-v0435             app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java             tools/NightLightAdaptiveBackoffHostChecks.java
+
+          java             -cp host-checks-v0435             com.dennis.photomasterai.NightLightAdaptiveBackoffHostChecks
+
+      - name: Run v0.4.36 spatial continuity policy regression check
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p host-checks-v0436
+          javac -d host-checks-v0436 \
+            app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java \
+            tools/NightLightSpatialContinuityHostChecks.java
+          java -cp host-checks-v0436 \
+            com.dennis.photomasterai.NightLightSpatialContinuityHostChecks
+
+      - name: Verify v0.4.37 distributed streetlight QC invariants
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p host-checks-v0437
+          javac -d host-checks-v0437 \
+            app/src/main/java/com/dennis/photomasterai/NightLightControlPolicy.java \
+            tools/NightLightDistributedStreetlightHostChecks.java
+          java -cp host-checks-v0437 \
+            com.dennis.photomasterai.NightLightDistributedStreetlightHostChecks
+
+      - name: Restore stable Photo Master debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: photo-master-ai-debug-keystore-v1
+
+      - name: Create signing key on first build
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "$HOME/.android"
+
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+
+            keytool \
+              -genkeypair \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Photo Master AI,O=Dennis Photo Master,C=AU" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -noprompt
+          fi
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Configure Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+
+          if [ ! -x "$SDKMANAGER" ]; then
+
+            SDKMANAGER="$(
+              find "$SDK/cmdline-tools" \
+                -type f \
+                -name 'sdkmanager' \
+                | sort -V \
+                | tail -n 1
+            )"
+          fi
+
+          test -n "$SDKMANAGER" || {
+            echo "::error::sdkmanager not found"
+            exit 1
+          }
+
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Build v0.4.46 Curated Studio APK
+        working-directory: ${{ steps.source.outputs.project }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 "$GITHUB_WORKSPACE/tools/apply_stable_signing.py" .
+
+          gradle \
+            :app:assembleDebug \
+            --stacktrace
+
+      - name: Verify package and prepare artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT="${{ steps.source.outputs.project }}"
+
+          APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
+
+          test -f "$APK" || {
+            echo "::error::APK not found"
+            exit 1
+          }
+
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          AAPT="$SDK/build-tools/35.0.0/aapt"
+
+          BADGING="$(
+            "$AAPT" dump badging "$APK" \
+              | head -n 1
+          )"
+
+          echo "$BADGING"
+
+          echo "$BADGING" \
+            | grep -q \
+            "package: name='com.dennis.photomasterai.studiolab'"
+
+          echo "$BADGING" \
+            | grep -q \
+            "versionCode='55'"
+
+          echo "$BADGING" \
+            | grep -q \
+            "versionName='0.4.46-curated-studio'"
+
+          unzip -l "$APK" \
+            | grep -q \
+            'assets/nafnet_sidd_width32_fp16.tflite'
+
+          rm -rf artifact
+          mkdir artifact
+
+          OUT="artifact/PhotoMasterAI-v0.4.46-CURATED-STUDIO.apk"
+
+          cp \
+            "$APK" \
+            "$OUT"
+
+          sha256sum "$OUT" \
+            > "artifact/PhotoMasterAI-v0.4.46-CURATED-STUDIO-SHA256.txt"
+
+          cat > "artifact/PhotoMasterAI-v0.4.46-Curated-Studio-Notes.txt" <<'EOF'
+          Photo Master AI — v0.4.46 Curated Studio
+
+          Version: 0.4.46-curated-studio
+          versionCode: 52
+
+          BASELINE
+          Exact successful v0.4.32 source reconstructed from
+          commit 736bb4bcb7dc3efe7dec8143cbb1a822affa97ce.
+
+          PURPOSE
+          v0.4.32 successfully added Night Light Detail Guard and
+          substantially improved detail preservation.
+
+          The remaining Night Light rollback exposed an accounting
+          mismatch: channel movement was averaged over correction-
+          eligible pixels but compared with an image-wide safety limit.
+
+          FIX
+          - Night Light global mean channel movement now uses:
+              channelDeltaSum / totalPixels
+          - Night Light active-pixel mean is separately reported using:
+              channelDeltaSum / activePixels
+          - QC uses global image-wide mean only
+          - active mean remains diagnostic only
+          - existing MAX_MEAN_CHANNEL_DELTA remains 0.0080
+          - existing MAX_CHANNEL_DELTA remains 0.0320
+          - existing 98.5% detail-retention requirement is unchanged
+          - no safety threshold has been loosened
+          - no Night Light rendering strength has been increased
+
+          V0.4.34 ADDITIONS
+          - 3x3 low-contrast micro-texture protection
+          - protects grass, concrete, tyre/deck and fine mechanical detail
+          - high-ring Night Light cap reduced from 0.240 to 0.225
+          - 98.5% detail QC remains unchanged
+          - no safety threshold has been relaxed
+
+          V0.4.35 ADDITIONS
+          - adaptive safe-strength search after a Night Light QC rejection
+          - attempts 100%, 85%, 72%, 60%, then 50% of guarded strength
+          - accepts the strongest candidate that passes every existing QC gate
+          - rejected candidates are recycled before the next attempt
+          - full rollback remains if no attempt passes
+          - no QC threshold has been relaxed
+
+          V0.4.36 NIGHT LIGHT DEFECT CORRECTIONS
+          - smooth luminance/saturation selection instead of abrupt thresholds
+          - feather correction inside analysis-cell borders to eliminate hard
+            cell-transition discontinuities without editing protected cells
+          - analyse texture/edges across 128-row processing boundaries
+            using source bitmap one-pixel row halos
+          - apply low-frequency, locally estimated highlight compression
+            to preserve per-pixel fine texture and natural edges
+          - all v0.4.35 independent strength attempts retained
+          - unchanged >=98.5% detail-retention gate and ringing QC
+          - unchanged channel/dark-sky/noise/clip/saturation QC
+          - no automatic ACCEPT unless a candidate passes every QC gate
+          - this candidate still requires on-device scene validation
+
+          SIGNING REPAIR
+          - Pin Android debug signing to the existing cached keystore.
+          - Verify expected certificate fingerprint before publishing.
+          - Older APKs used different certificates; one-time reinstall needed.
+          - Processing algorithm unchanged.
+
+          V0.4.37 DISTRIBUTED STREETLIGHT DETECTION
+          - Leave strong hotspot Night Light classifier unchanged.
+          - Add second gated path for dark night scenes with multiple
+            separated mid/lower-frame luminous streetlight regions.
+          - Use per-cell lamp-source evidence rather than requiring
+            a full 8x8 analysis cell to be bright.
+          - Gate diffuse lamp corrections to light pixels and protect
+            unlit sky; use existing spatially feathered masks.
+          - Render at conservative strength with adaptive QC backoff.
+          - Preserve the exact original 98.5% detail-retention guard,
+            ringing, saturation, noise, highlight/shadow clip limits.
+          - Preserve rollback and 0.0080/0.0320 channel-movement caps.
+          - Retain pinned APK certificate, checked before publication.
+          - Report alternative-path activation and regional lamp evidence.
+          - Changes are subject to real-photo on-device validation.
+
+          NEURAL COLOUR LAB v0.4.38 (independent)
+          - Separate application ID; working Photo Master AI not replaced.
+          - Original AI MAX unchanged; optional AI MAX + LUT experiment.
+          - Offline ONNX genuine pretrained LUT classifier plus three
+            33-cubed bases identical to approved AutoPhoto 0.4.8.
+          - Candidate capped at 12/255 per channel and protected by
+            unchanged detail/ringing/clip and full rollback.
+          - sRGB-only experiment; wide gamut inputs withheld safely.
+          - No double application of Polished tone or contrast.
+
+          v0.4.39 DISPLAY P3 NEURAL DELTA (INDEPENDENT LAB)
+          - v0.4.38 withheld LUT for genuine Display P3 sources.
+          - Add only colour-managed sRGB neural deltas to native P3 master.
+          - Verify native P3 RGBA layout against colour-aware getColor().
+          - Preserve out-of-sRGB chroma and Display P3 gamut.
+          - Verify P3 JPEG ICC export before enabling.
+          - Fail closed for unsupported size, format, or transparency.
+          - Existing detail/ringing/clip/movement QC and rollback unchanged.
+          - Separate P3 Neural Lab package prevents signing conflict
+            with existing v0.4.38 experiment and v0.4.37 app.
+          - Retain offline inference and pretrained LUT asset integrity.
+          - On-device validation still needed.
+
+          v0.4.40 EXPERIMENTAL AI STUDIO MASTER — BULK ITERATION
+          - New AI MAX + STUDIO option: baseline AI MAX, pretrained neural
+            colour proposal, then independent studio tonal candidate.
+          - Existing original AI MAX and AI MAX + LUT options retained.
+          - Added detailed per-strength neural acceptance/rejection metrics,
+            learned LUT coefficients and explicit source/master profiles.
+          - Four adaptive neural strengths, capped at +/-12 channel codes,
+            unchanged 98.5% detail, ringing, clipping and channel safety QC.
+          - New luma-only local dynamic range controller: restrained highlight
+            roll-off and shadow shaping, skin/texture/hue protections and no
+            automatic saturation/clarity/sharpness boosts.
+          - Studio stage has independent three-level QC and full rollback,
+            keeping successful neural colour even if tonal stage rejects.
+          - Supports native Display P3 and sRGB without retagging; fail-closed
+            if native P3 unsupported.
+          - Baseline v0.4.37, AutoPhoto Polished and prior Neural Lab APKs
+            are untouched. Independent Android package name.
+          - Requires real-device photographic validation before any promotion.
+
+          v0.4.41 ACCEPTED NEURAL LUT REPORT FIX
+          - Actual on-device v0.4.40 reported UnknownFormatConversionException
+            (Conversion = '|') after the adaptive neural LUT stage.
+          - Cause: preformatted QC trace with literal percentages appended
+            to the String.format() argument for an accepted candidate.
+          - Move QC trace outside the format argument; successful model
+            corrections can now complete and be assessed.
+          - Add regression host check reproducing the old exception and
+            validating the repaired accepted-result formatting path.
+          - Preserves every LUT model, strength, colour profile pathway,
+            Studio tone equation, detail/ringing/clip threshold and rollback.
+          - Preserve same independent Studio Lab app identity for upgrade.
+          - Require exact v0.4.40 signing certificate before publication.
+          - This build fixes a proved runtime fault, not merely version bump.
+
+          v0.4.42 AUTO LIGHT + AUTO WHITE BALANCE — BULK LAB UPDATE
+          - Existing AI MAX, AI MAX + LUT and app processing preserved.
+          - AI MAX + STUDIO now executes 4 independent stages:
+            Auto Light -> evidence-gated Auto White Balance ->
+            pretrained neural LUT -> subtle Studio tonal finishing.
+          - Auto Light uses scene p10/p50/p90/p98 and spatial luminance
+            to recover useful shadows, roll off highlights and set black depth,
+            without sacrificing dark-sky mood or burning fire colours.
+          - Firelight detection targets Lightroom-like small shadow lifts
+            and black anchoring while deliberately withholding global WB.
+          - Auto White Balance estimates neutral illuminant only from
+            sufficiently bright, low-chroma, spatially distributed samples.
+            Preserves camera colour when neutral evidence is weak/already good.
+          - Stage-local 100/70/45% adaptive retries, 98.5% detail retention,
+            ringing, clipping, saturation, noise and per-channel movement QC.
+          - Native P3/sRGB input and P3 colour profile remain protected;
+            all uncertain paths fail closed and retain previous accepted stage.
+          - Dedicated per-stage diagnostics show accepted/withheld/rejected.
+          - Tested host policies for fire, shadow, highlights, skin, limits.
+          - This is separate lab work, not an upgrade of approved production.
+          - Real device and same-photo original/output comparisons needed.
+
+          v0.4.43 SELECTIVE FABRIC & CUMULATIVE QC — TARGETED BULK FIX
+          - v0.4.42 pumpkin-shirt photo diagnostic: Auto Light 0.45,
+            Auto WB 1.00, neural LUT 0.12, Studio finish 1.00, all accepted.
+          - Four individually passing steps can cumulatively bleach pale
+            pink fabric without tripping original whole-image QC.
+          - Add source RGB-anchored smooth pale-pink highlight protection,
+            preserving orange pumpkins, red bottlebrush, green foliage.
+          - Compare cumulative final against original AI MAX baseline,
+            never globally reduce colour saturation or weaken prior stages.
+          - Limit local cumulative bright-fabric edits and check regional
+            mean RGB movement and nearclip growth on protected pixels.
+          - Re-check 98.5% detail, ringing, highlight/shadow clipping and
+            noise/chroma after final compositing; fail closed to AI MAX.
+          - Native P3 remains byte/profile protected; sRGB unchanged.
+          - Independent Studio Lab only; original AI MAX / AutoPhoto
+            Polished remain unchanged. Signed to install over v0.4.42.
+          - Need user same-scene real-photo/regional test before promotion.
+
+          v0.4.44 STUDIO PERFORMANCE FAST PATH
+          - Reuse exact PhotoAnalysis already stored for the same bitmap.
+          - Only re-analyse when that result has no saved analysis.
+          - Retain ONNX colour classifier session for warm subsequent photos.
+          - Keep one immutable copy of pretrained 3D LUT basis in process.
+          - Add Auto Light, WB, neural LUT, Studio and guard elapsed timings.
+          - No changed pixels, strengths, retries or QC acceptance limits.
+          - Preserve native P3 handling, NAFNet denoising, signing, export.
+          - Experimental; compare original scene outputs and device times.
+
+          v0.4.45 PASTEL PROTECTION & HARD-GATE QC (ALLOCATION-FREE)
+          - Reference final bright pink/pastel highlight headroom to original
+            sRGB photo; only pixels with source detail to preserve qualify.
+          - Leave native Display P3 route unchanged and fail closed.
+          - Keep full-region detail, ringing, shadow and clip acceptance gates.
+          - Avoid detailed per-candidate QC when a mandatory channel movement
+            limit has already failed; never skip a passable candidate.
+          - Preserve all existing intensity equations and neural weights.
+          - Add explicit per-stage timings from v0.4.44.
+          - Real-image baseline/Studio comparison still required.
+
+          v0.4.46 CURATED STUDIO
+          - Show only AI MAX + STUDIO (selected by default) and AI MAX
+            (the exact unmodified comparison baseline).
+          - Remove obsolete TRUE, PRO, NAT GEO, LIFE, AI ENHANCE
+            and standalone AI MAX + LUT from visible finishing choices.
+          - Keep their underlying engines for safe reversibility and source
+            reconstruction; dormant options are not called by Studio.
+          - Preserve Studio's actual auto-light, white-balance, neural LUT,
+            finishing, colour guard and diagnostic timings unchanged.
+          - No neural/denoising shortcuts or weakening of QC gates.
+          - Preserve Studio Lab application ID, signing and prior app data.
+
+          RETAINED
+          - v0.4.32 Night Light Detail Guard
+          - ring-aware Night Light strength cap
+          - edge/texture preservation
+          - 8/255 Night Light channel movement cap
+          - v0.4.31 Night Light classifier
+          - v0.4.30 Perceptual Improvement Controller
+          - v0.4.29 Mixed-Light Continuity Guard
+          - v0.4.27 Local Tone safeguards
+          - v0.4.25 Geometry structural override
+          - preserve-source sRGB / Display P3
+          - NAFNet-SIDD safeguards
+          - optics / vignetting safeguards
+          - shadow-integrity rollback
+          - background / screen-off processing
+          - JPEG quality 100
+          EOF
+
+      - name: Validate APK installability
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APK="artifact/PhotoMasterAI-v0.4.46-CURATED-STUDIO.apk"
+          BT="$ANDROID_SDK_ROOT/build-tools/35.0.0"
+
+          test -f "$APK"
+
+          echo "Testing APK ZIP/container integrity"
+          unzip -t "$APK"
+          unzip -l "$APK" | grep -q 'assets/lut_classifier.onnx'
+          unzip -l "$APK" | grep -q 'assets/lut_basis_33.bin'
+
+          echo "Checking 4-byte ZIP alignment"
+          "$BT/zipalign" -c -v 4 "$APK"
+
+          echo "Checking Android APK signature"
+          "$BT/apksigner" verify \
+            --verbose \
+            --print-certs \
+            "$APK"
+
+          # Separate lab package: do not require the expired production
+          # signing cache. Verify the APK was signed by THIS build's
+          # explicit keystore and report the certificate fingerprint.
+          EXPECTED_CERT="$(keytool -exportcert -alias androiddebugkey \
+            -keystore "$HOME/.android/debug.keystore" -storepass android \
+            | sha256sum | cut -d ' ' -f1)"
+          CERT="$("$BT/apksigner" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)"
+          test "$CERT" = "$EXPECTED_CERT" || {
+            echo "::error::APK signing certificate changed: $CERT"
+            exit 1
+          }
+          test "$CERT" = "3a8e9c9ec8d94c6b7ac4d37d71310e94724cd263ef7b78c799993e0265b1edd3" || {
+            echo "::error::Installer certificate incompatible with installed v0.4.40 Studio Lab"
+            exit 1
+          }
+          echo "Photo Master AI Studio Lab signer matches v0.4.40 installed package"
+
+
+          echo "APK passed container, alignment and signature verification"
+
+      - name: Publish raw APK GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          TAG="photo-master-ai-v0.4.46-curated-studio-r1"
+          APK="artifact/PhotoMasterAI-v0.4.46-CURATED-STUDIO.apk"
+          SHA="artifact/PhotoMasterAI-v0.4.46-CURATED-STUDIO-SHA256.txt"
+          NOTES="artifact/PhotoMasterAI-v0.4.46-Curated-Studio-Notes.txt"
+
+          if gh release view "$TAG" \
+            --repo "${{ github.repository }}" >/dev/null 2>&1
+          then
+            gh release upload "$TAG" \
+              --repo "${{ github.repository }}" \
+              --clobber \
+              "$APK" "$SHA" "$NOTES"
+          else
+            gh release create "$TAG" \
+              --repo "${{ github.repository }}" \
+              --title "Photo Master AI v0.4.46 Curated Studio" \
+              --notes "Standalone independently signed Neural Colour Lab experiment. Normal Photo Master AI remains untouched. Model, ZIP, alignment and APK signing verified." \
+              "$APK" "$SHA" "$NOTES"
+          fi
+
+          echo "Raw installable APK published to GitHub Releases"
+
+      - name: Upload APK and continuation notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoMasterAI-v0.4.46-CURATED-STUDIO
+          path: |
+            artifact/PhotoMasterAI-v0.4.46-CURATED-STUDIO.apk
+            artifact/PhotoMasterAI-v0.4.46-CURATED-STUDIO-SHA256.txt
+            artifact/PhotoMasterAI-v0.4.46-Curated-Studio-Notes.txt
+          if-no-files-found: error
+          retention-days: 30
