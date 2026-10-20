@@ -108,12 +108,14 @@ s=replace_once(s,
                 if(r!=r1 || g!=g1 || b!=b1)status.affected++;''',
     '''                int b=SelectiveColourPolicy.guardChannel(b0,b1,mask);
                 if(!nativeP3) {
-                    int[] protectedRgb=PastelHighlightPolicy.rescue(
+                    int protectedRgb=PastelHighlightPolicy.rescue(
                             sr,sg,sb,r,g,b,mask);
-                    if(protectedRgb[0]!=r || protectedRgb[1]!=g
-                            || protectedRgb[2]!=b)
+                    int protectedR=(protectedRgb>>>16)&255;
+                    int protectedG=(protectedRgb>>>8)&255;
+                    int protectedB=protectedRgb&255;
+                    if(protectedR!=r || protectedG!=g || protectedB!=b)
                         status.pastelRecoveredPixels++;
-                    r=protectedRgb[0];g=protectedRgb[1];b=protectedRgb[2];
+                    r=protectedR;g=protectedG;b=protectedB;
                 }
                 if(r!=r1 || g!=g1 || b!=b1)status.affected++;''',
     "In-place pastel source headroom, sRGB only")
