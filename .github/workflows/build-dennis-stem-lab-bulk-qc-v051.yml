@@ -78,6 +78,26 @@ jobs:
             experiments/dennis-stem-lab-bulk-qc-v051/host_tests/com/dennis/aimasteringlab/BulkExperimentHarness.java \
             project/tests/org/json/*.java
           java -cp host-classes com.dennis.aimasteringlab.BulkExperimentHarness
+      - name: Generate original stem import safety fixtures
+        run: |
+          mkdir -p host-fixtures host-v050
+          python3 - <<'PY'
+          import array, math, pathlib, sys, wave, zipfile
+          base=pathlib.Path('host-fixtures')
+          sr=48000
+          for name,freq,level in [('Vocals.wav',231,0.16),('Instrumental.wav',110,0.22)]:
+              buf=array.array('h')
+              for k in range(sr*18):
+                  v=int(32767*level*math.sin((2*math.pi*freq*k)/sr))
+                  buf.extend([v,v])
+              if sys.byteorder!='little': buf.byteswap()
+              with wave.open(str(base/name),'wb') as wav:
+                  wav.setnchannels(2);wav.setsampwidth(2);wav.setframerate(sr);wav.writeframes(buf.tobytes())
+          with zipfile.ZipFile(base/'safe.zip','w',compression=zipfile.ZIP_DEFLATED) as z:
+              for name in ('Vocals.wav','Instrumental.wav'): z.write(base/name,name)
+          with zipfile.ZipFile(base/'unsafe.zip','w',compression=zipfile.ZIP_DEFLATED) as z:
+              z.write(base/'Vocals.wav','../Vocals.wav')
+          PY
       - name: Verify original two-stem import tests
         run: |
           mkdir -p host-v050
@@ -88,7 +108,7 @@ jobs:
             project/app/src/main/java/com/dennis/aimasteringlab/StemStudioPreflight.java \
             project/tests/V050StemOnlyIntegrationHarness.java \
             project/tests/BuildConfig.java project/tests/org/json/*.java
-          # Compilation additionally guards compatibility of the unchanged stem adapter.
+          java -cp host-v050 com.dennis.aimasteringlab.V050StemOnlyIntegrationHarness host-fixtures/safe.zip host-fixtures/unsafe.zip
       - name: Build offline Android v0.5.1 DEV APK
         working-directory: project
         run: gradle --no-daemon :app:assembleDebug
