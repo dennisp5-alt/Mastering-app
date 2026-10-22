@@ -1,0 +1,116 @@
+name: Dennis Stem Lab Modern v0.5.1 Bulk QC DEV (isolated)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/dennis-stem-lab-bulk-qc-v051
+    paths:
+      - .github/workflows/build-dennis-stem-lab-bulk-qc-v051.yml
+      - experiments/dennis-stem-lab-bulk-qc-v051/**
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout isolated experiment
+        uses: actions/checkout@v4
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK 34
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
+      - name: Gradle 8.6
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.6'
+      - name: Restore pinned v0.15.7 engine + exact v0.5.0 integration
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p restored project
+          gh run download 37899462151 --repo dennisp5-alt/Mastering-app --name DennisAiMasteringLab-v0.15.7-Source --dir restored
+          printf '%s  %s\n' '0bc7390fba6db3fa746d3a554555bbba9e7745068276929b529924426080eede' 'restored/DennisAiMasteringLab-v0.15.7-GitHubBuildSource.zip' | sha256sum -c -
+          unzip -q restored/DennisAiMasteringLab-v0.15.7-GitHubBuildSource.zip -d project
+          grep -q "versionName '0.15.7'" project/app/build.gradle
+          base64 --decode experiments/dennis-stem-lab-modern-v050/v050-modern.patch.gz.b64 | gzip -dc > /tmp/v050.patch
+          printf '%s  %s\n' '4f3a83cc2ce4c45daf4d2adde4b07d7ea1eb18afd81f41d1cf768e86c519b8fd' '/tmp/v050.patch' | sha256sum -c -
+          src=project/app/src/main/java/com/dennis/aimasteringlab
+          find "$src" -maxdepth 1 -name '*.java' ! -name 'StudioActivity.java' -type f | sort | xargs sha256sum > /tmp/trusted-v157-engine.sha256
+          patch --batch --fuzz=0 -p1 -d project < /tmp/v050.patch
+          sha256sum -c /tmp/trusted-v157-engine.sha256
+          grep -q "versionName '0.5.0-dev'" project/app/build.gradle
+      - name: Apply isolated v0.5.1 bulk experiment patch
+        run: |
+          base64 --decode experiments/dennis-stem-lab-bulk-qc-v051/v051-source.patch.gz.b64 | gzip -dc > /tmp/v051.patch
+          printf '%s  %s\n' 'd1e813c049cff960f6ef41ccd59e9a7ada45ea289155c5b768db1c7c2e01af9c' '/tmp/v051.patch' | sha256sum -c -
+          patch --batch --fuzz=0 -p1 -d project < /tmp/v051.patch
+          grep -q "versionName '0.5.1-dev'" project/app/build.gradle
+          test -f project/app/src/main/java/com/dennis/aimasteringlab/StudioBulkExperiment.java
+          # Only the dedicated v0.5.1 experiment may touch the new post-master edits/UI.
+          ! grep -q '^+++ .*MasterRenderer.java' /tmp/v051.patch
+          ! grep -q '^+++ .*FullAiMasteringEngine.java' /tmp/v051.patch
+          ! grep -q '^+++ .*StudioPipeline.java' /tmp/v051.patch
+      - name: Preserve installed v0.5.0 with independent trial package
+        run: |
+          sed -i "s/applicationId 'com.dennis.stemlab.modern'/applicationId 'com.dennis.stemlab.bulkqc'/" project/app/build.gradle
+          sed -i 's/android:label="Dennis Stem Lab Modern DEV"/android:label="Dennis Stem Lab A-B DEV"/' project/app/src/main/AndroidManifest.xml
+          grep -q "applicationId 'com.dennis.stemlab.bulkqc'" project/app/build.gradle
+          grep -q 'android:label="Dennis Stem Lab A-B DEV"' project/app/src/main/AndroidManifest.xml
+      - name: Run bulk trial host regressions
+        run: |
+          mkdir -p host-classes
+          javac -encoding UTF-8 -d host-classes \
+            -sourcepath project/app/src/main/java:experiments/dennis-stem-lab-bulk-qc-v051/host_tests:project/tests \
+            project/app/src/main/java/com/dennis/aimasteringlab/StudioBulkExperiment.java \
+            project/app/src/main/java/com/dennis/aimasteringlab/StudioProject.java \
+            project/app/src/main/java/com/dennis/aimasteringlab/StudioRecipe.java \
+            project/app/src/main/java/com/dennis/aimasteringlab/Hashing.java \
+            experiments/dennis-stem-lab-bulk-qc-v051/host_tests/com/dennis/aimasteringlab/StudioAudio.java \
+            experiments/dennis-stem-lab-bulk-qc-v051/host_tests/com/dennis/aimasteringlab/BulkExperimentHarness.java \
+            project/tests/org/json/*.java
+          java -cp host-classes com.dennis.aimasteringlab.BulkExperimentHarness
+      - name: Verify original two-stem import tests
+        run: |
+          mkdir -p host-v050
+          javac -encoding UTF-8 -d host-v050 \
+            -sourcepath project/app/src/main/java:project/tests \
+            project/app/src/main/java/com/dennis/aimasteringlab/StemOnlyImport.java \
+            project/app/src/main/java/com/dennis/aimasteringlab/StemPremixBuilder.java \
+            project/app/src/main/java/com/dennis/aimasteringlab/StemStudioPreflight.java \
+            project/tests/V050StemOnlyIntegrationHarness.java \
+            project/tests/BuildConfig.java project/tests/org/json/*.java
+          # Compilation additionally guards compatibility of the unchanged stem adapter.
+      - name: Build offline Android v0.5.1 DEV APK
+        working-directory: project
+        run: gradle --no-daemon :app:assembleDebug
+      - name: Package checksum-verified APK and source
+        run: |
+          cp project/app/build/outputs/apk/debug/app-debug.apk DennisStemLab-Modern-v0.5.1-DEV.apk
+          unzip -tq DennisStemLab-Modern-v0.5.1-DEV.apk
+          (cd project && zip -qr ../DennisStemLab-Modern-v0.5.1-GitHubBuildSource.zip . -x '.gradle/*' 'build/*' 'app/build/*' '*.jks' '*.keystore' '*.apk')
+          sha256sum DennisStemLab-Modern-v0.5.1-DEV.apk DennisStemLab-Modern-v0.5.1-GitHubBuildSource.zip > DennisStemLab-Modern-v0.5.1-CHECKSUMS.sha256
+      - name: Upload experimental APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DennisStemLab-Modern-v0.5.1-DEV-APK
+          path: |
+            DennisStemLab-Modern-v0.5.1-DEV.apk
+            DennisStemLab-Modern-v0.5.1-CHECKSUMS.sha256
+          retention-days: 30
+      - name: Upload recoverable source
+        uses: actions/upload-artifact@v4
+        with:
+          name: DennisStemLab-Modern-v0.5.1-Source
+          path: |
+            DennisStemLab-Modern-v0.5.1-GitHubBuildSource.zip
+            DennisStemLab-Modern-v0.5.1-CHECKSUMS.sha256
+          retention-days: 30
