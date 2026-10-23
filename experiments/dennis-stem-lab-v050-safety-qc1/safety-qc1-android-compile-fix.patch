@@ -1,0 +1,11 @@
+--- a/app/src/main/java/com/dennis/aimasteringlab/StudioActivity.java
++++ b/app/src/main/java/com/dennis/aimasteringlab/StudioActivity.java
+@@ -174,7 +174,7 @@
+                         new AlertDialog.Builder(this).setTitle("Master Safety QC").setMessage(summary.toString())
+                                 .setNegativeButton("Close",null)
+                                 .setPositiveButton("SAVE JSON",(d,w)->act(()->save(output,"application/json"))).show();
+-                    }));
++                    });});
+                 });
+             });
+             if(p.data.optJSONObject("stem_import_qc")!=null)
