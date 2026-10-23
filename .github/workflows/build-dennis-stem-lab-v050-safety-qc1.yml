@@ -68,6 +68,9 @@ jobs:
                                            '+++ b/app/src/main/java/com/dennis/aimasteringlab/FullAiMasteringEngine.java']), 'DSP edit blocked'
           PY
           patch --batch --fuzz=0 -p1 -d project < /tmp/qc1.patch
+          # Audited compile correction, pinned independently from the original QC patch.
+          printf '%s  %s\n' '727c1b69709994b65b17cfe35f0e78975769d3256718b626fb92d932f6acfb45' 'experiments/dennis-stem-lab-v050-safety-qc1/safety-qc1-android-compile-fix.patch' | sha256sum -c -
+          patch --batch --fuzz=0 -p1 -d project < experiments/dennis-stem-lab-v050-safety-qc1/safety-qc1-android-compile-fix.patch
           sha256sum -c /tmp/trusted-engine.sha256
           grep -q "applicationId 'com.dennis.stemlab.safetyqc'" project/app/build.gradle
           grep -q "versionName '0.5.0-qc1-dev'" project/app/build.gradle
