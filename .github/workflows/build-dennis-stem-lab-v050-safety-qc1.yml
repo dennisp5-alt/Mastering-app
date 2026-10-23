@@ -1,0 +1,134 @@
+name: Dennis Stem Lab v0.5.0 QC1 safety diagnostics (isolated)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/dennis-stem-lab-v050-safety-qc1
+    paths:
+      - .github/workflows/build-dennis-stem-lab-v050-safety-qc1.yml
+      - experiments/dennis-stem-lab-v050-safety-qc1/**
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout dedicated safety experiment
+        uses: actions/checkout@v4
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK 34
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
+      - name: Gradle 8.6
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.6'
+      - name: Restore exact v0.15.7 engine and v0.5.0 integration
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p restored project
+          gh run download 37899462151 --repo dennisp5-alt/Mastering-app --name DennisAiMasteringLab-v0.15.7-Source --dir restored
+          printf '%s  %s\n' '0bc7390fba6db3fa746d3a554555bbba9e7745068276929b529924426080eede' 'restored/DennisAiMasteringLab-v0.15.7-GitHubBuildSource.zip' | sha256sum -c -
+          unzip -q restored/DennisAiMasteringLab-v0.15.7-GitHubBuildSource.zip -d project
+          grep -q "versionName '0.15.7'" project/app/build.gradle
+          base64 --decode experiments/dennis-stem-lab-modern-v050/v050-modern.patch.gz.b64 | gzip -dc > /tmp/v050.patch
+          printf '%s  %s\n' '4f3a83cc2ce4c45daf4d2adde4b07d7ea1eb18afd81f41d1cf768e86c519b8fd' '/tmp/v050.patch' | sha256sum -c -
+          src=project/app/src/main/java/com/dennis/aimasteringlab
+          find "$src" -maxdepth 1 -name '*.java' ! -name 'StudioActivity.java' -type f | sort | xargs sha256sum > /tmp/trusted-engine.sha256
+          patch --batch --fuzz=0 -p1 -d project < /tmp/v050.patch
+          sha256sum -c /tmp/trusted-engine.sha256
+          grep -q "applicationId 'com.dennis.stemlab.modern'" project/app/build.gradle
+      - name: Apply guarded read-only QC patch
+        run: |
+          base64 --decode experiments/dennis-stem-lab-v050-safety-qc1/safety-qc1-source.patch.gz.b64 | gzip -dc > /tmp/qc1.patch
+          printf '%s  %s\n' '40c7760d7bf62484593f3460363cfa2fe0b97feedef5cc1b8ceeb4e180f7f6c4' '/tmp/qc1.patch' | sha256sum -c -
+          python3 - <<'PY'
+          import re
+          p=open('/tmp/qc1.patch',encoding='utf-8').read()
+          allowed={
+            'app/build.gradle',
+            'app/src/main/AndroidManifest.xml',
+            'app/src/main/java/com/dennis/aimasteringlab/StudioActivity.java',
+            'app/src/main/java/com/dennis/aimasteringlab/StudioSafetyAudit.java',
+            'tests/V050SafetyQcHarness.java'
+          }
+          touched=set(re.findall(r'^\+\+\+ b/(.+)$',p,re.M))
+          assert touched==allowed, f'Unexpected patch paths: {touched ^ allowed}'
+          assert not any(x in p for x in ['+++ b/app/src/main/java/com/dennis/aimasteringlab/MasterRenderer.java',
+                                           '+++ b/app/src/main/java/com/dennis/aimasteringlab/FullAiMasteringEngine.java']), 'DSP edit blocked'
+          PY
+          patch --batch --fuzz=0 -p1 -d project < /tmp/qc1.patch
+          sha256sum -c /tmp/trusted-engine.sha256
+          grep -q "applicationId 'com.dennis.stemlab.safetyqc'" project/app/build.gradle
+          grep -q "versionName '0.5.0-qc1-dev'" project/app/build.gradle
+          grep -q "VERIFY MASTER + STEREO SAFETY" project/app/src/main/java/com/dennis/aimasteringlab/StudioActivity.java
+      - name: Generate original v0.5.0 stem safety regression fixtures
+        run: |
+          mkdir -p host-classes host-fixtures
+          python3 - <<'PY'
+          import array, math, pathlib, sys, wave, zipfile
+          base=pathlib.Path('host-fixtures');sr=48000
+          for name,freq,level in [('Vocals.wav',231,0.16),('Instrumental.wav',110,0.22)]:
+              buf=array.array('h')
+              for k in range(sr*18):
+                  v=int(32767*level*math.sin((2*math.pi*freq*k)/sr))
+                  buf.extend([v,v])
+              if sys.byteorder!='little':buf.byteswap()
+              with wave.open(str(base/name),'wb') as wav:
+                  wav.setnchannels(2);wav.setsampwidth(2);wav.setframerate(sr);wav.writeframes(buf.tobytes())
+          with zipfile.ZipFile(base/'safe.zip','w',compression=zipfile.ZIP_DEFLATED) as z:
+              for name in ('Vocals.wav','Instrumental.wav'):z.write(base/name,name)
+          with zipfile.ZipFile(base/'unsafe.zip','w',compression=zipfile.ZIP_DEFLATED) as z:
+              z.write(base/'Vocals.wav','../Vocals.wav')
+          PY
+      - name: Run original stem import regression unchanged
+        run: |
+          javac -encoding UTF-8 -d host-classes -sourcepath project/app/src/main/java:project/tests \
+            project/app/src/main/java/com/dennis/aimasteringlab/StemOnlyImport.java \
+            project/app/src/main/java/com/dennis/aimasteringlab/StemPremixBuilder.java \
+            project/app/src/main/java/com/dennis/aimasteringlab/StemStudioPreflight.java \
+            project/tests/V050StemOnlyIntegrationHarness.java \
+            project/tests/BuildConfig.java project/tests/org/json/*.java
+          java -cp host-classes com.dennis.aimasteringlab.V050StemOnlyIntegrationHarness host-fixtures/safe.zip host-fixtures/unsafe.zip
+      - name: Run read-only stereo/master QC host regressions
+        run: |
+          javac -encoding UTF-8 -d host-classes -sourcepath project/app/src/main/java:project/tests \
+            project/app/src/main/java/com/dennis/aimasteringlab/StudioSafetyAudit.java \
+            project/tests/V050SafetyQcHarness.java \
+            project/tests/BuildConfig.java project/tests/org/json/*.java
+          java -cp host-classes com.dennis.aimasteringlab.V050SafetyQcHarness
+      - name: Build separate offline Android safety QC APK
+        working-directory: project
+        run: gradle --no-daemon :app:assembleDebug
+      - name: Verify deliverables
+        run: |
+          cp project/app/build/outputs/apk/debug/app-debug.apk DennisStemLab-v0.5.0-QC1-DEV.apk
+          unzip -tq DennisStemLab-v0.5.0-QC1-DEV.apk
+          (cd project && zip -qr ../DennisStemLab-v0.5.0-QC1-Source.zip . -x '.gradle/*' 'build/*' 'app/build/*' '*.jks' '*.keystore' '*.apk')
+          sha256sum DennisStemLab-v0.5.0-QC1-DEV.apk DennisStemLab-v0.5.0-QC1-Source.zip > DennisStemLab-v0.5.0-QC1-CHECKSUMS.sha256
+      - name: Upload isolated QC APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DennisStemLab-v0.5.0-QC1-APK
+          path: |
+            DennisStemLab-v0.5.0-QC1-DEV.apk
+            DennisStemLab-v0.5.0-QC1-CHECKSUMS.sha256
+          retention-days: 30
+      - name: Upload verified source
+        uses: actions/upload-artifact@v4
+        with:
+          name: DennisStemLab-v0.5.0-QC1-Source
+          path: |
+            DennisStemLab-v0.5.0-QC1-Source.zip
+            DennisStemLab-v0.5.0-QC1-CHECKSUMS.sha256
+          retention-days: 30
