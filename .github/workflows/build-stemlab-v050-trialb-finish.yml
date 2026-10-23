@@ -112,6 +112,16 @@ jobs:
             project/tests/V050StemOnlyIntegrationHarness.java \
             project/tests/BuildConfig.java project/tests/org/json/*.java
           java -cp host-classes com.dennis.aimasteringlab.V050StemOnlyIntegrationHarness host-fixtures/safe.zip host-fixtures/unsafe.zip
+      - name: Give trial build a distinct launcher identity
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          manifest=Path('project/app/src/main/AndroidManifest.xml')
+          original=manifest.read_text()
+          assert 'android:label="Dennis Stem Lab Modern DEV"' in original
+          manifest.write_text(original.replace('android:label="Dennis Stem Lab Modern DEV"',
+                                              'android:label="Stem Lab Trial B TEST"'))
+          PY
       - name: Build independent offline APK
         working-directory: project
         run: gradle --no-daemon :app:assembleDebug
