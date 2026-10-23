@@ -1,0 +1,132 @@
+name: Stem Lab v0.5.0 - Recovered Trial B After Master (isolated)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/stemlab-v050-trialb-after-master
+    paths:
+      - .github/workflows/build-stemlab-v050-trialb-finish.yml
+      - experiments/stemlab-v050-trialb-after-master/**
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout isolated finish branch
+        uses: actions/checkout@v4
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK 34
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
+      - name: Gradle 8.6
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.6'
+      - name: Recover exact v0.15.7 trusted code and original v0.5.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p restored project
+          gh run download 37899462151 --repo dennisp5-alt/Mastering-app --name DennisAiMasteringLab-v0.15.7-Source --dir restored
+          printf '%s  %s\n' '0bc7390fba6db3fa746d3a554555bbba9e7745068276929b529924426080eede' 'restored/DennisAiMasteringLab-v0.15.7-GitHubBuildSource.zip' | sha256sum -c -
+          unzip -q restored/DennisAiMasteringLab-v0.15.7-GitHubBuildSource.zip -d project
+          grep -q "versionName '0.15.7'" project/app/build.gradle
+          base64 --decode experiments/dennis-stem-lab-modern-v050/v050-modern.patch.gz.b64 | gzip -dc > /tmp/baseline.patch
+          printf '%s  %s\n' '4f3a83cc2ce4c45daf4d2adde4b07d7ea1eb18afd81f41d1cf768e86c519b8fd' '/tmp/baseline.patch' | sha256sum -c -
+          src=project/app/src/main/java/com/dennis/aimasteringlab
+          find "$src" -maxdepth 1 -name '*.java' ! -name 'StudioActivity.java' -type f | sort | xargs sha256sum > /tmp/trusted-engine.sha256
+          patch --batch --fuzz=0 -p1 -d project < /tmp/baseline.patch
+          sha256sum -c /tmp/trusted-engine.sha256
+          grep -q "applicationId 'com.dennis.stemlab.modern'" project/app/build.gradle
+      - name: Apply recovered Trial B-only finish
+        run: |
+          base64 --decode experiments/stemlab-v050-trialb-after-master/v050-trialb.patch.gz.b64 | gzip -dc > /tmp/trialb.patch
+          printf '%s  %s\n' '72dcda0469f1f8e5ba43ef94307f37467b41f17445e217198a9c862b733b527f' '/tmp/trialb.patch' | sha256sum -c -
+          python3 - <<'PY'
+          import re
+          p=open('/tmp/trialb.patch').read()
+          allowed={
+            'app/build.gradle',
+            'app/src/main/java/com/dennis/aimasteringlab/StudioActivity.java',
+            'app/src/main/java/com/dennis/aimasteringlab/StudioQueue.java',
+            'app/src/main/java/com/dennis/aimasteringlab/StudioTrialBFinish.java'
+          }
+          touched=set(re.findall(r'^\+\+\+ b/(.+)$',p,re.M))
+          assert touched==allowed,f'Unexpected files: {touched ^ allowed}'
+          PY
+          patch --batch --fuzz=0 -p1 -d project < /tmp/trialb.patch
+          sha256sum -c /tmp/trusted-engine.sha256
+          grep -q "applicationId 'com.dennis.stemlab.trialbfinish'" project/app/build.gradle
+          grep -q "versionName '0.5.0-trialb-dev'" project/app/build.gradle
+          grep -q 'TRIAL B FINAL FINISH' project/app/src/main/java/com/dennis/aimasteringlab/StudioActivity.java
+      - name: Verify exact Trial B parameters and original editor is untouched
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,re
+          t=Path('project/app/src/main/java/com/dennis/aimasteringlab/StudioTrialBFinish.java').read_text()
+          expected={'LOW_HZ':'260','LOW_Q':'.95','LOW_DB':'-.55','LOW_THRESHOLD':'-24',
+                    'PRESENCE_HZ':'3500','PRESENCE_Q':'1.2','PRESENCE_DB':'-.45',
+                    'PRESENCE_THRESHOLD':'-30'}
+          for k,v in expected.items():
+              assert re.search(r'\b'+k+r'\s*=\s*'+re.escape(v)+r'\s*[;,]',t),(k,v)
+          assert 'StudioAudio.edit(original,before,r,intermediate,' in t
+          assert 'StudioAudio.deliver(intermediate,edit.analysis,r,stage,' in t
+          assert 'original.getCanonicalFile().equals(output.getCanonicalFile())' in t
+          assert 'originalHash.equals(Hashing.sha256(original))' in t
+          print('TRIAL_B_ORIGINAL_RECIPE_AND_GUARDS_PASS')
+          PY
+      - name: Re-run v0.5.0 stem import regression
+        run: |
+          mkdir -p host-fixtures host-classes
+          python3 - <<'PY'
+          import array,math,pathlib,sys,wave,zipfile
+          base=pathlib.Path('host-fixtures');sr=48000
+          for name,freq,level in [('Vocals.wav',231,.16),('Instrumental.wav',110,.22)]:
+              buf=array.array('h')
+              for k in range(sr*18):
+                  v=int(32767*level*math.sin(2*math.pi*freq*k/sr))
+                  buf.extend([v,v])
+              if sys.byteorder!='little':buf.byteswap()
+              with wave.open(str(base/name),'wb') as wav:
+                  wav.setnchannels(2);wav.setsampwidth(2);wav.setframerate(sr);wav.writeframes(buf.tobytes())
+          with zipfile.ZipFile(base/'safe.zip','w',compression=zipfile.ZIP_DEFLATED) as z:
+              for name in ('Vocals.wav','Instrumental.wav'):z.write(base/name,name)
+          with zipfile.ZipFile(base/'unsafe.zip','w',compression=zipfile.ZIP_DEFLATED) as z:
+              z.write(base/'Vocals.wav','../Vocals.wav')
+          PY
+          javac -encoding UTF-8 -d host-classes -sourcepath project/app/src/main/java:project/tests \
+            project/app/src/main/java/com/dennis/aimasteringlab/StemOnlyImport.java \
+            project/app/src/main/java/com/dennis/aimasteringlab/StemPremixBuilder.java \
+            project/app/src/main/java/com/dennis/aimasteringlab/StemStudioPreflight.java \
+            project/tests/V050StemOnlyIntegrationHarness.java \
+            project/tests/BuildConfig.java project/tests/org/json/*.java
+          java -cp host-classes com.dennis.aimasteringlab.V050StemOnlyIntegrationHarness host-fixtures/safe.zip host-fixtures/unsafe.zip
+      - name: Build independent offline APK
+        working-directory: project
+        run: gradle --no-daemon :app:assembleDebug
+      - name: Verify APK archive and create source
+        run: |
+          cp project/app/build/outputs/apk/debug/app-debug.apk StemLab-v0.5.0-TrialB-Final-TEST.apk
+          unzip -tq StemLab-v0.5.0-TrialB-Final-TEST.apk
+          (cd project && zip -qr ../StemLab-v0.5.0-TrialB-Final-Source.zip . -x '.gradle/*' 'build/*' 'app/build/*' '*.jks' '*.keystore' '*.apk')
+          sha256sum StemLab-v0.5.0-TrialB-Final-TEST.apk StemLab-v0.5.0-TrialB-Final-Source.zip > SHA256SUMS.txt
+      - name: Upload APK and source
+        uses: actions/upload-artifact@v4
+        with:
+          name: StemLab-v0.5.0-TrialB-Final-Test
+          path: |
+            StemLab-v0.5.0-TrialB-Final-TEST.apk
+            StemLab-v0.5.0-TrialB-Final-Source.zip
+            SHA256SUMS.txt
+          retention-days: 30
