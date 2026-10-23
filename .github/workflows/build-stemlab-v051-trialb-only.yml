@@ -84,8 +84,8 @@ jobs:
         run: |
           sed -i "s/applicationId 'com.dennis.stemlab.modern'/applicationId 'com.dennis.stemlab.trialbonly051'/" project/app/build.gradle
           sed -i 's/android:label="Dennis Stem Lab Modern DEV"/android:label="Stem Lab Trial B 5.1"/' project/app/src/main/AndroidManifest.xml
-          grep -q "applicationId 'com.dennis.stemlab.bulkqc'" project/app/build.gradle
-          grep -q 'android:label="Dennis Stem Lab A-B DEV"' project/app/src/main/AndroidManifest.xml
+          grep -q "applicationId 'com.dennis.stemlab.trialbonly051'" project/app/build.gradle
+          grep -q 'android:label="Stem Lab Trial B 5.1"' project/app/src/main/AndroidManifest.xml
       - name: Run original v0.5.1 Trial B-only host regressions
         run: |
           mkdir -p host-classes
@@ -136,22 +136,22 @@ jobs:
       - name: Package checksum-verified APK and source
         run: |
           cp project/app/build/outputs/apk/debug/app-debug.apk StemLab-v0.5.1-TrialB-ONLY.apk
-          unzip -tq DennisStemLab-Modern-v0.5.1-DEV.apk
+          unzip -tq StemLab-v0.5.1-TrialB-ONLY.apk
           (cd project && zip -qr ../StemLab-v0.5.1-TrialB-ONLY-Source.zip . -x '.gradle/*' 'build/*' 'app/build/*' '*.jks' '*.keystore' '*.apk')
-          sha256sum DennisStemLab-Modern-v0.5.1-DEV.apk DennisStemLab-Modern-v0.5.1-GitHubBuildSource.zip > StemLab-v0.5.1-TrialB-ONLY-SHA256.txt
+          sha256sum StemLab-v0.5.1-TrialB-ONLY.apk StemLab-v0.5.1-TrialB-ONLY-Source.zip > StemLab-v0.5.1-TrialB-ONLY-SHA256.txt
       - name: Upload experimental APK
         uses: actions/upload-artifact@v4
         with:
           name: StemLab-v0.5.1-TrialB-ONLY-APK
           path: |
-            DennisStemLab-Modern-v0.5.1-DEV.apk
-            DennisStemLab-Modern-v0.5.1-CHECKSUMS.sha256
+            StemLab-v0.5.1-TrialB-ONLY.apk
+            StemLab-v0.5.1-TrialB-ONLY-SHA256.txt
           retention-days: 30
       - name: Upload recoverable source
         uses: actions/upload-artifact@v4
         with:
           name: StemLab-v0.5.1-TrialB-ONLY-Source
           path: |
-            DennisStemLab-Modern-v0.5.1-GitHubBuildSource.zip
-            DennisStemLab-Modern-v0.5.1-CHECKSUMS.sha256
+            StemLab-v0.5.1-TrialB-ONLY-Source.zip
+            StemLab-v0.5.1-TrialB-ONLY-SHA256.txt
           retention-days: 30
