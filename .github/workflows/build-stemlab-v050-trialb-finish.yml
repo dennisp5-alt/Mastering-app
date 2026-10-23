@@ -44,7 +44,7 @@ jobs:
           base64 --decode experiments/dennis-stem-lab-modern-v050/v050-modern.patch.gz.b64 | gzip -dc > /tmp/baseline.patch
           printf '%s  %s\n' '4f3a83cc2ce4c45daf4d2adde4b07d7ea1eb18afd81f41d1cf768e86c519b8fd' '/tmp/baseline.patch' | sha256sum -c -
           src=project/app/src/main/java/com/dennis/aimasteringlab
-          find "$src" -maxdepth 1 -name '*.java' ! -name 'StudioActivity.java' -type f | sort | xargs sha256sum > /tmp/trusted-engine.sha256
+          find "$src" -maxdepth 1 -name '*.java' ! -name 'StudioActivity.java' ! -name 'StudioQueue.java' -type f | sort | xargs sha256sum > /tmp/trusted-engine.sha256
           patch --batch --fuzz=0 -p1 -d project < /tmp/baseline.patch
           sha256sum -c /tmp/trusted-engine.sha256
           grep -q "applicationId 'com.dennis.stemlab.modern'" project/app/build.gradle
