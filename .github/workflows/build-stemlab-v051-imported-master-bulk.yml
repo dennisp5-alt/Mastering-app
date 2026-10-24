@@ -146,7 +146,10 @@ jobs:
           print("BULK_TRIAL_B_SAFETY_SOURCE_PASS")
           PY
           sed -i "s/versionCode 6/versionCode 7/; s/versionName '0.5.1-trialb-import-test'/versionName '0.5.1-trialb-import-bulk-test'/" project/app/build.gradle
-          grep -q "applicationId 'com.dennis.stemlab.importtrialb051'" project/app/build.gradle
+          # APKs from separate GitHub Actions runners have different debug signing
+          # certificates; use a distinct package for safe side-by-side installation.
+          sed -i "s/applicationId 'com.dennis.stemlab.importtrialb051'/applicationId 'com.dennis.stemlab.importtrialbbulk051'/" project/app/build.gradle
+          grep -q "applicationId 'com.dennis.stemlab.importtrialbbulk051'" project/app/build.gradle
           grep -q "versionName '0.5.1-trialb-import-bulk-test'" project/app/build.gradle
           sed -i 's/Stem Lab Trial B Import TEST/Stem Lab Trial B Bulk TEST/' project/app/src/main/AndroidManifest.xml
           grep -q "Stem Lab Trial B Bulk TEST" project/app/src/main/AndroidManifest.xml
