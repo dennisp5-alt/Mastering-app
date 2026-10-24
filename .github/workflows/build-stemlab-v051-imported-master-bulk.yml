@@ -2,6 +2,9 @@ name: Stem Lab v0.5.1 Imported Master Trial B BULK TEST (isolated)
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - experiment/stemlab-v051-imported-master-trialb
   push:
     branches:
       - experiment/stemlab-v051-imported-master-bulk
