@@ -103,7 +103,7 @@ jobs:
           assert 'MasterRenderer.renderAttempt(' in new
           assert 'gain, false,' in new, 'No additional limiter permitted'
           assert all(s in new for s in ['band(260, .95, -.55, -24', 'band(3500, 1.2, -.45, -30'])
-          assert 'trial_b_no_limiter' in new and 'source_sha256' in new
+          assert 'trial_b_no_limiter' in new and 'source_hash' in new
           assert 'source_meters' in new and 'master_hash' in new
           assert 'no_second_mastering' in new
           assert 'IMPORTED MASTER → TRIAL B (TEST)' in ui
