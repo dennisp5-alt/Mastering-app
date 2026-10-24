@@ -124,7 +124,7 @@ jobs:
           python3 /tmp/apply_bulk_mode.py project
           # StudioQueue.java is intentionally changed ONLY to dispatch imported-master
           # projects to the isolated Trial B path; all trusted DSP/engine files still match.
-          grep -v 'StudioQueue.java
+          grep -v 'StudioQueue.java$' /tmp/trusted-v157-engine.sha256 | sha256sum -c -
           python3 - <<'PY'
           from pathlib import Path
           src=Path("project/app/src/main/java/com/dennis/aimasteringlab")
