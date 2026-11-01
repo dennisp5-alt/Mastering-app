@@ -1,0 +1,63 @@
+name: Backup — Mastering Lab and Stem Lab sources (one download)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [backup/mastering-sources-2026-11]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download every unexpired Mastering Lab / Stem Lab source, plus latest APKs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p backup/sources backup/apks
+          gh api --paginate "repos/$REPO/actions/artifacts?per_page=100" \
+            --jq '.artifacts[] | select(.expired==false) | [.id,.name,.created_at] | @tsv' > all.tsv
+          # Newest copy of each name only.
+          sort -t$'\t' -k3,3r all.tsv | awk -F'\t' '!seen[$2]++' > newest.tsv
+          grep -E $'\t(DennisAiMasteringLab-v[0-9.]+(-perf1)?-Source|DennisStemLab-.*Source|StemLab-.*Source)\t' newest.tsv > want_src.tsv || true
+          grep -E $'\t(StemLab-v0\\.5\\.1-.*APK|DennisStemLab-.*APK|DennisAiMasteringLab-v0\\.15\\.7-GlassUI-TEST|StemLab-v0\\.5\\.0-TrialB-Final-Test)\t' newest.tsv > want_apk.tsv || true
+          fetch() { # id name dir
+            gh api "repos/$REPO/actions/artifacts/$1/zip" > "$3/$2.zip"
+            echo "$(sha256sum "$3/$2.zip" | cut -c1-64)  $3/$2.zip" >> backup/SHA256SUMS.txt
+          }
+          while IFS=$'\t' read -r id name _; do fetch "$id" "$name" backup/sources; done < want_src.tsv
+          while IFS=$'\t' read -r id name _; do fetch "$id" "$name" backup/apks; done < want_apk.tsv
+          ls -la backup/sources backup/apks
+      - name: Add the build recipes (patches, scripts, workflows) from the bulk branch
+        uses: actions/checkout@v4
+        with:
+          ref: experiment/stemlab-v051-imported-master-bulk
+          path: recipe
+      - name: Assemble one archive with a README
+        run: |
+          set -euo pipefail
+          mkdir -p backup/build-recipes
+          cp -r recipe/experiments recipe/.github/workflows backup/build-recipes/
+          cat > backup/README.txt <<'TXT'
+          Dennis AI Mastering Lab / Stem Lab — backup made 2026-11-02 before GitHub artifacts expired.
+
+          sources/  Each *-Source.zip is a complete Android Studio project for that version.
+            * DennisAiMasteringLab-v0.15.7-Source.zip  = the locked production engine every Stem Lab build starts from.
+            * StemLab-v0.5.1-ImportedMaster-TrialB-BULK-TEST-Source.zip = the fully patched source of the
+              "v0.5.1-trialb-import-bulk-test" app on your phone (open this one to keep working on it).
+          apks/     Installable test builds.
+          build-recipes/  The patch files and scripts the CI used to build Stem Lab from v0.15.7.
+          SHA256SUMS.txt  Fingerprints to check the files are intact.
+          TXT
+          sed -i 's/^          //' backup/README.txt
+      - name: Upload single backup download
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mastering-Lab-FULL-BACKUP-2026-11-02
+          path: backup
+          retention-days: 90
