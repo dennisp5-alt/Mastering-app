@@ -1,0 +1,7 @@
+LOCAL_DAMAGE_CAUGHT CENTRE_PRESENCE_LOSS Passage preservation rejected: CENTRE_PRESENCE_LOSS at 5.00–7.00 s (-5.621 dB)
+LOCAL_DAMAGE_CAUGHT STEREO_WIDTH_LOSS Passage preservation rejected: STEREO_WIDTH_LOSS at 5.00–7.00 s (-6.021 dB)
+LOCAL_DAMAGE_CAUGHT TRANSIENT_CREST_LOSS Passage preservation rejected: TRANSIENT_CREST_LOSS at 10.00–11.00 s (-8.638 dB)
+LOCAL_DAMAGE_CAUGHT TAIL_LEVEL_LOSS Passage preservation rejected: TAIL_LEVEL_LOSS at 17.00–18.00 s (-8.111 dB)
+ALIGNED_AB_PASS maxSampleError=0.000000104 gainA=0 gainB=-3.00000 stereo/mono/seek/tail/blind/no-write
+PASSAGE_PRESERVATION_PASS gain-invariant/local-centre/width/transient/tail/cancellation
+GENTLER_POLICY_PASS parent-immutable/benefit/cost/finite/limiter/passage/codec-order

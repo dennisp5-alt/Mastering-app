@@ -1,0 +1,28 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.dennis.aimasteringlab'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.dennis.aimasteringlab'
+        minSdk 29
+        targetSdk 34
+        versionCode 34
+        versionName '0.15.7'
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+}

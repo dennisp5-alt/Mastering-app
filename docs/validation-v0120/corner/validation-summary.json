@@ -1,0 +1,42 @@
+{
+  "input": "/workspace/scratch/d6b87648e1b6/v0120-recovery/The Corner Stage (Remix).wav",
+  "input_sha256": "d7b5f3e13524997b2083392f0cd00cfc594aabc7f43b4b8bfce32269e729bb60",
+  "source_lufs": -14.62844571231501,
+  "source_dbtp": -3.9967280601259922,
+  "frames": 17994240,
+  "winner": "vocal_artifact_intelligence",
+  "master": "/workspace/scratch/d6b87648e1b6/v0120-work/app/build/real-corner-final/TheCornerStage_Master_24bit-48kHz.wav",
+  "sha256": "326c5be6815b3458fc105d193c241d614d46d8bde7f7990910559609e7887054",
+  "lufs": -14.000000000683722,
+  "dbtp": -3.3677509523304368,
+  "lra": 4.110367331297525,
+  "limiter_profile": "bypassed",
+  "report": "/workspace/scratch/d6b87648e1b6/v0120-work/app/build/real-corner-final/TheCornerStage_FullAI_QC.json",
+  "quality_decision": "vocal_artifact_intelligence selected by independent quality evidence against transparent_flat_gain: Finished-audio target comparison PASS: 4/4 events improved, 0 worsened; mean reduction 0.275 dB; control difference -84.3 dB relative to signal",
+  "release_formats": {
+    "status": "VERIFIED",
+    "master_unchanged_by_derivatives": true,
+    "resampling": "193-tap phase-normalized Blackman sinc; exact rational timing; one final high-pass triangular dither",
+    "mp3_encoder": "offline Jump3r 1.0.5 / LAME 3.98.4, 320 kbps CBR joint stereo; gapless metadata",
+    "wav16": {
+      "file": "TheCornerStage_Master_16bit-44.1kHz.wav",
+      "frames": 16532208,
+      "sample_rate": 44100,
+      "lufs_i": -13.999946308742848,
+      "true_peak_dbtp": -3.371458148532599,
+      "lra_lu": 4.110358201916249,
+      "additional_flat_gain_db": 0.0
+    },
+    "mp3": {
+      "file": "TheCornerStage_Master_320kbps.mp3",
+      "frames": 16532208,
+      "sample_rate": 44100,
+      "lufs_i": -13.998857680087328,
+      "true_peak_dbtp": -3.41035247746242,
+      "lra_lu": 4.111536749756148,
+      "additional_flat_gain_db": 0.0
+    },
+    "mp3_attempts": 1,
+    "export_attempts": 1
+  }
+}

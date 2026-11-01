@@ -1,0 +1,16 @@
+{
+  "input": "/workspace/scratch/d6b87648e1b6/v0110-work/input-recovered/The Corner Stage (Remix).wav",
+  "input_sha256": "d7b5f3e13524997b2083392f0cd00cfc594aabc7f43b4b8bfce32269e729bb60",
+  "source_lufs": -14.62844571231501,
+  "source_dbtp": -3.9967280601259922,
+  "frames": 17994240,
+  "winner": "vocal_artifact_intelligence",
+  "master": "/workspace/scratch/d6b87648e1b6/v0110-work/app/build/v0110-tests-ygj7_slz/real-TheCornerStage/TheCornerStage_FullAI24.wav",
+  "sha256": "19b356ee2afcdbd95235d8be3f4301484d150cdfc9d2d0a540f0fb905dac6227",
+  "lufs": -13.999999999991177,
+  "dbtp": -3.367810460699672,
+  "lra": 4.110367335667998,
+  "limiter_profile": "bypassed",
+  "report": "/workspace/scratch/d6b87648e1b6/v0110-work/app/build/v0110-tests-ygj7_slz/real-TheCornerStage/TheCornerStage_FullAI_QC.json",
+  "quality_decision": "vocal_artifact_intelligence selected by independent quality evidence against transparent_flat_gain: Finished-audio target comparison PASS: 11/11 events improved, 0 worsened; mean reduction 0.165 dB; control difference -85.3 dB relative to signal"
+}

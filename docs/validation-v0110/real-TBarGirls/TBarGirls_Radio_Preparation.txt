@@ -1,0 +1,25 @@
+DENNIS AI MASTERING LAB — RADIO / RELEASE PREPARATION
+
+Delivery target: approximately -14 LUFS-I, at or below -1 dBTP; 24-bit/48 kHz stereo.
+A station may request different levels or formats. This is not station-specific certification.
+
+Radio preparation: CONDITIONAL — whole-song mono and opening/ending checks completed
+
+CONDITIONAL • tonal_corrective • original winning render • PCM -14.0000 LUFS-I / -3.070 dBTP • AAC unavailable
+Loudness outcome: TARGET_REACHED
+Passage preservation: measured PASS across 213 aligned windows
+Selected gain -2.7063 dB; limiter maximum 0.000 dB, average 0.0000 dB; frames above 1 dB 0.000%, above 3 dB 0.000%.
+Selected plan: tonal_corrective • confidence 0.70 • EQ [-0.74, +0.00, +0.00, +0.00] dB • side 1.000 • events 0.00 • compression bypassed
+- Minimum-phase global EQ selected from learned full-song band distributions.
+- Stereo processing bypassed: measured correlation does not justify changing width.
+- Local dynamic EQ bypassed: no event passed the strict correction gate.
+- Bus compression bypassed: current crest/LRA/peak evidence does not clear the mode gate.
+- Stereo and bus compression disabled for isolated tonal candidate measurement.
+
+WARNINGS / SOURCE LIMITATIONS
+- The device AAC encoder was unavailable: Stub!
+- No internal candidate completed every codec gate; the highest-scoring PCM-safe candidate was retained with a conditional verdict.
+
+No blanket radio EQ, automatic LRA-only compression, stereo widening or device-profile correction was added.
+The v0.7 natural reference remains authoritative. Detailed candidate and repair evidence is in the QC JSON.
+Human listening remains necessary for vocal realism, musical intent and final artistic approval.

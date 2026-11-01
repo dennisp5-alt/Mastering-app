@@ -1,0 +1,2 @@
+REAL_NEAR_COPY level-matched residual -50.83 dB relative / -67.33 dBFS; correlation 0.99999587; gain match +0.0026 dB; NARROW_OR_SPARSE_DELTA_ONLY
+V0142_MEANINGFUL_DELTA_PASS broad=level-matched residual -30.47 dB relative / -48.82 dBFS; correlation 0.99955132; gain match -0.1925 dB; MEANINGFUL_BROAD_SONIC_DELTA

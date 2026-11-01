@@ -1,0 +1,11 @@
+build/
+*.apk
+*.idsig
+*.class
+*.wav
+*.m4a
+*.zip
+
+# Never publish local signing credentials
+*.jks
+*.keystore

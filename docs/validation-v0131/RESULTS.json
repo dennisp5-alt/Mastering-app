@@ -1,0 +1,27 @@
+[
+  {
+    "test": "StudioImportPathHarness",
+    "arguments": [
+      "/workspace/scratch/d6b87648e1b6/v0131-work/build/v0131-tests-1rtzam6g/path-alias"
+    ],
+    "exit_code": 0,
+    "log": "01-StudioImportPathHarness.log"
+  },
+  {
+    "test": "StudioImportRecoveryHarness",
+    "arguments": [
+      "/workspace/scratch/d6b87648e1b6/v0131-work/build/v0131-tests-1rtzam6g/import-recovery",
+      "/workspace/scratch/d6b87648e1b6/upload/Pilot Light2.wav"
+    ],
+    "exit_code": 0,
+    "log": "02-StudioImportRecoveryHarness.log"
+  },
+  {
+    "test": "StudioV013Harness",
+    "arguments": [
+      "/workspace/scratch/d6b87648e1b6/v0131-work/build/v0131-tests-1rtzam6g/studio"
+    ],
+    "exit_code": 0,
+    "log": "03-StudioV013Harness.log"
+  }
+]

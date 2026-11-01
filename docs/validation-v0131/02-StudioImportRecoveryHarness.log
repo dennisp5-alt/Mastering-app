@@ -1,0 +1,18 @@
+NEW_ALIAS_IMPORT_PASS selected-stream/copy-checksum/analyze/commit/reload
+FOUR_LEGACY_IMPORTS_RECOVERED_PASS plus known-checksum-path-recovery
+IMPORT_GUARDS_PASS changed/missing/partial/truncated/untrusted-render/cancelled/escaped-source plus resumed-analysis
+REAL_WAV_ALIAS_IMPORT_PASS {"lufs":-15.760299433468594,"true_peak":-3.480216373508594,"lra":7.751158625513126,"crest":13.906755459836813,"correlation":0.8348941793163157,"mono_loss_db":-0.37419050964345857,"frames":9696000,"rate":48000,"duration":202.0,"sha256":"dbc52c7c69b310b48cc19df1de72306251412458e482ce5b49ecb6b01e0a9d22"}
+PROGRESS Song 1/1: Verifying retained source WAV 0%
+PROGRESS Song 1/1: v0.9: measuring all 12 translation response profiles 18%
+PROGRESS Song 1/1: v0.9: measuring all 12 translation response profiles 93%
+PROGRESS Song 1/1: AI mastering: rendering protected float pre-master 22%
+PROGRESS Song 1/1: Rendering transparent flat-gain master 5%
+PROGRESS Song 1/1: Measuring loudness, peaks and phase 42%
+PROGRESS Song 1/1: Reading WAV structure 2%
+PROGRESS Song 1/1: Checking local bass and low-mid excess 0%
+PROGRESS Song 1/1: Rendering 16-bit/44.1 kHz WAV 32%
+PROGRESS Song 1/1: Encoding offline MP3 320 kbps 34%
+PROGRESS Song 1/1: Encoding offline MP3 320 kbps 99%
+PROGRESS Song 1/1: Measuring loudness, peaks and phase 22%
+RECOVERED_QUEUE_COMPLETE_PASS base/master/WAV16/MP3/QC/ZIP/checksums/reload/resume {"lufs":-14.000000000054792,"true_peak":-1.7199175452479238,"lra":7.751158635639239,"crest":13.90675493660091,"correlation":0.8348942843874857,"mono_loss_db":-0.37419026095586716,"frames":9696000,"rate":48000,"duration":202.0,"sha256":"c928c6f15fa3c980a7b191052b0d19209a4822e3a943d530a7758914f9fa921b"}
+STUDIO_V0131_IMPORT_RECOVERY_PASS

@@ -1,0 +1,26 @@
+{
+  "status": "PASS",
+  "measurement_note": "FFmpeg loudnorm measures at 192 kHz. Duration independently decoded, including gapless metadata.",
+  "formats": {
+    "wav16": {
+      "file": "TheCornerStage_Master_16bit-44.1kHz.wav",
+      "sha256": "258ac8d0e637a9de13d1e7829f66a7b7eeaccb0e327c70e024c74ca3b24f8b1c",
+      "decoded_frames": 16532208,
+      "ffmpeg_loudnorm_lufs_i": -13.99,
+      "ffmpeg_true_peak_dbtp": -3.37,
+      "app_lufs_i": -13.999946308742848,
+      "app_true_peak_dbtp": -3.371458148532599,
+      "flat_gain_db": 0.0
+    },
+    "mp3": {
+      "file": "TheCornerStage_Master_320kbps.mp3",
+      "sha256": "5e5e54fd25528b153638c102ddc89126c077e2065c6d8b995e79ecd06e5b68d3",
+      "decoded_frames": 16532208,
+      "ffmpeg_loudnorm_lufs_i": -13.99,
+      "ffmpeg_true_peak_dbtp": -3.41,
+      "app_lufs_i": -13.998857680087328,
+      "app_true_peak_dbtp": -3.41035247746242,
+      "flat_gain_db": 0.0
+    }
+  }
+}

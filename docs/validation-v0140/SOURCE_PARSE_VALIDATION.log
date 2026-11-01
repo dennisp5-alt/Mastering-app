@@ -1,0 +1,2 @@
+JAVAC_PARSE_SWEEP rc=1 parse_errors=0 changed_file_diagnostics=0
+Expected unresolved platform diagnostics without android.jar/org.json: 3056 lines

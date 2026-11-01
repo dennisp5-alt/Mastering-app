@@ -1,0 +1,65 @@
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+RUN StudioV013Harness /workspace/scratch/d6b87648e1b6/v0130-work/build/v0130-tests-e9abukel/studio
+STUDIO_EDIT_PASS identity/bypass/isolated-gain/sample-exact-trim/fades/mid-side/low-end-positive-and-negative {"passed":true,"events_checked":1,"events":[{"start":7.1000000000000005,"end":8.4,"hz":120.0,"target_ratio_improvement_db":0.9901149049839492,"body_change_db":-0.008381083178359202,"passed":true}],"limit":"Signal evidence only; bass, drums and vocals are not isolated sources"}
+STUDIO_PROJECT_PASS persisted-recipes/undo/interrupted-state/corrupt-json-recovery/source-hash/path-scope
+STUDIO_QUEUE_PASS failed-item-isolation/completed-song-retention/pause/reopen/resume
+STUDIO_REFERENCE_PASS cropped-reference/identical-no-suggestion/aligned-delta-null
+STUDIO_DELIVERY_PASS custom-loudness/true-peak/WAV-PCM-identity/MP3-metadata-and-decode
+STUDIO_PIPELINE_PASS saved-master/formats/package/album/stale-render-rejection
+STUDIO_V013_CORE_PASS
+
+RUN V012ExportsHarness /workspace/scratch/d6b87648e1b6/v0130-work/build/v0130-tests-e9abukel/exports
+SINC_TIMING_ALIAS_PASS 18kHz=0.0001 dB 23.5kHz=-96.70 dB
+V012_EXPORTS_PASS Release formats verified: 24/48 WAV + 16/44.1 WAV + MP3 320; MP3 -15.199 LUFS / -2.908 dBTP frames=352800 attempts=1
+
+RUN V012AudioHarness /workspace/scratch/d6b87648e1b6/v0130-work/build/v0130-tests-e9abukel/audio
+TRACKING_EQ_PASS range=7300..9000 Hz reduction=1.0784 dB bodyChange=-0.00544 dB protectedExact=true
+MUSICAL_CONTEXT_PASS mode=0 25 ms context PASS; centre/body 24.5 dB; onset 6.3 dB; tracked 8220 Hz Q 3.00
+MUSICAL_CONTEXT_PASS mode=1 repeated sharp instrument-like bursts
+MUSICAL_CONTEXT_PASS mode=2 repeated sharp instrument-like bursts
+OVERSAMPLED_LIMITER_PASS frames=288000 LUFS=-14.002054 TP=-1.237143 maxGR=2.0268
+
+RUN PassageAndComparisonHarness /workspace/scratch/d6b87648e1b6/v0130-work/build/v0130-tests-e9abukel/comparison
+LOCAL_DAMAGE_CAUGHT CENTRE_PRESENCE_LOSS Passage preservation rejected: CENTRE_PRESENCE_LOSS at 5.00–7.00 s (-5.621 dB)
+LOCAL_DAMAGE_CAUGHT STEREO_WIDTH_LOSS Passage preservation rejected: STEREO_WIDTH_LOSS at 5.00–7.00 s (-6.021 dB)
+LOCAL_DAMAGE_CAUGHT TRANSIENT_CREST_LOSS Passage preservation rejected: TRANSIENT_CREST_LOSS at 10.00–11.00 s (-8.638 dB)
+LOCAL_DAMAGE_CAUGHT TAIL_LEVEL_LOSS Passage preservation rejected: TAIL_LEVEL_LOSS at 17.00–18.00 s (-8.111 dB)
+ALIGNED_AB_PASS maxSampleError=0.000000104 gainA=0 gainB=-3.00000 stereo/mono/seek/tail/blind/no-write
+PASSAGE_PRESERVATION_PASS gain-invariant/local-centre/width/transient/tail/cancellation
+GENTLER_POLICY_PASS parent-immutable/benefit/cost/finite/limiter/passage/codec-order
+
+RUN NaturalStudioPolicyHarness
+NATURAL_STUDIO_V010_POLICY_PASS standard=3.00 sparse=5.50 codecAttenuation=0.2131 translation=2/1
+
+RUN BackgroundJobHarness
+BACKGROUND_JOB_PASS callbacks=7
+
+RUN CompliantMasterPolicyHarness
+COMPLIANT_MASTER_POLICY_PASS bounds/format/finite/peak/hash/frame/gain/render/limiter
+
+RUN RadioPreparationHarness /workspace/scratch/d6b87648e1b6/v0130-work/build/v0130-tests-e9abukel/radio
+RADIO_PREPARATION_PASS clean/uncorrelated/inherited/introduced/tail/cancellation
+LIMITER_BOUNDARY_ALIGNMENT_PASS all-four-profiles short-and-long-streams
+
+RUN NaturalStudioRecoveryHarness recover /workspace/scratch/d6b87648e1b6/v0130-work/build/v0130-tests-e9abukel/fixtures/clean.wav /workspace/scratch/d6b87648e1b6/v0130-work/build/v0130-tests-e9abukel/recovery
+OPTIONAL_EOF_RECOVERY_PASS winner=transparent_flat_gain warnings=1
+TRUNCATED_SOURCE_AND_STAGING_FAIL_CLOSED_PASS
+
+RUN NaturalStudioRecoveryHarness cancel /workspace/scratch/d6b87648e1b6/v0130-work/build/v0130-tests-e9abukel/fixtures/clean.wav /workspace/scratch/d6b87648e1b6/v0130-work/build/v0130-tests-e9abukel/cancel
+CANCELLATION_FAIL_CLOSED_PASS
+
+RUN QualityCounterexampleHarness /workspace/scratch/d6b87648e1b6/v0130-work/build/v0130-tests-e9abukel/counterexamples
+QUALITY_COUNTEREXAMPLES_PASS steady-bright/side-only/flat-gain/worsened-target/cancellation
+
+RUN StudioRealMusicHarness /workspace/scratch/d6b87648e1b6/upload/Pilot Light2.wav /workspace/scratch/d6b87648e1b6/v0130-work/build/v0130-tests-e9abukel/real-song
+PROGRESS Checksumming source 0%
+PROGRESS v0.9: channel integrity ready 100%
+PROGRESS Reading WAV structure 2%
+PROGRESS Measuring loudness, peaks and phase 96%
+PROGRESS Measuring loudness, peaks and phase 13%
+PROGRESS Encoding offline MP3 320 kbps 62%
+PROGRESS Packaging verified files 100%
+STUDIO_REAL_MUSIC_PASS {"lufs":-14.000000000054792,"true_peak":-1.7199175452479238,"lra":7.751158635639239,"crest":13.90675493660091,"correlation":0.8348942843874857,"mono_loss_db":-0.37419026095586716,"frames":9696000,"rate":48000,"duration":202.0,"sha256":"cab8f459ec3edd2b3a2dc979c082e98ab8387a75b91c46e30fb2f7bc907e2b1e"} bass={"passed":true,"events_checked":0} fadeOut=0.01
+
+V0130_HOST_GATE_PASS /workspace/scratch/d6b87648e1b6/v0130-work/build/v0130-tests-e9abukel

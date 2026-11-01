@@ -1,0 +1,13 @@
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+RUN StudioImportPathHarness /workspace/scratch/d6b87648e1b6/v0131-work/build/v0131-tests-54rn1979/path-alias
+STUDIO_ANDROID_PATH_ALIAS_PASS
+
+RUN StudioImportRecoveryHarness /workspace/scratch/d6b87648e1b6/v0131-work/build/v0131-tests-54rn1979/import-recovery /workspace/scratch/d6b87648e1b6/upload/Pilot Light2.wav
+NEW_ALIAS_IMPORT_PASS selected-stream/copy-checksum/analyze/commit/reload
+FOUR_LEGACY_IMPORTS_RECOVERED_PASS plus known-checksum-path-recovery
+IMPORT_GUARDS_PASS changed/missing/partial/truncated/untrusted-render/cancelled/escaped-source plus resumed-analysis
+Exception in thread "main" java.io.IOException: 1 song(s) need review. Completed songs are saved; use Retry failed.
+	at com.dennis.aimasteringlab.StudioQueue.run(StudioQueue.java:24)
+	at com.dennis.aimasteringlab.StudioImportRecoveryHarness.main(StudioImportRecoveryHarness.java:68)
+

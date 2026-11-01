@@ -1,0 +1,88 @@
+{
+  "app_version": "0.13.1",
+  "project_id": "125a383c-78af-4258-9355-ec629aea267d",
+  "source_sha256": "dbc52c7c69b310b48cc19df1de72306251412458e482ce5b49ecb6b01e0a9d22",
+  "base_sha256": "0f30182b47625b4db1bc68dd2188fbdee12d002c45fafa1cf0d992f68f701325",
+  "source_recovery_notice": "Recovered a completed v0.13.0 import. The earlier import did not save a checksum; the retained WAV was re-read and its first checksum recorded. Review the source before release.",
+  "recipe": {
+    "edits": [],
+    "trim_start": 0.0,
+    "trim_end": 0.0,
+    "fade_in": 0.0,
+    "fade_out": 0.0,
+    "target": -14.0,
+    "ceiling": -1.1,
+    "boundary_repair": true,
+    "low_end": true,
+    "title": "Recovered Pilot Light2",
+    "artist": "",
+    "album": "",
+    "isrc": "",
+    "track": 1
+  },
+  "base_winner": "transparent_flat_gain",
+  "audio_unchanged_before_delivery_gain": false,
+  "master": {
+    "lufs": -14.000000000054792,
+    "true_peak": -1.7199175452479238,
+    "lra": 7.751158635639239,
+    "crest": 13.90675493660091,
+    "correlation": 0.8348942843874857,
+    "mono_loss_db": -0.37419026095586716,
+    "frames": 9696000,
+    "rate": 48000,
+    "duration": 202.0,
+    "sha256": "c928c6f15fa3c980a7b191052b0d19209a4822e3a943d530a7758914f9fa921b"
+  },
+  "delivery_note": "Requested delivery loudness and peak checks passed",
+  "target_lufs": -14.0,
+  "peak_ceiling_dbtp": -1.1,
+  "fade_in_seconds": 0.0,
+  "fade_out_seconds": 0.01,
+  "boundary_in_repair": false,
+  "boundary_out_repair": true,
+  "bass_verification": {
+    "passed": true,
+    "events_checked": 0
+  },
+  "release_formats": {
+    "status": "VERIFIED",
+    "master_unchanged_by_derivatives": true,
+    "resampling": "193-tap phase-normalized Blackman sinc; exact rational timing; one final high-pass triangular dither",
+    "mp3_encoder": "offline Jump3r 1.0.5 / LAME 3.98.4, 320 kbps CBR joint stereo; gapless metadata",
+    "wav16": {
+      "file": "RecoveredPilotLight2_Master_16bit-44.1kHz.wav",
+      "frames": 8908200,
+      "sample_rate": 44100,
+      "lufs_i": -14.000071389669861,
+      "true_peak_dbtp": -1.7290426100183078,
+      "lra_lu": 7.7514038415604904,
+      "additional_flat_gain_db": 0.0
+    },
+    "mp3": {
+      "file": "RecoveredPilotLight2_Master_320kbps.mp3",
+      "frames": 8908200,
+      "sample_rate": 44100,
+      "lufs_i": -13.999661518778318,
+      "true_peak_dbtp": -1.7330407413626938,
+      "lra_lu": 7.749921601368008,
+      "additional_flat_gain_db": 0.0
+    },
+    "mp3_attempts": 1,
+    "export_attempts": 1
+  },
+  "radio_preparation": {
+    "method": "full-length one-second stereo/mono windows and sample-boundary/late-transient checks; diagnostic only",
+    "target_lufs_i": -14.0,
+    "true_peak_ceiling_dbtp": -1.1,
+    "station_specific_delivery_certified": false,
+    "listening_performed": false,
+    "verdict": "CHECKS_PASSED",
+    "windows_checked": 202,
+    "listening_checks": []
+  },
+  "verification_scope": "Final PCM and decoded MP3 measured; base mastering QC is separate. Listening, broadcaster compliance and edited-master AAC are not certified.",
+  "limiter_max_reduction_db": 0.0,
+  "limiter_mean_reduction_db": 0.0,
+  "limiter_used": false
+}

@@ -1,0 +1,166 @@
+{
+  "version": "0.14.1",
+  "version_code": 20,
+  "status": "HOST_VALIDATION_PASS_ANDROID_BUILD_PENDING",
+  "fresh_android_apk_build": "PENDING_GITHUB_ACTIONS",
+  "checks": {
+    "version_code_20_name_0_14_1": true,
+    "core_shortlist_active": true,
+    "gentler_rerender_not_invoked": true,
+    "promotion_floor_before_full_scan": true,
+    "exact_source_control_reuses_features": true,
+    "candidate_family_phase_labels": true,
+    "engine_progress_ranges": true,
+    "studio_master_progress_ranges": true,
+    "studio_pcm_only_base_qc": true,
+    "studio_no_full_codec_qc_call": true,
+    "studio_two_wav_buttons": true,
+    "studio_mp3_button_removed": true,
+    "studio_release_zip_button_removed": true,
+    "studio_qc_save_button_removed": true,
+    "wav_only_derivative_path": true,
+    "studio_broadcaster_simulation_skipped": true,
+    "advanced_progress_no_v07_label": true,
+    "delivery_message_distinguishes_mastering": true,
+    "studio_album_copy_no_mp3_claim": true,
+    "declared_engine_ranges_monotonic": true,
+    "legacy_v07_user_facing_terminology_removed": true
+  },
+  "syntax_diagnostics": {
+    "';' expected": 0,
+    "illegal start": 0,
+    "reached end": 0,
+    "not a statement": 0,
+    ")' expected": 0,
+    "incompatible types": 0,
+    "already defined": 0,
+    "class, interface, enum, or record expected": 0
+  },
+  "modified_file_sdkless_error_counts": {
+    "FullAiReleaseQc.java": 0,
+    "FullAiMasteringEngine.java": 0,
+    "StudioPipeline.java": 8,
+    "ReleaseFormats.java": 9,
+    "StudioActivity.java": 150
+  },
+  "expected_sdkless_limit": "Android and org.json types are unavailable on the host; those unresolved-symbol diagnostics are not treated as Android build success.",
+  "engine_progress_ranges": [
+    [
+      "core",
+      0,
+      34
+    ],
+    [
+      "stereo_analysis",
+      34,
+      39
+    ],
+    [
+      "stereo",
+      39,
+      50
+    ],
+    [
+      "advanced_analysis",
+      50,
+      55
+    ],
+    [
+      "advanced",
+      55,
+      66
+    ],
+    [
+      "quality_analysis",
+      66,
+      70
+    ],
+    [
+      "quality",
+      70,
+      81
+    ],
+    [
+      "technical_analysis",
+      81,
+      85
+    ],
+    [
+      "technical",
+      85,
+      93
+    ],
+    [
+      "stem",
+      93,
+      97
+    ],
+    [
+      "selection",
+      100,
+      100
+    ]
+  ],
+  "studio_release_outputs": [
+    "24-bit/48 kHz WAV",
+    "16-bit/44.1 kHz WAV"
+  ],
+  "studio_skipped_release_passes": [
+    "AAC codec fallback",
+    "SBC stress proxy",
+    "translation-device composites",
+    "radio/broadcaster simulation"
+  ],
+  "host_core_compile": "PASS_WITH_ANDROID_CODEC_STUBS",
+  "host_studio_pipeline_regression": "PASS",
+  "host_studio_pipeline_result": {
+    "fixture": "24-second synthetic 48 kHz stereo WAV",
+    "path": "import -> StudioPipeline.master -> StudioPipeline.finish",
+    "winner": "transparent_flat_gain",
+    "master_lufs_i": -14.000000000386656,
+    "wav16_lufs_i": -14.000250683671457,
+    "progress_monotonic_master": true,
+    "progress_monotonic_finish": true,
+    "master_format": "24-bit/48 kHz stereo WAV",
+    "wav16_format": "16-bit/44.1 kHz stereo WAV",
+    "mp3_reference_present": false,
+    "release_zip_reference_present": false,
+    "codec_attempt_count": 0,
+    "translation_verdict": "NOT_RUN_STUDIO_PCM_ONLY",
+    "radio_status": "NOT_RUN_WAV_ONLY"
+  },
+  "host_studio_second_pass_regression": {
+    "status": "PASS",
+    "input": "synthetic finished compliant master from first host run",
+    "progress_monotonic": true,
+    "codec_attempt_count": 0,
+    "translation_verdict": "NOT_RUN_STUDIO_PCM_ONLY"
+  },
+  "real_ribbon_of_black_regression": {
+    "status": "PASS",
+    "input": "RibbonOfBlack_Master_24bit-48kHz.wav from v0.14.0 phone run",
+    "duration_seconds": 202.7735,
+    "host_master_runtime_seconds_approx": 45.4,
+    "winner": "vocal_artifact_intelligence",
+    "progress_monotonic": true,
+    "source_sha256": "4c312ab1af5a8de5bf61703d0a1e207b47a89e95e6c8f6f7316360418ca3114f",
+    "result_sha256": "f1ea255e42a58e8b036b84d269266fe947847ceba5b0fd9b353769777933029e",
+    "result_changed_audio": true,
+    "selection_evidence": "5/5 eligible vocal-artifact events improved, 0 worsened; mean targeted reduction 0.408 dB; control difference -46.0 dB relative to signal",
+    "integrated_lufs": -14.0,
+    "true_peak_estimate_dbtp": -1.374,
+    "lra_lu": 4.3669,
+    "codec_attempt_count": 0,
+    "translation_verdict": "NOT_RUN_STUDIO_PCM_ONLY"
+  },
+  "real_ribbon_finish_regression": {
+    "status": "PASS",
+    "host_finish_runtime_seconds_approx": 22.33,
+    "progress_monotonic": true,
+    "wav24_lufs_i": -14.00000000058,
+    "wav16_lufs_i": -14.000021932,
+    "mp3_reference_present": false,
+    "release_zip_reference_present": false,
+    "radio_status": "NOT_RUN_WAV_ONLY"
+  }
+}

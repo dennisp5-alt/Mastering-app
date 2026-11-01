@@ -1,0 +1,2 @@
+SPARSE_RESULT source=-18.3939 output=-14.0001 TP=-1.2000 max=4.7058 avg=0.03198 above1=1.0354 above3=0.2945 sparse=true
+FLAT_CODEC_PASS sampleError=0.000000177 LUFS=-14.2201

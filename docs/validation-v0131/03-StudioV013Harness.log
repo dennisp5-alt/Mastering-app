@@ -1,0 +1,7 @@
+STUDIO_EDIT_PASS identity/bypass/isolated-gain/sample-exact-trim/fades/mid-side/low-end-positive-and-negative {"passed":true,"events_checked":1,"events":[{"start":7.1000000000000005,"end":8.4,"hz":120.0,"target_ratio_improvement_db":0.9901149049839492,"body_change_db":-0.008381083178359202,"passed":true}],"limit":"Signal evidence only; bass, drums and vocals are not isolated sources"}
+STUDIO_PROJECT_PASS persisted-recipes/undo/interrupted-state/corrupt-json-recovery/source-hash/path-scope
+STUDIO_QUEUE_PASS failed-item-isolation/completed-song-retention/pause/reopen/resume
+STUDIO_REFERENCE_PASS cropped-reference/identical-no-suggestion/aligned-delta-null
+STUDIO_DELIVERY_PASS custom-loudness/true-peak/WAV-PCM-identity/MP3-metadata-and-decode
+STUDIO_PIPELINE_PASS saved-master/formats/package/album/stale-render-rejection
+STUDIO_V013_CORE_PASS
