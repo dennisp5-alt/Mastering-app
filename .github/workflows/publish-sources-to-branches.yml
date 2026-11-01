@@ -1,0 +1,37 @@
+name: Publish saved sources as normal git branches
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [backup/mastering-sources-2026-11]
+    paths: [.github/workflows/publish-sources-to-branches.yml]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Commit each source zip to its own branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          publish() { # artifact-name branch
+            id=$(gh api --paginate "repos/$REPO/actions/artifacts?name=$1&per_page=100" --jq '[.artifacts[]|select(.expired==false)]|sort_by(.created_at)|last|.id')
+            rm -rf w && mkdir -p w/a w/src && cd w
+            gh api "repos/$REPO/actions/artifacts/$id/zip" > a.zip && unzip -q a.zip -d a
+            inner=$(find a -name '*.zip' | head -1); unzip -q "$inner" -d src
+            cd src; [ $(ls | wc -l) -eq 1 ] && [ -d "$(ls)" ] && { d=$(ls); shopt -s dotglob; mv "$d"/* .; rmdir "$d"; }
+            git init -q -b "$2"; git add -A
+            git commit -qm "Source of $1 (from GitHub artifact $id, saved before expiry)"
+            git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "$2:$2"
+            cd ../..; echo "published $1 -> $2"
+          }
+          publish DennisAiMasteringLab-v0.15.7-Source source/mastering-lab-v0.15.7
+          publish StemLab-v0.5.1-ImportedMaster-TrialB-BULK-TEST-Source source/stemlab-v0.5.1-bulk-test
