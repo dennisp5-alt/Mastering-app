@@ -7,11 +7,11 @@ android {
     compileSdk 34
 
     defaultConfig {
-        applicationId 'com.dennis.stemlab.importtrialbbulk051'
+        applicationId 'com.dennis.stemlab.onepath052'
         minSdk 29
         targetSdk 34
-        versionCode 7
-        versionName '0.5.1-trialb-import-bulk-test'
+        versionCode 8
+        versionName '0.5.2-one-path-test'
     }
 
     buildFeatures {

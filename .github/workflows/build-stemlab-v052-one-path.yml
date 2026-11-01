@@ -1,0 +1,96 @@
+name: Stem Lab v0.5.2 One Path TEST
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/stemlab-v052-one-path
+
+concurrency:
+  group: stemlab-v052-one-path
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout v0.5.2
+        uses: actions/checkout@v4
+        with:
+          path: project
+      - name: Checkout v0.5.1 (for bit-identical comparison)
+        uses: actions/checkout@v4
+        with:
+          ref: source/stemlab-v0.5.1-bulk-test
+          path: v051
+      - name: Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK 34
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
+      - name: Gradle 8.6
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.6'
+      - name: Python test tools
+        run: pip install --quiet numpy scipy
+      - name: Host checks (one path, Trial B loudness, peak safety)
+        run: bash project/tests/v052/run_host_checks.sh project v051 host-work
+      - name: Stem-only import regressions
+        run: |
+          mkdir -p host-fixtures host-v050
+          python3 - <<'PY'
+          import array, math, pathlib, sys, wave, zipfile
+          base=pathlib.Path('host-fixtures'); sr=48000
+          for name,freq,level in [('Vocals.wav',231,0.16),('Instrumental.wav',110,0.22)]:
+              buf=array.array('h')
+              for k in range(sr*18):
+                  v=int(32767*level*math.sin((2*math.pi*freq*k)/sr)); buf.extend([v,v])
+              if sys.byteorder!='little': buf.byteswap()
+              with wave.open(str(base/name),'wb') as w:
+                  w.setnchannels(2);w.setsampwidth(2);w.setframerate(sr);w.writeframes(buf.tobytes())
+          with zipfile.ZipFile(base/'safe.zip','w',compression=zipfile.ZIP_DEFLATED) as z:
+              for name in ('Vocals.wav','Instrumental.wav'): z.write(base/name,name)
+          with zipfile.ZipFile(base/'unsafe.zip','w',compression=zipfile.ZIP_DEFLATED) as z:
+              z.write(base/'Vocals.wav','../Vocals.wav')
+          PY
+          S=project/app/src/main/java/com/dennis/aimasteringlab
+          javac -encoding UTF-8 -d host-v050 -sourcepath project/app/src/main/java:project/tests \
+            $S/StemOnlyImport.java $S/StemPremixBuilder.java $S/StemStudioPreflight.java \
+            project/tests/V050StemOnlyIntegrationHarness.java project/tests/BuildConfig.java project/tests/org/json/*.java
+          java -cp host-v050 com.dennis.aimasteringlab.V050StemOnlyIntegrationHarness host-fixtures/safe.zip host-fixtures/unsafe.zip
+      - name: Build APK
+        working-directory: project
+        run: gradle --no-daemon :app:assembleDebug
+      - name: Package APK and source
+        run: |
+          cp project/app/build/outputs/apk/debug/app-debug.apk StemLab-v0.5.2-OnePath-TEST.apk
+          unzip -tq StemLab-v0.5.2-OnePath-TEST.apk
+          (cd project && git archive --format=zip -o ../StemLab-v0.5.2-OnePath-TEST-Source.zip HEAD)
+          sha256sum StemLab-v0.5.2-OnePath-TEST.apk StemLab-v0.5.2-OnePath-TEST-Source.zip > StemLab-v0.5.2-OnePath-TEST-SHA256.txt
+          cp host-work/trialb.txt host-work/hot.txt . 2>/dev/null || true
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: StemLab-v0.5.2-OnePath-TEST-APK
+          path: |
+            StemLab-v0.5.2-OnePath-TEST.apk
+            StemLab-v0.5.2-OnePath-TEST-SHA256.txt
+            trialb.txt
+            hot.txt
+          retention-days: 90
+      - name: Upload source
+        uses: actions/upload-artifact@v4
+        with:
+          name: StemLab-v0.5.2-OnePath-TEST-Source
+          path: |
+            StemLab-v0.5.2-OnePath-TEST-Source.zip
+            StemLab-v0.5.2-OnePath-TEST-SHA256.txt
+          retention-days: 90
