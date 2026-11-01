@@ -10,9 +10,32 @@ import org.json.*;
  * Never pretends this is identical to verified-base project Trial B.
  */
 final class ImportedMasterTrialB {
-    private static final double CEILING = -1.1;
-    private static final double SAFETY_MARGIN = .06;
+    /** v0.5.2: -1.0 dBTP (was -1.1 with a further 0.06 dB margin and no limiter). */
+    static final double CEILING = -1.0;
+    /** Within this, the listener should hear no level difference. */
+    static final double LOUDNESS_KEPT_LU = .10;
     private ImportedMasterTrialB() {}
+
+    private static String fmt(double v) { return String.format(Locale.US, "%.2f", v); }
+
+    /** One plain sentence: what happened to loudness and peak, and why. */
+    static String loudnessSummary(AnalysisResult in, AnalysisResult eq, AnalysisResult out,
+                                  double ceiling, boolean limiter, double limiterMax) {
+        double change = out.integratedLufs - in.integratedLufs;
+        String levels = "Loudness " + fmt(in.integratedLufs) + " → " + fmt(out.integratedLufs)
+            + " LUFS (" + (change >= 0 ? "+" : "") + fmt(change) + " LU), true peak "
+            + fmt(out.truePeakEstimateDbtp) + " dBTP";
+        if (Math.abs(change) <= LOUDNESS_KEPT_LU) {
+            return levels + ". Loudness kept" + (limiter
+                ? " using the transparent peak limiter (max " + fmt(limiterMax) + " dB)."
+                : " with flat gain only; no limiter needed.");
+        }
+        String why = in.truePeakEstimateDbtp > ceiling
+            ? "the imported master already peaks at " + fmt(in.truePeakEstimateDbtp)
+                + " dBTP, above the " + fmt(ceiling) + " dBTP ceiling, and keeping its loudness would need more than the transparent limiter allows"
+            : "keeping the loudness would need more than the transparent limiter allows";
+        return levels + (change < 0 ? ". Quieter than the original because " : ". Louder than the original because ") + why + ".";
+    }
 
     static String cleanTitle(String fileName) {
         String s = fileName == null ? "Song" : fileName.trim()
@@ -136,46 +159,61 @@ final class ImportedMasterTrialB {
             StudioAudio.EditResult e = StudioAudio.edit(source, a, r, edited, progress);
             if (e.analysis.wav.frames != a.wav.frames)
                 throw new IOException("Trial B changed the song duration.");
-            double restore = a.integratedLufs - e.analysis.integratedLufs;
-            double gain = Math.min(restore, r.ceiling - SAFETY_MARGIN - e.analysis.truePeakEstimateDbtp);
-            if (!Double.isFinite(gain))
-                throw new IOException("Nonfinite delivery gain from the imported master.");
-            // No second master competition, and NO extra limiting; gain is only for
-            // maintaining existing loudness subject to the true-peak safety ceiling.
+            // v0.5.2: the SAME delivery stage as every Studio master and project
+            // Trial B (StudioAudio.deliver). Target = the imported master's own
+            // loudness; ceiling -1.0 dBTP. When flat gain alone would leave the song
+            // quieter, delivery may use the verified transparent peak limiter
+            // (<=3.1 dB max, <=0.2 dB mean, <=4% of frames above 1 dB, LRA within
+            // 0.7 LU, crest loss <=1.5 dB); otherwise it falls back to flat gain and
+            // the loudness change is reported, never hidden.
             File output = p.child("final.wav");
-            AnalysisResult done = null;
-            MasterRenderer.Result rendered = null;
-            for (int attempt = 0; attempt < 3; attempt++) {
-                progress.update("Exporting 24-bit Trial B WAV without another mastering pass", 70);
-                rendered = MasterRenderer.renderAttempt(
-                    () -> new FileInputStream(edited), e.analysis, gain, false,
-                    r.ceiling, MasterRenderer.LimiterProfile.BALANCED, output, progress);
-                done = StudioAudio.measure(output, progress);
-                StudioAudio.valid(done, a.wav.frames);
-                if (rendered.quantizerClips != 0)
-                    throw new IOException("Output clipped during 24-bit conversion; original imported master retained.");
-                if (done.truePeakEstimateDbtp <= r.ceiling + .005) break;
-                gain -= Math.max(.05, done.truePeakEstimateDbtp - r.ceiling + .06);
-            }
-            if (done == null || done.truePeakEstimateDbtp > r.ceiling + .005)
+            progress.update("Trial B delivery: keeping loudness under " + fmt(r.ceiling) + " dBTP", 70);
+            StudioAudio.Delivery delivered = StudioAudio.deliver(edited, e.analysis, r, output, progress);
+            AnalysisResult done = StudioAudio.measure(output, progress);
+            StudioAudio.valid(done, a.wav.frames);
+            if (done.truePeakEstimateDbtp > r.ceiling + .005)
                 throw new IOException("Trial B could not meet true-peak safety; original WAV retained.");
             if (Hashing.sha256(source).equals(Hashing.sha256(output)))
                 throw new IOException("Trial B produced identical audio; check whether dynamic EQ activated.");
+            boolean limiter = delivered.render != null && delivered.render.limiterUsed;
+            double gain = delivered.render == null ? 0 : delivered.render.gainDb;
+            double change = done.integratedLufs - a.integratedLufs;
+            double limiterMax = limiter ? delivered.render.maximumLimiterReductionDb : 0;
+            double limiterMean = limiter ? delivered.render.averageLimiterReductionDb : 0;
+            String summary = loudnessSummary(a, e.analysis, done, r.ceiling, limiter, limiterMax);
             p.file("master", output);
             p.data.put("master_hash", Hashing.sha256(output))
                 .put("master_meters", StudioAudio.meters(done))
                 .put("rendered_revision", 1)
                 .put("trial_b_delivery_gain_db", gain)
-                .put("trial_b_loudness_delta_lu", done.integratedLufs - a.integratedLufs)
+                .put("trial_b_eq_loudness_change_lu", e.analysis.integratedLufs - a.integratedLufs)
+                .put("trial_b_loudness_delta_lu", change)
+                .put("trial_b_loudness_kept", Math.abs(change) <= LOUDNESS_KEPT_LU)
                 .put("trial_b_true_peak_delta_db", done.truePeakEstimateDbtp - a.truePeakEstimateDbtp)
-                .put("trial_b_no_limiter", true)
+                .put("trial_b_ceiling_dbtp", r.ceiling)
+                .put("trial_b_no_limiter", !limiter)
+                .put("trial_b_limiter_max_db", limiterMax)
+                .put("trial_b_limiter_mean_db", limiterMean)
+                .put("trial_b_delivery_note", delivered.note)
+                .put("trial_b_loudness_summary", summary)
                 .put("trial_b_is_identical_to_project_trial_b", false);
             JSONObject qc = new JSONObject()
                 .put("mode", "IMPORTED_MASTER_TRIAL_B_TEST")
+                .put("app_version", StudioQcReporting.APP_VERSION)
                 .put("verified_project_trial_b_equivalence", false)
                 .put("original_v051_eq_recipe", true)
                 .put("additional_mastering_pass", false)
-                .put("limiter_used", false)
+                .put("delivery_stage", "StudioAudio.deliver (shared with all Studio masters)")
+                .put("true_peak_ceiling_dbtp", r.ceiling)
+                .put("limiter_used", limiter)
+                .put("limiter_max_reduction_db", limiterMax)
+                .put("limiter_mean_reduction_db", limiterMean)
+                .put("limiter_peak_corrections", delivered.limiterPeakCorrections)
+                .put("loudness_change_lu", change)
+                .put("loudness_kept", Math.abs(change) <= LOUDNESS_KEPT_LU)
+                .put("eq_loudness_change_lu", e.analysis.integratedLufs - a.integratedLufs)
+                .put("loudness_summary", summary)
+                .put("delivery_note", delivered.note)
                 .put("imported_filename", importedName)
                 .put("song_title", title)
                 .put("input", StudioAudio.meters(a))
@@ -184,13 +222,13 @@ final class ImportedMasterTrialB {
                 .put("delivery_gain_db", gain)
                 .put("input_sha256", copyHash)
                 .put("output_sha256", Hashing.sha256(output))
-                .put("note", "This is original v0.5.1 Trial B DSP on an exported master; the exact original project-base workflow requires the retained base master.");
+                .put("note", "Original v0.5.1 Trial B dynamic EQ on an exported master, delivered through the shared Studio delivery stage; the exact original project-base workflow requires the retained base master.");
             File report = p.child("Imported_TrialB_QC.json");
             StudioProject.atomic(report, qc.toString(2).getBytes(java.nio.charset.StandardCharsets.UTF_8));
             p.file("imported_trial_b_qc", report);
             // The intermediate 32-bit render is no longer needed after final verification.
             edited.delete();
-            p.state("COMPLETE", "Imported-master Trial B test finished without additional base mastering");
+            p.state("COMPLETE", summary);
             progress.update("Trial B finished; original source retained and output verified", 100);
             return p;
         } catch (Exception ex) {

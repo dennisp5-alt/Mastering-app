@@ -105,6 +105,7 @@ final class StudioAudio {
     static double smooth(double x){x=Math.max(0,Math.min(1,x));return x*x*(3-2*x);}
     static final class Delivery {
         File file;AnalysisResult analysis;MasterRenderer.Result render;boolean fallback;String note;
+        int limiterPeakCorrections;double limiterCeilingDbtp=Double.NaN;
     }
     static Delivery deliver(File source,AnalysisResult a,StudioRecipe r,File output,AudioAnalyzer.Progress progress)throws IOException{
         double requested=r.target-a.integratedLufs;
@@ -117,20 +118,32 @@ final class StudioAudio {
         }
         double gain=requested;
         if(limit){
-            for(int i=0;i<3;i++){
-                d.render=MasterRenderer.renderAttempt(()->new FileInputStream(source),a,gain,true,r.ceiling-.18,
+            // v0.5.2: the 4x limiter's down-sampling filter can put the final true
+            // peak a few tenths of a dB above the limiter ceiling. That used to drop
+            // straight to flat gain (delivered quieter) even when every transparency
+            // check passed. Now the limiter ceiling is lowered by the measured
+            // overshoot and the render is checked again. Same safety limits.
+            double limiterCeiling=r.ceiling-.18;
+            int loudnessPasses=0,peakPasses=0;
+            while(true){
+                d.render=MasterRenderer.renderAttempt(()->new FileInputStream(source),a,gain,true,limiterCeiling,
                         MasterRenderer.LimiterProfile.OVERSAMPLED_CLEAN,output,progress);
                 d.analysis=measure(output,progress);valid(d.analysis,a.wav.frames);
                 boolean safe=d.render.maximumLimiterReductionDb<=3.1&&d.render.averageLimiterReductionDb<=.20
                         &&d.render.limiterFramesAboveOneDbPercent<=4&&Math.abs(d.analysis.lraLu-a.lraLu)<=.7
                         &&a.crestFactorDb-d.analysis.crestFactorDb<=1.5&&d.render.quantizerClips==0;
                 if(!safe){d.fallback=true;break;}
-                if(d.analysis.truePeakEstimateDbtp>r.ceiling+.005){d.fallback=true;break;}
+                double overshoot=d.analysis.truePeakEstimateDbtp-r.ceiling;
+                if(overshoot>.005){
+                    if(++peakPasses>3||limiterCeiling-(overshoot+.03)<r.ceiling-1.0){d.fallback=true;break;}
+                    limiterCeiling-=overshoot+.03;d.limiterPeakCorrections=peakPasses;continue;
+                }
                 double deficit=r.target-d.analysis.integratedLufs;
                 if(Math.abs(deficit)<=.08)break;
-                if(i==2||gain+deficit-requested>.5){d.fallback=true;break;}
+                if(++loudnessPasses>2||gain+deficit-requested>.5){d.fallback=true;break;}
                 gain+=deficit;
             }
+            d.limiterCeilingDbtp=limiterCeiling;
         }
         if(!limit||d.fallback){
             d.render=MasterRenderer.renderAttempt(()->new FileInputStream(source),a,flat,false,r.ceiling,

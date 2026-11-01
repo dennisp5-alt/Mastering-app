@@ -513,74 +513,25 @@ public final class AiLabActivity extends Activity {
                         this::postProgress);
                 File stemArchive = prepareOptionalStems(selectedStems,
                         selectedStemName, measured, source, work);
-                try {
-                    measured.sections = LearnedSectionMapper.analyze(
-                            () -> requiredInput(source), measured, this::postProgress);
-                } catch (Exception ignored) {
-                    // Energy-derived candidates from the base meter remain usable.
-                }
-                try {
-                    measured.aiDiagnostics = AdaptiveDiagnosticModel.analyze(
-                            () -> requiredInput(source), measured, this::postProgress);
-                } catch (Exception diagnosticError) {
-                    measured.aiDiagnostics = AdaptiveDiagnosticModel.unavailable(
-                            "Local diagnostic unavailable: " + cleanError(diagnosticError),
-                            measured);
-                }
-                File continuitySource = null;
-                try {
-                    measured.clickDropoutRepair = ClickDropoutRepair.analyze(
-                            () -> requiredInput(source), measured, this::postProgress);
-                    if (measured.clickDropoutRepair.hasRepairs()) {
-                        continuitySource = new File(work, "continuity-repaired-source.wav");
-                        ClickDropoutRepair.render(() -> requiredInput(source), measured,
-                                measured.clickDropoutRepair, continuitySource,
-                                this::postProgress);
-                    }
-                } catch (Exception continuityError) {
-                    if (Thread.currentThread().isInterrupted()) throw continuityError;
-                    measured.clickDropoutRepair = new ClickDropoutRepair.Result();
-                    measured.clickDropoutRepair.inheritedClipSamplesRemaining = measured.clippedSamples;
-                    measured.clickDropoutRepair.status = "Continuity repair bypassed: "
-                            + cleanError(continuityError);
-                    measured.clickDropoutRepair.safetyNotes.add(
-                            "The untouched authoritative source continued through mastering.");
-                    continuitySource = null;
-                }
-                final File repairedSource = continuitySource;
-                final AudioAnalyzer.StreamProvider processingSource = repairedSource == null
-                        ? () -> requiredInput(source)
-                        : () -> new FileInputStream(repairedSource);
-                final AudioAnalyzer.StreamProvider referenceSource =
-                        selectedReference == null ? null
-                                : () -> requiredInput(selectedReference);
-
-                final AnalysisResult masteringAnalysis = repairedSource == null
-                        ? measured : TechnicalSourcePreparation.reanalyze(
-                        processingSource, measured, this::postProgress);
-                try {
-                String referenceHash = selectedReference == null ? null
+                // v0.5.2: the same shared mastering path as Studio projects.
+                final String referenceHash = selectedReference == null ? null
                         : sha256(requiredInput(selectedReference));
-                masteringAnalysis.nextGenerationIntelligence =
-                        NextGenerationMasteringModel.analyze(
-                                processingSource, masteringAnalysis, referenceSource,
-                                selectedReferenceName, referenceHash,
-                                this::postProgress);
-                } catch (Exception optionalError) {
-                    if (Thread.currentThread().isInterrupted()) throw optionalError;
-                    masteringAnalysis.nextGenerationIntelligence = new NextGenerationMasteringModel.Result();
-                    masteringAnalysis.nextGenerationIntelligence.safetyNotes.add(
-                            "Optional technical/reference analysis unavailable: " + cleanError(optionalError));
-                }
-                AutonomousMasteringBrain.Result learned =
-                        AutonomousMasteringBrain.analyze(
-                                processingSource, masteringAnalysis, albumSnapshot,
-                                this::postProgress);
-                FullAiMasteringEngine.Result competition =
-                        FullAiMasteringEngine.run(
-                                processingSource, masteringAnalysis, learned,
-                                stemArchive, work, preferenceSnapshot,
-                                albumSnapshot, this::postProgress);
+                MasteringCore.Options coreOptions = new MasteringCore.Options();
+                coreOptions.stemArchive = stemArchive;
+                coreOptions.reference = selectedReference == null ? null
+                        : () -> requiredInput(selectedReference);
+                coreOptions.referenceName = selectedReferenceName;
+                coreOptions.referenceSha256 = referenceHash;
+                coreOptions.preference = preferenceSnapshot;
+                coreOptions.album = albumSnapshot;
+                coreOptions.repairedFileName = "continuity-repaired-source.wav";
+                MasteringCore.Result core = MasteringCore.master(
+                        () -> requiredInput(source), measured, work, coreOptions,
+                        (step, start, end) -> this::postProgress);
+                final AudioAnalyzer.StreamProvider processingSource = core.processing;
+                final AnalysisResult masteringAnalysis = core.analysis;
+                AutonomousMasteringBrain.Result learned = core.brain;
+                FullAiMasteringEngine.Result competition = core.engine;
                 FullAiReleaseQc.Result verified = FullAiReleaseQc.run(
                         processingSource, masteringAnalysis, competition,
                         stemArchive, work, shortBaseName(sourceName), this::postProgress);

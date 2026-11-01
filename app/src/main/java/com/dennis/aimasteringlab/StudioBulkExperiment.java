@@ -145,7 +145,7 @@ final class StudioBulkExperiment {
         StringBuilder s = new StringBuilder("project_id,title,input_type,trial,parent_id,status,source_sha256,master_sha256,"
                 + "target_lufs,actual_lufs,lufs_shortfall,true_peak_dbtp,ceiling_dbtp,lra_lu,crest_db,"
                 + "stereo_correlation,baseline_delta_lufs,baseline_delta_tp,master_hash_check,peak_ceiling_check,"
-                + "base_strategy,sonic_change,detail\n");
+                + "base_strategy,sonic_change,detail,limiter_used,limiter_max_db\n");
         int i = 0;
         for (StudioProject p : projects) {
             JSONObject meters = p.data.optJSONObject("master_meters");
@@ -158,6 +158,12 @@ final class StudioBulkExperiment {
                 if (pm != null) { baselineLufs = pm.optDouble("lufs", Double.NaN);
                     baselineTp = pm.optDouble("true_peak", Double.NaN); }
             } catch (Exception ignored) { }
+            // v0.5.2: an imported finished master is its own baseline.
+            if (parentId.isEmpty() && p.data.optBoolean("imported_master_trial_b", false)) {
+                JSONObject sm = p.data.optJSONObject("source_meters");
+                if (sm != null) { baselineLufs = sm.optDouble("lufs", Double.NaN);
+                    baselineTp = sm.optDouble("true_peak", Double.NaN); }
+            }
             double lufs = meters == null ? Double.NaN : meters.optDouble("lufs", Double.NaN);
             double tp = meters == null ? Double.NaN : meters.optDouble("true_peak", Double.NaN);
             String hash = "NOT_RENDERED", peak = "NOT_MEASURED";
@@ -176,7 +182,10 @@ final class StudioBulkExperiment {
                 fmt(Double.isFinite(tp) && Double.isFinite(baselineTp) ? tp - baselineTp : Double.NaN),
                 hash, peak, p.data.optString("base_winner", ""),
                 Boolean.toString(p.data.optBoolean("base_meaningful_change", false)),
-                p.data.optString("trial_description", p.data.optString("message", ""))
+                p.data.optString("trial_b_loudness_summary",
+                        p.data.optString("trial_description", p.data.optString("message", ""))),
+                p.data.has("trial_b_no_limiter") ? Boolean.toString(!p.data.optBoolean("trial_b_no_limiter", true)) : "",
+                fmt(p.data.optDouble("trial_b_limiter_max_db", Double.NaN))
             };
             for (int k = 0; k < cells.length; k++) {
                 if (k > 0) s.append(',');

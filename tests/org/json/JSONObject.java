@@ -34,7 +34,7 @@ public class JSONObject {
         values.putAll(((JSONObject) parsed).values);
     }
 
-    JSONObject(Map<?, ?> input) {
+    public JSONObject(Map<?, ?> input) {
         if (input != null) {
             for (Map.Entry<?, ?> entry : input.entrySet()) {
                 values.put(String.valueOf(entry.getKey()),

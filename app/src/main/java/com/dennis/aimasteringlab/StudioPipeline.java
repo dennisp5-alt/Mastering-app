@@ -17,21 +17,16 @@ final class StudioPipeline {
         AnalysisResult original=StudioAudio.measure(input,rangeProgress(progress,"Source analysis",2,10));
         perf.checkpoint("source_import_and_analysis_ms");
         original.sourceGuard=SourceGuardModel.analyze(raw,original,rangeProgress(progress,"Source guard",10,14));
-        original.sections=LearnedSectionMapper.analyze(raw,original,rangeProgress(progress,"Section mapping",14,19));
-        original.aiDiagnostics=AdaptiveDiagnosticModel.analyze(raw,original,rangeProgress(progress,"Adaptive diagnostics",19,24));
-        File repaired=new File(work,"repaired-source.wav");
-        try{
-            original.clickDropoutRepair=ClickDropoutRepair.analyze(raw,original,rangeProgress(progress,"Event repair analysis",24,27));
-            if(original.clickDropoutRepair.hasRepairs())ClickDropoutRepair.render(raw,original,original.clickDropoutRepair,repaired,rangeProgress(progress,"Event repair render",27,31));
-        }catch(Exception e){StudioAudio.cancel();repaired.delete();original.clickDropoutRepair=new ClickDropoutRepair.Result();original.clickDropoutRepair.status="Repair bypassed: "+e.getMessage();}
-        AudioAnalyzer.StreamProvider processing=repaired.isFile()?()->new FileInputStream(repaired):raw;
-        AnalysisResult source=repaired.isFile()?TechnicalSourcePreparation.reanalyze(processing,original,rangeProgress(progress,"Repaired-source verification",31,35)):original;
-        perf.checkpoint("source_guard_repairs_and_diagnostics_ms");
-        source.nextGenerationIntelligence=NextGenerationMasteringModel.analyze(processing,source,null,null,null,rangeProgress(progress,"Technical intelligence",35,40));
-        AutonomousMasteringBrain.Result brain=AutonomousMasteringBrain.analyze(processing,source,rangeProgress(progress,"Mastering analysis",40,50));
-        perf.checkpoint("mastering_plan_analysis_ms");
-        FullAiMasteringEngine.Result engine=FullAiMasteringEngine.run(processing,source,brain,work,rangeProgress(progress,"Candidate mastering",50,92));
-        perf.checkpoint("candidate_competition_ms");
+        perf.checkpoint("source_guard_ms");
+        // v0.5.2: one shared mastering path (also used by Classic mastering).
+        final AudioAnalyzer.Progress coreProgress=rangeProgress(progress,"Mastering",14,92);
+        MasteringCore.Result core=MasteringCore.master(raw,original,work,new MasteringCore.Options(),
+                (step,start,end)->rangeProgress(coreProgress,step,start,end));
+        AudioAnalyzer.StreamProvider processing=core.processing;
+        AnalysisResult source=core.analysis;
+        AutonomousMasteringBrain.Result brain=core.brain;
+        FullAiMasteringEngine.Result engine=core.engine;
+        perf.checkpoint("analysis_repairs_and_candidate_competition_ms");
         FullAiReleaseQc.Result qc=FullAiReleaseQc.runStudioPcmOnly(processing,source,engine,work,ReleaseFormats.camelBase(p.name()),rangeProgress(progress,"Final PCM QC",92,100));
         perf.checkpoint("final_candidate_qc_ms");
         File base=p.child("base-master.wav");StudioProject.copy(new FileInputStream(qc.finalMaster),base);
@@ -202,7 +197,8 @@ final class StudioPipeline {
                 .put("radio_preparation",radio.put("target_lufs_i",recipe.target).put("true_peak_ceiling_dbtp",recipe.ceiling))
                 .put("verification_scope","Final 24-bit/48 kHz and 16-bit/44.1 kHz PCM measured; base mastering QC is separate. Codec, device-translation and broadcaster-specific simulations are not run in Studio WAV-only delivery.");
         if(delivered.render!=null)report.put("limiter_max_reduction_db",delivered.render.maximumLimiterReductionDb)
-                .put("limiter_mean_reduction_db",delivered.render.averageLimiterReductionDb).put("limiter_used",delivered.render.limiterUsed);
+                .put("limiter_mean_reduction_db",delivered.render.averageLimiterReductionDb).put("limiter_used",delivered.render.limiterUsed)
+                .put("limiter_peak_corrections",delivered.limiterPeakCorrections);
         File qc=new File(run,name+"_Studio_QC.json"),recipeFile=new File(run,name+"_Recipe.json");
         StudioProject.atomic(recipeFile,recipe.json().toString(2).getBytes(StandardCharsets.UTF_8));
         // Publish only the two requested release WAVs; QC/recipe data remain inside the project for diagnostics and recovery.

@@ -233,7 +233,7 @@ public final class StudioActivity extends Activity {
         if(m!=null){
             LinearLayout first=new LinearLayout(this);first.setOrientation(LinearLayout.HORIZONTAL);
             StudioVisuals.metric(this,first,"LOUDNESS",fmt(m.optDouble("lufs"))+" LUFS",StudioVisuals.CYAN);
-            double tp=m.optDouble("true_peak");StudioVisuals.metric(this,first,"TRUE PEAK",fmt(tp)+" dBTP",tp>-1.1?StudioVisuals.RED:StudioVisuals.GREEN);
+            double tp=m.optDouble("true_peak");StudioVisuals.metric(this,first,"TRUE PEAK",fmt(tp)+" dBTP",tp>p.recipe().ceiling+.005?StudioVisuals.RED:StudioVisuals.GREEN);
             root.addView(first,new LinearLayout.LayoutParams(-1,-2));
             LinearLayout second=new LinearLayout(this);second.setOrientation(LinearLayout.HORIZONTAL);
             StudioVisuals.metric(this,second,"LOUDNESS RANGE",fmt(m.optDouble("lra"))+" LU",StudioVisuals.TEXT);
@@ -249,7 +249,13 @@ public final class StudioActivity extends Activity {
             StudioVisuals.notice(this,root,"Saved edits pending","The current master still represents the last rendered recipe.",true);
         if(p.data.optBoolean("imported_master_trial_b",false)){
             StudioVisuals.section(this,root,"Imported-master Trial B — isolated test");
-            text("Original WAV stays saved in this project. The existing master was NOT mastered again: only the original Trial B dynamic-EQ recipe and transparent 24-bit WAV delivery were used. This is not guaranteed to be identical to original project-based Trial B.",13,false);
+            text("Original WAV stays saved in this project. The existing master was NOT mastered again: only the original Trial B dynamic-EQ recipe and the same 24-bit delivery stage as every Studio master (ceiling "+String.format(Locale.US,"%.1f",ImportedMasterTrialB.CEILING)+" dBTP) were used. This is not guaranteed to be identical to original project-based Trial B.",13,false);
+            if(m!=null&&p.data.has("trial_b_loudness_summary")){
+                boolean kept=p.data.optBoolean("trial_b_loudness_kept",false);
+                StudioVisuals.notice(this,root,kept?"Loudness kept":"Loudness changed",p.data.optString("trial_b_loudness_summary",""),!kept);
+            }else if(m!=null&&p.data.has("trial_b_loudness_delta_lu")){
+                StudioVisuals.notice(this,root,"Made by v0.5.1","Loudness change "+fmt(p.data.optDouble("trial_b_loudness_delta_lu"))+" LU (old -1.1 dBTP delivery without limiter). Delete and re-import to remake it with v0.5.2.",true);
+            }
             if(m!=null){
                 button("REVIEW ORIGINAL WAV VS TRIAL B (LEVEL MATCHED)",this::importedMasterReview);
                 button("SAVE TRIAL B WAV — SONG NAME",()->{
