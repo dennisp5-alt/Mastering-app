@@ -1,0 +1,5 @@
+SOURCE_VERIFIED lufs=-14.04386137 tp=-1.09327863 frames=12947208 noRender=true
+SOURCE_DIAGNOSTICS_COMPLETE
+COMPLIANT_MASTER_ENGINE_PASS winner=transparent_flat_gain
+REAL_FILE_RECOVERY_PASS SHA256=f78a0f49a215f07a00c0d0ff524a0fc9e6f6af731f716046fb9486ea0834676d LUFS=-14.04386137 TP=-1.09327863 monoWindows=4 endingFindings=1 package=LastRunDownTheRange_FullAI_Package.zip
+FLAT_GAIN_GAP_FIXED predicted=-1.04941743 output=-14.00000000 TP=-1.04941743 unsafeAndStricterCeilingRejected=true

@@ -1,0 +1,12 @@
+Dennis AI Mastering Lab 0.14.1 Candidate Pipeline Repair (version code 20)
+
+Studio v0.14.1 test focus:
+- Master one raw 48 kHz stereo WAV and one already-mastered 48 kHz stereo WAV.
+- Confirm progress advances forward with explicit candidate family/number/phase instead of apparently repeating the same stage.
+- Confirm Studio produces only the 24-bit/48 kHz WAV and 16-bit/44.1 kHz WAV as user release outputs.
+- Compare Original / v0.14.0 / v0.14.1 / external reference level-matched.
+- Keep the internal QC JSON if a result looks wrong; it records the selected candidate and rejected modules.
+
+Studio skips AAC/SBC, translation-device and broadcaster simulation passes in this WAV-only path. Classic/AI Lab retain their existing broader release-QC behavior.
+
+See RELEASE_NOTES_v0.14.1.md and RECOVERY_v0141.md.

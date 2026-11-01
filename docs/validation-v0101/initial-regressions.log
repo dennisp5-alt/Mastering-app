@@ -1,0 +1,77 @@
+Note: /workspace/scratch/d6b87648e1b6/v0101-work/app/app/src/main/java/com/dennis/aimasteringlab/MasteringForegroundService.java uses or overrides a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+RUN NaturalStudioPolicyHarness
+NATURAL_STUDIO_V010_POLICY_PASS standard=3.00 sparse=5.50 codecAttenuation=0.2131 translation=2/1
+RUN CompliantMasterPolicyHarness
+COMPLIANT_MASTER_POLICY_PASS bounds/format/finite/peak/hash/frame/gain/render/limiter
+RUN RadioPreparationHarness /workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/radio
+RADIO_PREPARATION_PASS clean/uncorrelated/inherited/introduced/tail/cancellation
+LIMITER_BOUNDARY_ALIGNMENT_PASS all-three-profiles short-and-long-streams
+RUN NaturalStudioRecoveryHarness sparse /workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/fixtures/sparse.wav /workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/sparse
+SPARSE_RESULT source=-18.3939 output=-14.0001 TP=-1.2000 max=4.7058 avg=0.03198 above1=1.0354 above3=0.2945 sparse=true
+FLAT_CODEC_PASS sampleError=0.000000177 LUFS=-14.2201
+RUN NaturalStudioRecoveryHarness repair /workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/fixtures/isolated-clips.wav /workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/repair
+DECLIP_REPAIR_PASS events=3 changedSamples=12 originalClips=20 repairedClips=0 LUFS=-21.5656 TP=-1.1000
+RUN NaturalStudioRecoveryHarness negative /workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/fixtures/dense-clips.wav /workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/negative
+DECLIP_NEGATIVE_PASS dense-clips.wav
+RUN NaturalStudioRecoveryHarness negative /workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/fixtures/rounded-peaks.wav /workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/negative
+DECLIP_NEGATIVE_PASS rounded-peaks.wav
+RUN NaturalStudioRecoveryHarness recover /workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/fixtures/clean.wav /workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/recovery
+OPTIONAL_EOF_RECOVERY_PASS winner=transparent_flat_gain warnings=1
+TRUNCATED_SOURCE_AND_STAGING_FAIL_CLOSED_PASS
+RUN NaturalStudioRecoveryHarness cancel /workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/fixtures/clean.wav /workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/cancel
+CANCELLATION_FAIL_CLOSED_PASS
+RUN NaturalStudioRecoveryHarness reprocess /workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/sparse/sparse-master.wav /workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/reprocess
+REPROCESS_BYTE_EXACT_PASS transparent_flat_gain
+RUN ClickDropoutFixtureGenerator /workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/fixtures/clicks.wav
+CLICK_DROPOUT_FIXTURE 79bee0bf901f41c2a42256a85500dbddaaa9320d7b8c7eff3941502991adafaa
+RUN ClickDropoutRepairHarness /workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/fixtures/clicks.wav /workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/clicks
+CLICK_DROPOUT_REPAIR_PASS 1 isolated click + 1 short dropout + 0 isolated clip runs • 97 repaired frames • source correlation 0.99996440
+RUN SourceIntegrityFixtureGenerator /workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/fixtures/integrity.wav
+SOURCE_INTEGRITY_FIXTURE 3054428ec859b17687b5fca620efef2dd3be7a87a79e633443e2d3c52d376e6b
+RUN SourceIntegrityHarness /workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/fixtures/integrity.wav /workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/integrity
+SOURCE_FORMAT 48000_HZ 16_BIT
+INHERITED_FULL_SCALE_ALLOWED_PREMASTER 1 FINAL_CLIPS 0
+SOURCE_ZERO_REGION_PRESERVED 6.000000-6.125000
+STEREO_EVENT_REPAIR_PROVENANCE_PASS
+SOURCE_INTEGRITY_PASS
+RUN AdvancedIntelligenceFixtureGenerator /workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/fixtures/advanced.wav
+ADVANCED_INTELLIGENCE_FIXTURE e7d7ea293215d343681f7e516e7a1fade94c221b786c5e1d9bf4f150f91a2978
+RUN AdvancedIntelligenceHarness /workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/fixtures/advanced.wav /workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/advanced
+V07_EVIDENCE SECTION_QUIET_CONTOUR 2.000000-10.000000 auto=true confidence=0.9100 edit=-0.160 learned section lift 0.900 LU was below the 1.750 LU contour gate; role intro_recurring_quieter_state_candidate
+V07_EVIDENCE ARTIFACT_HF_FIZZ 5.000000-5.600000 auto=true confidence=1.0000 edit=-0.450 provenance-neutral 9–15 kHz fizz signature 37.11 robust units above the song median; crest 9.70 dB
+V07_EVIDENCE TRANSIENT_PROTECTED 5.089979-5.097979 auto=false confidence=0.9084 edit=+0.000 natural transient was protected because target-gain peak pressure did not require control
+V07_EVIDENCE ARTIFACT_METALLIC_RESONANCE 5.100000-5.500000 auto=true confidence=0.9089 edit=-0.231 provenance-neutral 3.2–7 kHz metallic-band signature 2.83 robust units above the song median; crest 9.22 dB
+V07_EVIDENCE TRANSIENT_PROTECTED 5.149583-5.157583 auto=false confidence=0.8831 edit=+0.000 natural transient was protected because target-gain peak pressure did not require control
+V07_EVIDENCE TRANSIENT_PROTECTED 5.232750-5.240750 auto=false confidence=0.8814 edit=+0.000 natural transient was protected because target-gain peak pressure did not require control
+V07_EVIDENCE TRANSIENT_PROTECTED 5.388375-5.396375 auto=false confidence=0.8885 edit=+0.000 natural transient was protected because target-gain peak pressure did not require control
+V07_EVIDENCE TRANSIENT_PROTECTED 5.469979-5.477979 auto=false confidence=0.8925 edit=+0.000 natural transient was protected because target-gain peak pressure did not require control
+V07_EVIDENCE TRANSIENT_PROTECTED 5.508375-5.516375 auto=false confidence=0.9700 edit=+0.000 natural transient was protected because target-gain peak pressure did not require control
+V07_EVIDENCE TRANSIENT_PEAK_CONTROL 12.343542-12.349542 auto=true confidence=1.0000 edit=-0.300 isolated stereo-linked peak predicted 3.943 dBTP-equivalent after target gain; peak/crest/derivative robust scores 9.83/14.24/-3.52
+V07_EVIDENCE ARTIFACT_HF_FIZZ 15.000000-15.600000 auto=true confidence=1.0000 edit=-0.450 provenance-neutral 9–15 kHz fizz signature 26.72 robust units above the song median; crest 9.55 dB
+V07_EVIDENCE ARTIFACT_METALLIC_RESONANCE 15.000000-15.600000 auto=true confidence=1.0000 edit=-0.420 provenance-neutral 3.2–7 kHz metallic-band signature 20.48 robust units above the song median; crest 9.55 dB
+V07_EVIDENCE TRANSIENT_PROTECTED 15.068688-15.076688 auto=false confidence=0.9034 edit=+0.000 natural transient was protected because target-gain peak pressure did not require control
+V07_EVIDENCE TRANSIENT_PROTECTED 15.102604-15.110604 auto=false confidence=0.8866 edit=+0.000 natural transient was protected because target-gain peak pressure did not require control
+V07_EVIDENCE TRANSIENT_PROTECTED 15.214854-15.222854 auto=false confidence=0.8904 edit=+0.000 natural transient was protected because target-gain peak pressure did not require control
+V07_EVIDENCE TRANSIENT_PROTECTED 15.367958-15.375958 auto=false confidence=0.8900 edit=+0.000 natural transient was protected because target-gain peak pressure did not require control
+V07_EVIDENCE TRANSIENT_PROTECTED 15.480208-15.488208 auto=false confidence=0.8873 edit=+0.000 natural transient was protected because target-gain peak pressure did not require control
+V07_EVIDENCE TRANSIENT_PROTECTED 15.498042-15.506042 auto=false confidence=0.9676 edit=+0.000 natural transient was protected because target-gain peak pressure did not require control
+V07_EVIDENCE SECTION_QUIET_CONTOUR 18.000000-27.000000 auto=true confidence=0.9100 edit=-0.160 learned section lift 0.900 LU was below the 1.750 LU contour gate; role recurring_quieter_state_candidate
+V07_EVIDENCE TRANSIENT_PROTECTED 20.251625-20.259625 auto=false confidence=0.8754 edit=+0.000 high-crest low-frequency impact was protected as kick/snare-like evidence
+V07_EVIDENCE ARTIFACT_PHASEY_HF 23.000000-23.600000 auto=true confidence=0.9850 edit=-0.354 high-frequency side energy 37.46 robust units above median with local L/R correlation -0.983
+V07_EVIDENCE TRANSIENT_PROTECTED 23.089125-23.097125 auto=false confidence=0.9064 edit=+0.000 natural transient was protected because target-gain peak pressure did not require control
+V07_EVIDENCE TRANSIENT_PROTECTED 23.139396-23.147396 auto=false confidence=0.8809 edit=+0.000 natural transient was protected because target-gain peak pressure did not require control
+V07_EVIDENCE TRANSIENT_PROTECTED 23.231979-23.239979 auto=false confidence=0.8801 edit=+0.000 natural transient was protected because target-gain peak pressure did not require control
+V07_EVIDENCE TRANSIENT_PROTECTED 23.315667-23.323667 auto=false confidence=0.8811 edit=+0.000 natural transient was protected because target-gain peak pressure did not require control
+V07_EVIDENCE TRANSIENT_PROTECTED 23.416542-23.424542 auto=false confidence=0.8838 edit=+0.000 natural transient was protected because target-gain peak pressure did not require control
+V07_EVIDENCE TRANSIENT_PROTECTED 23.508250-23.516250 auto=false confidence=0.9700 edit=+0.000 natural transient was protected because target-gain peak pressure did not require control
+Exception in thread "main" java.lang.AssertionError: Expected four eligible v0.7 candidates, found 0/4
+	at com.dennis.aimasteringlab.AdvancedIntelligenceHarness.main(AdvancedIntelligenceHarness.java:62)
+Traceback (most recent call last):
+  File "/workspace/scratch/d6b87648e1b6/v0101-work/app/tools/run_v0101_tests.py", line 37, in <module>
+    test('AdvancedIntelligenceHarness',fixtures/'advanced.wav',work/'advanced')
+  File "/workspace/scratch/d6b87648e1b6/v0101-work/app/tools/run_v0101_tests.py", line 21, in test
+    subprocess.run(['java','-cp',cp,'com.dennis.aimasteringlab.'+name]+list(map(str,args)),check=True)
+  File "/opt/codex/runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['java', '-cp', '/workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/classes:/workspace/scratch/d6b87648e1b6/v010-work/sdk/platforms/android-34/android.jar', 'com.dennis.aimasteringlab.AdvancedIntelligenceHarness', '/workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/fixtures/advanced.wav', '/workspace/scratch/d6b87648e1b6/v0101-work/app/build/v0101-tests-m1id9o_e/advanced']' returned non-zero exit status 1.

@@ -1,0 +1,35 @@
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+RUN StudioImportPathHarness /workspace/scratch/d6b87648e1b6/v0131-work/build/v0131-tests-1rtzam6g/path-alias
+STUDIO_ANDROID_PATH_ALIAS_PASS
+
+RUN StudioImportRecoveryHarness /workspace/scratch/d6b87648e1b6/v0131-work/build/v0131-tests-1rtzam6g/import-recovery /workspace/scratch/d6b87648e1b6/upload/Pilot Light2.wav
+NEW_ALIAS_IMPORT_PASS selected-stream/copy-checksum/analyze/commit/reload
+FOUR_LEGACY_IMPORTS_RECOVERED_PASS plus known-checksum-path-recovery
+IMPORT_GUARDS_PASS changed/missing/partial/truncated/untrusted-render/cancelled/escaped-source plus resumed-analysis
+REAL_WAV_ALIAS_IMPORT_PASS {"lufs":-15.760299433468594,"true_peak":-3.480216373508594,"lra":7.751158625513126,"crest":13.906755459836813,"correlation":0.8348941793163157,"mono_loss_db":-0.37419050964345857,"frames":9696000,"rate":48000,"duration":202.0,"sha256":"dbc52c7c69b310b48cc19df1de72306251412458e482ce5b49ecb6b01e0a9d22"}
+PROGRESS Song 1/1: Verifying retained source WAV 0%
+PROGRESS Song 1/1: v0.9: measuring all 12 translation response profiles 18%
+PROGRESS Song 1/1: v0.9: measuring all 12 translation response profiles 93%
+PROGRESS Song 1/1: AI mastering: rendering protected float pre-master 22%
+PROGRESS Song 1/1: Rendering transparent flat-gain master 5%
+PROGRESS Song 1/1: Measuring loudness, peaks and phase 42%
+PROGRESS Song 1/1: Reading WAV structure 2%
+PROGRESS Song 1/1: Checking local bass and low-mid excess 0%
+PROGRESS Song 1/1: Rendering 16-bit/44.1 kHz WAV 32%
+PROGRESS Song 1/1: Encoding offline MP3 320 kbps 34%
+PROGRESS Song 1/1: Encoding offline MP3 320 kbps 99%
+PROGRESS Song 1/1: Measuring loudness, peaks and phase 22%
+RECOVERED_QUEUE_COMPLETE_PASS base/master/WAV16/MP3/QC/ZIP/checksums/reload/resume {"lufs":-14.000000000054792,"true_peak":-1.7199175452479238,"lra":7.751158635639239,"crest":13.90675493660091,"correlation":0.8348942843874857,"mono_loss_db":-0.37419026095586716,"frames":9696000,"rate":48000,"duration":202.0,"sha256":"c928c6f15fa3c980a7b191052b0d19209a4822e3a943d530a7758914f9fa921b"}
+STUDIO_V0131_IMPORT_RECOVERY_PASS
+
+RUN StudioV013Harness /workspace/scratch/d6b87648e1b6/v0131-work/build/v0131-tests-1rtzam6g/studio
+STUDIO_EDIT_PASS identity/bypass/isolated-gain/sample-exact-trim/fades/mid-side/low-end-positive-and-negative {"passed":true,"events_checked":1,"events":[{"start":7.1000000000000005,"end":8.4,"hz":120.0,"target_ratio_improvement_db":0.9901149049839492,"body_change_db":-0.008381083178359202,"passed":true}],"limit":"Signal evidence only; bass, drums and vocals are not isolated sources"}
+STUDIO_PROJECT_PASS persisted-recipes/undo/interrupted-state/corrupt-json-recovery/source-hash/path-scope
+STUDIO_QUEUE_PASS failed-item-isolation/completed-song-retention/pause/reopen/resume
+STUDIO_REFERENCE_PASS cropped-reference/identical-no-suggestion/aligned-delta-null
+STUDIO_DELIVERY_PASS custom-loudness/true-peak/WAV-PCM-identity/MP3-metadata-and-decode
+STUDIO_PIPELINE_PASS saved-master/formats/package/album/stale-render-rejection
+STUDIO_V013_CORE_PASS
+
+V0131_HOST_GATE_PASS /workspace/scratch/d6b87648e1b6/v0131-work/build/v0131-tests-1rtzam6g

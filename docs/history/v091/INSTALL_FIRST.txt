@@ -1,0 +1,21 @@
+DENNIS AI MASTERING LAB 0.9.1
+
+Install DennisAiMasteringLab-v0.9.1.apk directly over v0.9.0.
+DO NOT UNINSTALL FIRST.
+
+Package: com.dennis.aimasteringlab
+Version: 0.9.1 (version code 11)
+Minimum/target Android: API 29 / API 34
+Internet permission: none
+Signature: APK Signature Scheme v3
+Certificate SHA-256:
+2d6822f2d6e3785a03bfe61d73d5139822c78c9b2dedbbc64aa0424ad44eff70
+
+Preference Memory and Album Consistency histories are retained, but both
+controls intentionally start OFF in v0.9.1. Leave them off for the neutral
+professional/v0.7-reference behavior. The 12 translation device simulations
+are QC listeners only and do not create processing.
+
+On Android 13+, allow notifications for visible background progress and the
+Cancel action. Do not force-stop or reboot during a job; partial renders do not
+resume after process death.

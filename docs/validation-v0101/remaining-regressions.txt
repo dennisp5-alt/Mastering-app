@@ -1,0 +1,14 @@
+Observed isolated follow-up output after regeneration of the advanced fixture:
+
+FIXTURE_INTEGRITY before and after: 10944044 bytes, SHA256 e7d7ea293215d343681f7e516e7a1fade94c221b786c5e1d9bf4f150f91a2978
+V07_MODULE section_aware_mastering events=2 max=0.160 target=1.000 section=0.155 artifact=0.000 transient=0.000 corr=0.99995901 LUFS=-14.0006 TP=-1.1969
+V07_MODULE ai_artifact_repair events=5 max=0.550 target=1.000 section=0.000 artifact=0.333 transient=0.000 corr=0.99997876 LUFS=-14.0006 TP=-1.1969
+V07_MODULE transient_intelligence events=1 max=0.300 target=1.000 section=0.000 artifact=0.000 transient=0.300 corr=0.99999802 LUFS=-14.0006 TP=-1.1969
+V07_MODULE v07_advanced_combined events=8 max=0.710 target=1.000 section=0.172 artifact=0.333 transient=0.300 corr=0.99993474 LUFS=-14.0006 TP=-1.1969
+ADVANCED_INTELLIGENCE_PASS
+HUM 98a57a654d18a0ac9a93f600ff0b3c03dc247554115063ea853b62542535a259
+MEASURED_TONE_REPAIR_PASS tones=3 reduction=0.76214 corr=0.99979632 protected=true
+DIAGNOSTIC_ONLY_RENDER_GUARDS_PASS
+FULL_AI_PACKAGE_PASS entries=6 translation=12/0 sha=3a79aba1b0b9cc78e3e88e4fd54a150d0b7506ed6a9f0b73f81b3a3bd7e03416
+BACKGROUND_JOB_PASS callbacks=7
+REMAINING_REGRESSIONS_PASS

@@ -1,0 +1,21 @@
+DENNIS AI MASTERING LAB 0.10.0 — NATURAL STUDIO
+
+Install DennisAiMasteringLab-v0.10.0.apk over v0.9.0 or v0.9.1.
+Do not uninstall first. This retains the existing app data and signing identity.
+
+Package: com.dennis.aimasteringlab
+Version: 0.10.0 (version code 12)
+Minimum/target Android: API 29 / API 34
+Internet permission: none
+Signature: APK Signature Scheme v3
+Certificate SHA-256: 2d6822f2d6e3785a03bfe61d73d5139822c78c9b2dedbbc64aa0424ad44eff70
+APK SHA-256: ed9e687e52e275204830e5cfb2bab5197f8f610e10fcbccf65646f71957635af
+
+Input: 48 kHz stereo WAV. Output: verified 24-bit/48 kHz stereo WAV.
+Leave optional learned profiles off for the neutral v0.7 baseline.
+References and device simulations are diagnostic only.
+Allow notifications for background progress and Cancel on Android 13+.
+Force-stop, reboot and Android process death cannot resume a partial job.
+
+Physical installation/playback/background behavior and Android AAC encoding
+remain phone tests. See RELEASE_NOTES_v0.10.0.md and TEST_RESULTS.md.

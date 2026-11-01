@@ -1,0 +1,7 @@
+V0143 HOST VALIDATION
+PASS V0143BroadMasteringNeedHarness
+PASS V0143BroadAnchorHarness
+PASS V0143BroadRetentionHarness
+PASS V0143RealRawNeedHarness on real raw-source excerpt
+CORE JAVAC PASS: FullAiMasteringEngine + BroadMasteringNeed + harness dependencies
+ANDROID FULL BUILD: pending GitHub Actions Android 34 gate

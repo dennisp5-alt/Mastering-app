@@ -1,0 +1,47 @@
+DENNIS AI MASTERING LAB — RADIO / RELEASE PREPARATION
+
+Delivery target: approximately -14 LUFS-I, at or below -1 dBTP; 24-bit/48 kHz stereo.
+A station may request different levels or formats. This is not station-specific certification.
+
+Radio preparation: REVIEW
+3:54.000–3:55.000: Section loses energy in mono; check important instruments and vocals (also present in input)
+3:58.000–3:59.000: Section loses energy in mono; check important instruments and vocals (also present in input)
+4:04.000–4:05.000: Section loses energy in mono; check important instruments and vocals (also present in input)
+4:05.000–4:06.000: Section loses energy in mono; check important instruments and vocals (also present in input)
+4:29.714–4:29.733: Ending stops away from zero; audition the final boundary (also present in input)
+More findings are in the preparation report.
+
+ALL TIMESTAMPED LISTENING CHECKS
+3:54.000–3:55.000: Section loses energy in mono; check important instruments and vocals; also present in input; mono RMS change -3.411 dB, correlation -0.101
+3:58.000–3:59.000: Section loses energy in mono; check important instruments and vocals; also present in input; mono RMS change -4.296 dB, correlation -0.291
+4:04.000–4:05.000: Section loses energy in mono; check important instruments and vocals; also present in input; mono RMS change -4.165 dB, correlation -0.327
+4:05.000–4:06.000: Section loses energy in mono; check important instruments and vocals; also present in input; mono RMS change -3.619 dB, correlation -0.132
+4:29.714–4:29.733: Ending stops away from zero; audition the final boundary; also present in input
+4:29.698–4:29.733: Brief late transient rises sharply above the preceding tail; confirm it is intentional; also present in input
+
+CONDITIONAL • COMPLIANT SOURCE PRESERVED • RADIO PREPARATION REVIEW • transparent_flat_gain • original winning render • PCM -14.0439 LUFS-I / -1.093 dBTP • AAC unavailable
+Loudness outcome: COMPLIANT_SOURCE_PRESERVED
+Passage preservation: measured PASS across 270 aligned windows
+Selected gain +0.0000 dB; limiter maximum 0.000 dB, average 0.0000 dB; frames above 1 dB 0.000%, above 3 dB 0.000%.
+Selected plan: transparent_flat_gain • confidence 1.00 • EQ [+0.00, +0.00, +0.00, +0.00] dB • side 1.000 • events 0.00 • compression bypassed
+- Global EQ bypassed by transparent strategy.
+- Local dynamic EQ bypassed by transparent strategy.
+- Stereo processing bypassed by transparent strategy.
+- Bus compression bypassed by transparent strategy.
+
+WARNINGS / SOURCE LIMITATIONS
+- The device AAC encoder was unavailable: Stub!
+- No internal candidate completed every codec gate; the highest-scoring PCM-safe candidate was retained with a conditional verdict.
+- Only a demonstrated narrow technical repair may compete; transparent preservation remains the default.
+- Original WAV preserved byte-for-byte at -14.0439 LUFS-I, within the 0.10 LU no-change tolerance; no gain, EQ, compression or extra dither was applied. Exact-target status is reported separately.
+- Radio preparation: REVIEW
+3:54.000–3:55.000: Section loses energy in mono; check important instruments and vocals (also present in input)
+3:58.000–3:59.000: Section loses energy in mono; check important instruments and vocals (also present in input)
+4:04.000–4:05.000: Section loses energy in mono; check important instruments and vocals (also present in input)
+4:05.000–4:06.000: Section loses energy in mono; check important instruments and vocals (also present in input)
+4:29.714–4:29.733: Ending stops away from zero; audition the final boundary (also present in input)
+More findings are in the preparation report.
+
+No blanket radio EQ, automatic LRA-only compression, stereo widening or device-profile correction was added.
+The v0.7 natural reference remains authoritative. Detailed candidate and repair evidence is in the QC JSON.
+Human listening remains necessary for vocal realism, musical intent and final artistic approval.

@@ -1,0 +1,17 @@
+{
+  "version": "0.14.2",
+  "version_code": 21,
+  "delta_harness": "PASS",
+  "the_old_girl": {
+    "level_matched_residual_relative_db": -50.83,
+    "classification": "NARROW_OR_SPARSE_DELTA_ONLY",
+    "broad_meaningful": false
+  },
+  "synthetic_broad": {
+    "level_matched_residual_relative_db": -30.47,
+    "classification": "MEANINGFUL_BROAD_SONIC_DELTA",
+    "broad_meaningful": true
+  },
+  "core_compile": "PASS",
+  "android_apk_build": "PENDING_GITHUB_ACTIONS"
+}

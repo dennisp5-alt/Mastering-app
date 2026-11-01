@@ -1,0 +1,7 @@
+Reproduction against unchanged v0.13.0 production classes
+Exception in thread "main" java.io.IOException: Invalid project file path
+	at com.dennis.aimasteringlab.StudioProject.child(StudioProject.java:63)
+	at com.dennis.aimasteringlab.StudioProject.file(StudioProject.java:66)
+	at com.dennis.aimasteringlab.StudioImportPathHarness.main(StudioImportPathHarness.java:16)
+
+exit_code=1

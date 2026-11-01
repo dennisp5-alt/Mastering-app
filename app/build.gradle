@@ -1,0 +1,28 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.dennis.aimasteringlab'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.dennis.stemlab.importtrialbbulk051'
+        minSdk 29
+        targetSdk 34
+        versionCode 7
+        versionName '0.5.1-trialb-import-bulk-test'
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+}

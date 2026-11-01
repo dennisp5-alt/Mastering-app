@@ -1,0 +1,5 @@
+TRACKING_EQ_PASS range=7300..9000 Hz reduction=1.0784 dB bodyChange=-0.00544 dB protectedExact=true
+MUSICAL_CONTEXT_PASS mode=0 25 ms context PASS; centre/body 24.5 dB; onset 6.3 dB; tracked 8220 Hz Q 3.00
+MUSICAL_CONTEXT_PASS mode=1 repeated sharp instrument-like bursts
+MUSICAL_CONTEXT_PASS mode=2 repeated sharp instrument-like bursts
+OVERSAMPLED_LIMITER_PASS frames=288000 LUFS=-14.002054 TP=-1.237143 maxGR=2.0268

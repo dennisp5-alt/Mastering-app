@@ -1,0 +1,2 @@
+SOURCE lufs=-14.04386137 tp=-1.09327863 gain=0.04386137 predicted=-1.04941726 limiter=false allowed=false noRender=false previous=false
+BASELINE_REJECTED Requested gain exceeds the true-peak ceiling without guarded limiting

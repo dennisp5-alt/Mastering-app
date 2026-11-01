@@ -1,0 +1,7 @@
+# v0.11.0 checkpoint — 2026-09-29
+
+Quality-first core implementation is complete and an initial signed APK compiles. Independent finished-PCM cleanup comparison and two strengths are implemented. Ramped-attack limiter and four-profile stress competition are implemented. Three injected artifact regions pass comparison; raw score rank no longer vetoes quality promotion. A/B retains the former reference. Preliminary full host run exited 0 and produced final real-file reports, but its redirected log was incomplete after overlapping connector activity. Repeat the suite with stdout capture and no unrelated tools while running before final release.
+
+The current complete plan: run tools/run_v0110_tests.py with the LastRunDownTheRange source, then RealMusicReleaseHarness on recovered T-Bar Girls.wav and The Corner Stage (Remix).wav; independently meter final outputs; review reports, build final signed APK, update README/TEST_RESULTS/SOURCE_PROVENANCE/notes, package and save final deliverables. Library and scratch identities from this chat identify these inputs. SDK is outside this backup; Android 34/build-tools 34.0.0 required.
+
+The original private signing key is included. Keep private. Build number 15 / 0.11.0. This is a recovery checkpoint, not a released app. Current top-level docs otherwise still describe 0.10.2 and need updating. No handset or listening-quality certification. Existing 24/48 WAV/report/AAC outputs remain; new MP3/44.1 exports are not in this scoped audio-engine release.

@@ -1,0 +1,4 @@
+The final ReleaseFormats change adds one bounded retry after optional export failure.
+V012ExportsHarness passed after that change, including a deliberately truncated temporary WAV during the first checksum pass. The test required a complete recreated export, exportAttempts == 2 and a recorded first-attempt error.
+Persistent invalid destinations remained INCOMPLETE after exactly two attempts; cancellation propagated and original-master hashes were unchanged.
+The existing resampling/timing/alias, MP3 duration/header/peak and truncation tests also passed on the final code.

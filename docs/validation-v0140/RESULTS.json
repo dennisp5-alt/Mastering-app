@@ -1,0 +1,12 @@
+{
+  "version": "0.14.0",
+  "version_code": 19,
+  "branch": "Sonic Finish",
+  "base_source_sha256": "5fbc42cf5d080fcf3fcb2462ca01a2312cc23587b8ebe7e647560fca77291309",
+  "source_guard_policy": "PASS",
+  "sonic_brain_policy": "PASS",
+  "parse_sweep": "PASS_NO_PARSE_ERRORS",
+  "android_apk_build": "BLOCKED_ENVIRONMENT_MISSING_SDK",
+  "missing_component": "/tmp/autoplus-android-sdk/build-tools/34.0.0/aapt2",
+  "apk_claimed": false
+}

@@ -1,0 +1,12 @@
+v0.14.2 Meaningful Mastering policy assertions
+
+1. Transparent control remains a valid final winner.
+2. A non-transparent final winner is compared against rendered transparent PCM after level matching.
+3. Broad sonic change floor: residual >= -46.0 dB relative to level-matched transparent control.
+4. Narrow/sparse changes below the broad floor cannot win solely on tiny score or peak-control differences.
+5. Narrow event-specific repairs may promote only when their independent target-specific evidence passes.
+6. Standalone Transient Intelligence module benefit threshold is >= 0.10 dB peak reduction.
+7. Failure to verify final delta fails closed to transparent rather than claiming improvement.
+8. Studio final QC records meaningful-change decision and final-gate delta evidence.
+9. Studio still publishes only 24/48 and 16/44.1 WAV derivatives.
+10. No Internet permission or new online dependency is introduced.

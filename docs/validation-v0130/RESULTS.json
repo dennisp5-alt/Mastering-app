@@ -1,0 +1,62 @@
+[
+  {
+    "test": "StudioV013Harness",
+    "exit_code": 0,
+    "log": "StudioV013Harness.log"
+  },
+  {
+    "test": "V012ExportsHarness",
+    "exit_code": 0,
+    "log": "V012ExportsHarness.log"
+  },
+  {
+    "test": "V012AudioHarness",
+    "exit_code": 0,
+    "log": "V012AudioHarness.log"
+  },
+  {
+    "test": "PassageAndComparisonHarness",
+    "exit_code": 0,
+    "log": "PassageAndComparisonHarness.log"
+  },
+  {
+    "test": "NaturalStudioPolicyHarness",
+    "exit_code": 0,
+    "log": "NaturalStudioPolicyHarness.log"
+  },
+  {
+    "test": "BackgroundJobHarness",
+    "exit_code": 0,
+    "log": "BackgroundJobHarness.log"
+  },
+  {
+    "test": "CompliantMasterPolicyHarness",
+    "exit_code": 0,
+    "log": "CompliantMasterPolicyHarness.log"
+  },
+  {
+    "test": "RadioPreparationHarness",
+    "exit_code": 0,
+    "log": "RadioPreparationHarness.log"
+  },
+  {
+    "test": "NaturalStudioRecoveryHarness",
+    "exit_code": 0,
+    "log": "NaturalStudioRecoveryHarness.log"
+  },
+  {
+    "test": "NaturalStudioRecoveryHarness",
+    "exit_code": 0,
+    "log": "NaturalStudioRecoveryHarness.log"
+  },
+  {
+    "test": "QualityCounterexampleHarness",
+    "exit_code": 0,
+    "log": "QualityCounterexampleHarness.log"
+  },
+  {
+    "test": "StudioRealMusicHarness",
+    "exit_code": 0,
+    "log": "StudioRealMusicHarness.log"
+  }
+]

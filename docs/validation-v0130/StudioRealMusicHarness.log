@@ -1,0 +1,8 @@
+PROGRESS Checksumming source 0%
+PROGRESS v0.9: channel integrity ready 100%
+PROGRESS Reading WAV structure 2%
+PROGRESS Measuring loudness, peaks and phase 96%
+PROGRESS Measuring loudness, peaks and phase 13%
+PROGRESS Encoding offline MP3 320 kbps 62%
+PROGRESS Packaging verified files 100%
+STUDIO_REAL_MUSIC_PASS {"lufs":-14.000000000054792,"true_peak":-1.7199175452479238,"lra":7.751158635639239,"crest":13.90675493660091,"correlation":0.8348942843874857,"mono_loss_db":-0.37419026095586716,"frames":9696000,"rate":48000,"duration":202.0,"sha256":"cab8f459ec3edd2b3a2dc979c082e98ab8387a75b91c46e30fb2f7bc907e2b1e"} bass={"passed":true,"events_checked":0} fadeOut=0.01

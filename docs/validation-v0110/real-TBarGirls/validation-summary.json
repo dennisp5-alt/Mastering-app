@@ -1,0 +1,16 @@
+{
+  "input": "/workspace/scratch/d6b87648e1b6/v0110-work/input-recovered/T-Bar Girls.wav",
+  "input_sha256": "ecca885c1665332bc8d7f690025ad2e3e8ac4e1cf21926f190d4cf2239220788",
+  "source_lufs": -11.041097776981013,
+  "source_dbtp": -0.3926261728087689,
+  "frames": 10199039,
+  "winner": "tonal_corrective",
+  "master": "/workspace/scratch/d6b87648e1b6/v0110-work/app/build/v0110-tests-ygj7_slz/real-TBarGirls/TBarGirls_FullAI24.wav",
+  "sha256": "725e5aa7bf22696fc8023c72420bda13ea1917908f8bee5e0ab6a0197aa54f99",
+  "lufs": -14.000000001598996,
+  "dbtp": -3.0696925648650133,
+  "lra": 2.223906442141672,
+  "limiter_profile": "bypassed",
+  "report": "/workspace/scratch/d6b87648e1b6/v0110-work/app/build/v0110-tests-ygj7_slz/real-TBarGirls/TBarGirls_FullAI_QC.json",
+  "quality_decision": "Verified comparison winner retained: no quality-first cleanup or limiter candidate cleared its finished-audio benefit and preservation gates."
+}

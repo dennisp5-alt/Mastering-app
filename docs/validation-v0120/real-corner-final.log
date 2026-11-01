@@ -1,0 +1,15 @@
+PROGRESS Checksumming source 0%
+PROGRESS v0.9: measuring all 12 translation response profiles 71%
+PROGRESS Measuring loudness, peaks and phase 21%
+PROGRESS Measuring loudness, peaks and phase 85%
+PROGRESS AI mastering brain: learning whole-song features 94%
+PROGRESS Measuring loudness, peaks and phase 74%
+PROGRESS Measuring loudness, peaks and phase 66%
+PROGRESS Professional intelligence: rendering protected float candidate 47%
+PROGRESS Measuring loudness, peaks and phase 42%
+PROGRESS Testing translation profile 4/12 33%
+PROGRESS Encoding offline MP3 320 kbps 17%
+PROGRESS Verifying decoded MP3 27%
+TheCornerStage vocal_artifact_gentle Finished-audio target comparison PASS: 4/4 events improved, 0 worsened; mean reduction 0.170 dB; control difference -88.3 dB relative to signal
+TheCornerStage vocal_artifact_intelligence Finished-audio target comparison PASS: 4/4 events improved, 0 worsened; mean reduction 0.275 dB; control difference -84.3 dB relative to signal
+REAL_MUSIC_RELEASE_PASS title=TheCornerStage winner=vocal_artifact_intelligence LUFS=-14.000000 TP=-3.367751 limiter=bypassed sha=326c5be6815b3458fc105d193c241d614d46d8bde7f7990910559609e7887054
