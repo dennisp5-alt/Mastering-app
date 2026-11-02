@@ -101,14 +101,21 @@ final class LoudDelivery {
         return out;
     }
 
-    /** Null when [d] is musical enough at loud levels, else the reason. */
-    static String unsafe(AnalysisResult before, MasterRenderer.Result m, AnalysisResult after, double ceiling) {
+    /** The limiter's own statistics, known straight after a render (no measuring needed). */
+    static String limiterUnsafe(MasterRenderer.Result m) {
         if (m.quantizerClips != 0) return "clipped samples";
-        if (after.truePeakEstimateDbtp > ceiling + .005) return "true peak over the ceiling";
         if (m.maximumLimiterReductionDb > 6.0) return String.format(Locale.US, "limiter peaks %.1f dB", m.maximumLimiterReductionDb);
         if (m.averageLimiterReductionDb > 1.2) return String.format(Locale.US, "limiter average %.1f dB", m.averageLimiterReductionDb);
         if (m.limiterFramesAboveOneDbPercent > 35) return String.format(Locale.US, "%.0f%% of the song limited over 1 dB", m.limiterFramesAboveOneDbPercent);
         if (m.limiterFramesAboveThreeDbPercent > 6) return String.format(Locale.US, "%.0f%% of the song limited over 3 dB", m.limiterFramesAboveThreeDbPercent);
+        return null;
+    }
+
+    /** Null when the measured result is musical enough at loud levels, else the reason. */
+    static String unsafe(AnalysisResult before, MasterRenderer.Result m, AnalysisResult after, double ceiling) {
+        String limiter = limiterUnsafe(m);
+        if (limiter != null) return limiter;
+        if (after.truePeakEstimateDbtp > ceiling + .005) return "true peak over the ceiling";
         if (before.lraLu - after.lraLu > 2.5) return String.format(Locale.US, "dynamics squashed by %.1f LU", before.lraLu - after.lraLu);
         if (before.crestFactorDb - after.crestFactorDb > 4.5) return String.format(Locale.US, "punch reduced by %.1f dB", before.crestFactorDb - after.crestFactorDb);
         return null;
@@ -119,25 +126,32 @@ final class LoudDelivery {
         File glued = new File(output.getParentFile(), output.getName() + ".glue.wav");
         String firstFailure = null;
         try {
+            // v0.5.4: glue once. Its threshold follows the signal, so its action does not
+            // depend on the final level; each loudness attempt only changes the gain into
+            // the limiter. (0.5.3 re-ran the glue, and measured every attempt in full.)
+            progress.update("Loud master • glue compression", 2);
+            double pre = r.target - a.integratedLufs - 2.0;
+            double threshold = blockLevelPercentile(source, pre, 0.80);
+            Glue glue = glue(source, glued, pre, threshold, a.wav.frames);
+            AnalysisResult ga = StudioAudio.measure(glued, (s, x) -> {});
+            double gain = r.target - ga.integratedLufs;
+            double limiterCeiling = r.ceiling - .18;
+            int peakPasses = 0;
             for (int step = 0; step <= 4; step++) {
                 double target = r.target - 0.5 * step;
                 if (target <= LOUD_FROM_LUFS - 0.5) break;
-                progress.update(String.format(Locale.US, "Loud master • aiming for %.1f LUFS", target), Math.min(90, step * 20));
-                // Glue: about 2 dB under target on the incoming level, so the compressor
-                // holds the loudest fifth of the song gently.
-                double pre = target - a.integratedLufs - 2.0;
-                double threshold = blockLevelPercentile(source, pre, 0.80);
-                Glue glue = glue(source, glued, pre, threshold, a.wav.frames);
-                AnalysisResult ga = StudioAudio.measure(glued, (s, x) -> {});
-                double gain = target - ga.integratedLufs;
-                double limiterCeiling = r.ceiling - .18;
+                if (step > 0) gain -= 0.5;
                 StudioAudio.Delivery d = new StudioAudio.Delivery();
                 d.file = output;
                 String why = null;
-                int loudnessPasses = 0, peakPasses = 0;
+                int loudnessPasses = 0;
                 while (true) {
+                    progress.update(String.format(Locale.US, "Loud master • aiming for %.1f LUFS", target), Math.min(92, 10 + step * 18 + loudnessPasses * 5));
                     d.render = MasterRenderer.renderAttempt(() -> new FileInputStream(glued), ga, gain, true,
-                            limiterCeiling, MasterRenderer.LimiterProfile.OVERSAMPLED_CLEAN, output, progress);
+                            limiterCeiling, MasterRenderer.LimiterProfile.OVERSAMPLED_CLEAN, output, (s, x) -> {});
+                    // Too much limiting is known without measuring: go straight to a lower target.
+                    why = limiterUnsafe(d.render);
+                    if (why != null) break;
                     d.analysis = StudioAudio.measure(output, (s, x) -> {});
                     StudioAudio.valid(d.analysis, a.wav.frames);
                     double overshoot = d.analysis.truePeakEstimateDbtp - r.ceiling;
