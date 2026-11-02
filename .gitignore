@@ -9,3 +9,6 @@ build/
 # Never publish local signing credentials
 *.jks
 *.keystore
+
+# The published test-only signing key (see signing/README.md) is tracked on purpose.
+!signing/stemlab-test.jks
