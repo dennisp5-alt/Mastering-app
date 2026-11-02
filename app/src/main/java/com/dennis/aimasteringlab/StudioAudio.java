@@ -106,8 +106,14 @@ final class StudioAudio {
     static final class Delivery {
         File file;AnalysisResult analysis;MasterRenderer.Result render;boolean fallback;String note;
         int limiterPeakCorrections;double limiterCeilingDbtp=Double.NaN;
+        /** v0.5.3 loud master (glue compressor + limiter) and its glue reduction. */
+        boolean loud;double glueMeanReductionDb,glueMaxReductionDb;
     }
+    /** Streaming targets (−12.5 LUFS and quieter) keep the v0.5.2 delivery; louder targets use [LoudDelivery]. */
     static Delivery deliver(File source,AnalysisResult a,StudioRecipe r,File output,AudioAnalyzer.Progress progress)throws IOException{
+        return LoudDelivery.applies(r)?LoudDelivery.deliver(source,a,r,output,progress):deliverStandard(source,a,r,output,progress);
+    }
+    static Delivery deliverStandard(File source,AnalysisResult a,StudioRecipe r,File output,AudioAnalyzer.Progress progress)throws IOException{
         double requested=r.target-a.integratedLufs;
         double flat=Math.min(requested,r.ceiling-.025-a.truePeakEstimateDbtp);
         boolean limit=requested>flat+.02&&requested-flat<=3.0;

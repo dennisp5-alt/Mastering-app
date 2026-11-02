@@ -31,7 +31,15 @@ final class MasteringCore {
         DennisPreferenceMemory.Profile preference;
         AlbumConsistencyModel.Profile album;
         String repairedFileName = "repaired-source.wav";
+        /** v0.5.3: tone stage, then up to [MAX_REPAIR_STAGES] repair stages on its winner. */
+        boolean chained = CHAINED_BY_DEFAULT;
     }
+
+    /** Host regression checks turn this off to compare against the v0.5.2 competition. */
+    static volatile boolean CHAINED_BY_DEFAULT = !"false".equals(System.getProperty("stemlab.chained"));
+
+    /** Repairs stacked on the tone winner at most (each a different family). */
+    static final int MAX_REPAIR_STAGES = 2;
 
     static final class Result {
         /** Analysis the engine mastered from (the repaired source when repairs ran). */
@@ -42,6 +50,10 @@ final class MasteringCore {
         File repairedSource;
         AutonomousMasteringBrain.Result brain;
         FullAiMasteringEngine.Result engine;
+        /** What each stage chose, in order ("tone: sonic_finish", "repair: …"). */
+        final java.util.List<String> chain = new java.util.ArrayList<>();
+        /** Families stacked on the tone winner (stereo, advanced, professional, nextgen, stem). */
+        final java.util.List<String> repairs = new java.util.ArrayList<>();
     }
 
     private MasteringCore() {}
@@ -106,9 +118,129 @@ final class MasteringCore {
         }
         out.brain = AutonomousMasteringBrain.analyze(out.processing, out.analysis, options.album,
                 stages.at("Mastering analysis", 40, 50));
+        if (!options.chained) {
+            out.engine = FullAiMasteringEngine.run(out.processing, out.analysis, out.brain, options.stemArchive,
+                    work, options.preference, options.album, stages.at("Candidate mastering", 50, 100));
+            out.chain.add("full: " + out.engine.selected.strategy);
+            return out;
+        }
+        // 1. Tone: the core EQ/dynamics plans compete (and the adaptive broad ladder).
         out.engine = FullAiMasteringEngine.run(out.processing, out.analysis, out.brain, options.stemArchive,
-                work, options.preference, options.album, stages.at("Candidate mastering", 50, 100));
+                work, options.preference, options.album, FullAiMasteringEngine.Scope.TONE,
+                stages.at("Tone mastering", 50, 76));
+        out.chain.add("tone: " + out.engine.selected.strategy);
+        // 2. Repairs on top of the tone winner: each repair family competes against the
+        //    winner itself (as the transparent control), and a family that wins is stacked
+        //    and not offered again. Stops as soon as no repair proves a benefit.
+        final AnalysisResult measuredSource = measured;
+        final AnalysisResult toneVerification = out.engine.selected.render == null ? null
+                : out.engine.selected.render.master.verification;
+        java.util.Set<String> used = new java.util.HashSet<>();
+        for (int stage = 1; stage <= MAX_REPAIR_STAGES; stage++) {
+            int from = 76 + (stage - 1) * 12, to = from + 12;
+            File winner = out.engine.selected == null ? null : out.engine.selected.file;
+            if (winner == null || !winner.isFile()) break;
+            File input = new File(work, "chain-" + stage + "-input.wav");
+            copy(winner, input);
+            final File stageInput = input;
+            AudioAnalyzer.StreamProvider provider = () -> new FileInputStream(stageInput);
+            AnalysisResult a = AudioAnalyzer.analyze(input.getName(), provider,
+                    stages.at("Repairs " + stage + " • measuring the tone master", from, from + 2));
+            carryOver(measuredSource, a);
+            try {
+                a.sections = LearnedSectionMapper.analyze(provider, a, stages.at("Repairs " + stage + " • sections", from + 2, from + 3));
+            } catch (Exception sectionError) { interrupted(sectionError); }
+            try {
+                a.aiDiagnostics = AdaptiveDiagnosticModel.analyze(provider, a, stages.at("Repairs " + stage + " • diagnostics", from + 3, from + 4));
+            } catch (Exception diagnosticError) {
+                interrupted(diagnosticError);
+                a.aiDiagnostics = AdaptiveDiagnosticModel.unavailable("Local diagnostic unavailable: " + clean(diagnosticError), a);
+            }
+            try {
+                a.nextGenerationIntelligence = NextGenerationMasteringModel.analyze(provider, a,
+                        options.reference, options.referenceName, options.referenceSha256,
+                        stages.at("Repairs " + stage + " • technical analysis", from + 4, from + 5));
+            } catch (Exception technicalError) {
+                interrupted(technicalError);
+                a.nextGenerationIntelligence = new NextGenerationMasteringModel.Result();
+                a.nextGenerationIntelligence.safetyNotes.add("Optional technical/reference analysis unavailable: " + clean(technicalError));
+            }
+            AutonomousMasteringBrain.Result brain = AutonomousMasteringBrain.analyze(provider, a, options.album,
+                    stages.at("Repairs " + stage + " • analysis", from + 5, from + 6));
+            File stageWork = new File(work, "repairs-" + stage);
+            FullAiMasteringEngine.Result engine;
+            try {
+                engine = FullAiMasteringEngine.run(provider, a, brain, options.stemArchive, stageWork,
+                        options.preference, options.album, FullAiMasteringEngine.Scope.repairs(used),
+                        stages.at("Repairs " + stage, from + 6, to));
+            } catch (IOException repairError) {
+                interrupted(repairError);
+                out.chain.add("repairs " + stage + ": skipped (" + clean(repairError) + ")");
+                break;
+            }
+            String family = FullAiMasteringEngine.familyOf(engine.selected);
+            if (engine.selected == null || engine.selected == engine.transparent || "core".equals(family)) {
+                out.chain.add("repairs " + stage + ": none proved a benefit");
+                break;
+            }
+            // Stacked repairs may not add up to over-processing: against the tone
+            // master, the song keeps its punch (crest), dynamics (LRA) and width.
+            String drift = drift(toneVerification, engine.selected.render.master.verification);
+            if (drift != null) {
+                out.chain.add("repair " + stage + " (" + family + "): " + engine.selected.strategy
+                        + " rejected, " + drift);
+                break;
+            }
+            used.add(family);
+            out.repairs.add(family);
+            out.chain.add("repair " + stage + " (" + family + "): " + engine.selected.strategy);
+            out.processing = provider;
+            out.analysis = a;
+            out.brain = brain;
+            out.engine = engine;
+        }
         return out;
+    }
+
+    /**
+     * The tone master is a new recording of the same song: its source-history guard
+     * (lossy, bandwidth, previous-master evidence) and the optional stems' evidence
+     * belong to the original and are kept; click/dropout repair already happened.
+     */
+    private static void carryOver(AnalysisResult original, AnalysisResult a) {
+        a.sourceSha256 = a.sourceSha256 == null ? original.sourceSha256 : a.sourceSha256;
+        a.sourceGuard = original.sourceGuard;
+        a.clickDropoutRepair = new ClickDropoutRepair.Result();
+        a.clickDropoutRepair.status = "Applied to the original before the tone stage";
+        a.stemArchiveName = original.stemArchiveName;
+        a.stemArchiveSha256 = original.stemArchiveSha256;
+        a.stems.clear();
+        a.stems.addAll(original.stems);
+        a.wavStemCount = original.wavStemCount;
+        a.stemReconstruction = original.stemReconstruction;
+        a.stemAlignment = original.stemAlignment;
+        a.stemTrust = original.stemTrust;
+        a.stemTrustTier = original.stemTrustTier;
+        a.stemArchiveAccepted = original.stemArchiveAccepted;
+        a.stemArchiveAnalysisOnlyAccepted = original.stemArchiveAnalysisOnlyAccepted;
+        a.vocalHumanity = original.vocalHumanity;
+        a.maskingPockets = original.maskingPockets;
+    }
+
+    /** Why [after] drifted too far from the tone master [tone], or null when it did not. */
+    static String drift(AnalysisResult tone, AnalysisResult after) {
+        if (tone == null || after == null) return null;
+        if (tone.crestFactorDb - after.crestFactorDb > 1.0)
+            return String.format(java.util.Locale.US, "it cost %.1f dB of punch (crest)", tone.crestFactorDb - after.crestFactorDb);
+        if (Math.abs(tone.lraLu - after.lraLu) > 1.0)
+            return String.format(java.util.Locale.US, "it changed the dynamics by %.1f LU", Math.abs(tone.lraLu - after.lraLu));
+        if (tone.stereoCorrelation - after.stereoCorrelation > 0.08)
+            return String.format(java.util.Locale.US, "it widened the stereo image too far (correlation %.2f → %.2f)", tone.stereoCorrelation, after.stereoCorrelation);
+        return null;
+    }
+
+    private static void copy(File from, File to) throws IOException {
+        java.nio.file.Files.copy(from.toPath(), to.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
     }
 
     private static void interrupted(Exception error) throws IOException {

@@ -105,7 +105,51 @@ final class FullAiMasteringEngine {
         }
     }
 
+    /**
+     * v0.5.3: which candidate families one engine run may render. The chained master
+     * runs TONE first (core EQ/dynamics plans compete), then one or two REPAIRS runs on
+     * the tone winner, so a song can get a tonal correction AND a repair instead of
+     * one or the other. FULL is the v0.15.7 competition, unchanged.
+     */
+    static final class Scope {
+        final String name;
+        /** Core plans beyond the transparent control, adaptive broad and sparse-peak auditions. */
+        final boolean coreAlternatives;
+        final boolean specialists;
+        /** One render per family (its combined/gentlest mode); no limiter re-optimisation. */
+        final boolean leanModes;
+        final java.util.Set<String> excluded;
+
+        private Scope(String name, boolean coreAlternatives, boolean specialists, boolean leanModes,
+                      java.util.Set<String> excluded) {
+            this.name = name; this.coreAlternatives = coreAlternatives; this.specialists = specialists;
+            this.leanModes = leanModes; this.excluded = excluded;
+        }
+
+        static final Scope FULL = new Scope("full", true, true, false, java.util.Collections.<String>emptySet());
+        static final Scope TONE = new Scope("tone", true, false, false, java.util.Collections.<String>emptySet());
+
+        static Scope repairs(java.util.Set<String> excluded) {
+            return new Scope("repairs", false, true, true, new java.util.HashSet<>(excluded));
+        }
+
+        /** Families: stereo, advanced, professional, nextgen, stem. */
+        boolean family(String family) { return specialists && !excluded.contains(family); }
+    }
+
+    /** The family a selected candidate came from: core, stereo, advanced, professional, nextgen or stem. */
+    static String familyOf(Candidate c) {
+        if (c == null) return "none";
+        if (c.stemAware) return "stem";
+        if (c.intelligenceAware) return "stereo";
+        if (c.advancedAware) return "advanced";
+        if (c.professionalAware) return "professional";
+        if (c.nextGenerationAware) return "nextgen";
+        return "core";
+    }
+
     static final class Result {
+        Scope scope = Scope.FULL;
         String model = "DAML v" + StudioQcReporting.APP_VERSION + " Verified Candidate Efficiency competition";
         String rule = "bounded 0.050 objective / 0.300 raw technical tolerance restricted to verified unresolved dynamics-led adaptive fallback, hard safety rejection, deterministic render integrity, measured broad-mastering requirement before narrow-repair promotion, three-rung source-shaped adaptive broad fallback only when normal broad candidates fail, dynamics-demand-aware preservation only inside unresolved dynamics-led fallback, independently verified corrective EQ/dynamics/cleanup/limiter candidates, level-matched meaningful-mastering gate against the transparent control, diagnostic-only translation simulations, bounded learned-profile tie breaks and tiered stems";
         double sourceObjective;
@@ -201,6 +245,20 @@ final class FullAiMasteringEngine {
                       DennisPreferenceMemory.Profile preferenceProfile,
                       AlbumConsistencyModel.Profile albumProfile,
                       AudioAnalyzer.Progress progress) throws IOException {
+        return run(source, sourceAnalysis, brain, stemArchive, workDirectory,
+                preferenceProfile, albumProfile, Scope.FULL, progress);
+    }
+
+    static Result run(AudioAnalyzer.StreamProvider source,
+                      AnalysisResult sourceAnalysis,
+                      AutonomousMasteringBrain.Result brain,
+                      File stemArchive,
+                      File workDirectory,
+                      DennisPreferenceMemory.Profile preferenceProfile,
+                      AlbumConsistencyModel.Profile albumProfile,
+                      Scope scope,
+                      AudioAnalyzer.Progress progress) throws IOException {
+        if (scope == null) scope = Scope.FULL;
         if (sourceAnalysis.wav.channels != 2 || sourceAnalysis.wav.sampleRate != 48000) {
             throw new IOException("Full AI mastering requires a 48 kHz stereo authoritative WAV");
         }
@@ -212,6 +270,7 @@ final class FullAiMasteringEngine {
                     source, sourceAnalysis, progress);
         }
         Result result = new Result();
+        result.scope = scope;
         result.preferenceProfile = preferenceProfile;
         result.albumProfile = albumProfile;
         result.stemArchiveSupplied = stemArchive != null
@@ -221,6 +280,14 @@ final class FullAiMasteringEngine {
         result.broadMasteringNeed = BroadMasteringNeed.assess(sourceAnalysis, brain);
         Map<String, Candidate> fingerprints = new LinkedHashMap<>();
         List<AutonomousMasteringBrain.Plan> corePlans = shortlistCorePlans(brain.internalPlans);
+        if (!scope.coreAlternatives) {
+            // Repairs stage: the input is already the tone winner; only its transparent
+            // delivery control is rendered as the reference the repairs must beat.
+            ArrayList<AutonomousMasteringBrain.Plan> only = new ArrayList<>();
+            for (AutonomousMasteringBrain.Plan p : corePlans)
+                if ("transparent_flat_gain".equals(p.strategy)) only.add(p);
+            corePlans = only;
+        }
         long timerMark=System.nanoTime();
 
         for (int index = 0; index < corePlans.size(); index++) {
@@ -327,7 +394,7 @@ final class FullAiMasteringEngine {
         // using complete measurements before spending multiple full renders on
         // alternate families. The narrow preflight is never a promotion gate.
         boolean earlySparseSolved = false;
-        if (SparsePeakRecovery.earlyAuditionSafe(sourceAnalysis,
+        if (scope.coreAlternatives && SparsePeakRecovery.earlyAuditionSafe(sourceAnalysis,
                 result.broadMasteringNeed, result.stemArchiveSupplied,
                 result.broadMasteringAnchor != null)) {
             earlySparseSolved = tryEarlySparsePeakCandidate(source,
@@ -342,7 +409,7 @@ final class FullAiMasteringEngine {
         if (!earlySparseSolved) {
 
 
-        if (sourceAnalysis.stereoIntelligence == null) {
+        if (scope.family("stereo") && sourceAnalysis.stereoIntelligence == null) {
             try {
                 sourceAnalysis.stereoIntelligence = StereoIntelligenceModel.analyze(
                         source, sourceAnalysis, rangeProgress(progress, "Stereo analysis", 34, 39));
@@ -352,12 +419,14 @@ final class FullAiMasteringEngine {
                                 + clean(intelligenceError), sourceAnalysis);
             }
         }
-        if (!sourceAnalysis.sourceGuard.secondPassGuard) {
+        if (!scope.family("stereo")) {
+            result.intelligenceDecision = "Not part of this " + scope.name + " stage.";
+        } else if (!sourceAnalysis.sourceGuard.secondPassGuard) {
             addStereoIntelligenceCandidates(source, sourceAnalysis, result,
                     workDirectory, rangeProgress(progress, "Stereo mastering", 39, 50));
         } else result.intelligenceDecision = "Previous-master guard blocked stereo tonal/intelligibility candidates; diagnostics were retained.";
         timerMark=markCandidateStage(result,"stereo_intelligence_candidates_ms",timerMark);
-        if (sourceAnalysis.advancedIntelligence == null) {
+        if (scope.family("advanced") && sourceAnalysis.advancedIntelligence == null) {
             try {
                 sourceAnalysis.advancedIntelligence = AdvancedStereoModel.analyze(
                         source, sourceAnalysis, rangeProgress(progress, "Advanced analysis", 50, 55));
@@ -367,12 +436,14 @@ final class FullAiMasteringEngine {
                                 + clean(advancedError), sourceAnalysis);
             }
         }
-        if (!sourceAnalysis.sourceGuard.secondPassGuard) {
+        if (!scope.family("advanced")) {
+            result.advancedDecision = "Not part of this " + scope.name + " stage.";
+        } else if (!sourceAnalysis.sourceGuard.secondPassGuard) {
             addAdvancedCandidates(source, sourceAnalysis, result,
                     workDirectory, rangeProgress(progress, "Advanced mastering", 55, 66));
         } else result.advancedDecision = "Previous-master guard blocked section/artifact/transient candidates; diagnostics were retained.";
         timerMark=markCandidateStage(result,"advanced_candidates_ms",timerMark);
-        if (sourceAnalysis.professionalIntelligence == null) {
+        if (scope.family("professional") && sourceAnalysis.professionalIntelligence == null) {
             try {
                 sourceAnalysis.professionalIntelligence =
                         ProfessionalMasteringModel.analyze(source,
@@ -385,10 +456,11 @@ final class FullAiMasteringEngine {
                                 sourceAnalysis);
             }
         }
-        addProfessionalCandidates(source, sourceAnalysis, result, workDirectory,
+        if (scope.family("professional")) addProfessionalCandidates(source, sourceAnalysis, result, workDirectory,
                 rangeProgress(progress, "Quality mastering", 70, 81));
+        else result.professionalDecision = "Not part of this " + scope.name + " stage.";
         timerMark=markCandidateStage(result,"professional_candidates_ms",timerMark);
-        if (sourceAnalysis.nextGenerationIntelligence == null) {
+        if (scope.family("nextgen") && sourceAnalysis.nextGenerationIntelligence == null) {
             try {
                 sourceAnalysis.nextGenerationIntelligence =
                         NextGenerationMasteringModel.analyze(source,
@@ -402,10 +474,13 @@ final class FullAiMasteringEngine {
                                 + clean(nextError));
             }
         }
-        addNextGenerationCandidates(source, sourceAnalysis, result,
+        if (scope.family("nextgen")) addNextGenerationCandidates(source, sourceAnalysis, result,
                 workDirectory, rangeProgress(progress, "Technical repair mastering", 85, 93));
+        else result.nextGenerationDecision = "Not part of this " + scope.name + " stage.";
         timerMark=markCandidateStage(result,"next_generation_candidates_ms",timerMark);
-        if (!sourceAnalysis.sourceGuard.secondPassGuard) {
+        if (!scope.family("stem")) {
+            if (stemArchive != null) result.stemDecision = "Not part of this " + scope.name + " stage.";
+        } else if (!sourceAnalysis.sourceGuard.secondPassGuard) {
             addStemCandidates(source, sourceAnalysis, stemArchive, result,
                     workDirectory, rangeProgress(progress, "Stem-assisted mastering", 93, 97));
         } else if (stemArchive != null || sourceAnalysis.stemArchiveName != null) {
@@ -418,7 +493,8 @@ final class FullAiMasteringEngine {
         // still unresolved. Hard safety gates remain fixed; only dynamics-led
         // musical-preservation tolerances may use the bounded demand-aware envelope.
         timerMark=markCandidateStage(result,"stem_candidates_ms",timerMark);
-        if (result.broadMasteringNeed != null && result.broadMasteringNeed.required
+        if (scope.coreAlternatives
+                && result.broadMasteringNeed != null && result.broadMasteringNeed.required
                 && result.broadMasteringAnchor == null
                 && !sourceAnalysis.sourceGuard.secondPassGuard) {
             addAdaptiveBroadCandidates(source, sourceAnalysis, brain, result,
@@ -1336,6 +1412,15 @@ final class FullAiMasteringEngine {
         return now;
     }
 
+    /** Repairs stage: one render per family, its first (combined or gentlest) mode. */
+    private static <T> void leanModes(Result result, List<T> modes) {
+        if (result.scope.leanModes && modes.size() > 1) {
+            T first = modes.get(0);
+            modes.clear();
+            modes.add(first);
+        }
+    }
+
     private static List<AutonomousMasteringBrain.Plan> shortlistCorePlans(
             List<AutonomousMasteringBrain.Plan> plans) {
         ArrayList<AutonomousMasteringBrain.Plan> out = new ArrayList<>();
@@ -1425,6 +1510,7 @@ final class FullAiMasteringEngine {
         } else if (model.hasEventRepair()) modes.add(StereoIntelligenceRenderer.Mode.EVENT_REPAIR);
         else if (model.hasLowEnd()) modes.add(StereoIntelligenceRenderer.Mode.LOW_END);
         else if (model.hasVocalFocus()) modes.add(StereoIntelligenceRenderer.Mode.VOCAL_FOCUS);
+        leanModes(result, modes);
         for (int modeIndex=0; modeIndex<modes.size(); modeIndex++) {
             StereoIntelligenceRenderer.Mode mode=modes.get(modeIndex);
             Candidate candidate = new Candidate();
@@ -1511,6 +1597,8 @@ final class FullAiMasteringEngine {
                     StemAssistRenderer.Mode.ANALYSIS_ONLY_GUIDED
                 };
         Candidate retainedFamilyFinalist = null;
+        if (result.scope.leanModes && modes.length > 1)
+            modes = new StemAssistRenderer.Mode[]{modes[modes.length - 1]};
         for (int modeIndex=0; modeIndex<modes.length; modeIndex++) {
             StemAssistRenderer.Mode mode=modes[modeIndex];
             Candidate candidate = new Candidate();
@@ -1593,6 +1681,7 @@ final class FullAiMasteringEngine {
         } else if (model.hasArtifactRepair()) modes.add(AdvancedStereoRenderer.Mode.ARTIFACT_REPAIR);
         else if (model.hasTransientControl()) modes.add(AdvancedStereoRenderer.Mode.TRANSIENT_INTELLIGENCE);
         else if (model.hasSectionAware()) modes.add(AdvancedStereoRenderer.Mode.SECTION_AWARE);
+        leanModes(result, modes);
         for (int modeIndex=0; modeIndex<modes.size(); modeIndex++) {
             AdvancedStereoRenderer.Mode mode=modes.get(modeIndex);
             Candidate candidate = new Candidate();
@@ -1674,6 +1763,8 @@ final class FullAiMasteringEngine {
             modes.add(ProfessionalMasteringRenderer.Mode.VOCAL_ARTIFACT_GENTLE);
             modes.add(ProfessionalMasteringRenderer.Mode.VOCAL_ARTIFACT);
         }
+        if (result.scope.leanModes) modes.remove(ProfessionalMasteringRenderer.Mode.LIMITER_CREST);
+        leanModes(result, modes);
         for (int modeIndex=0; modeIndex<modes.size(); modeIndex++) {
             ProfessionalMasteringRenderer.Mode mode=modes.get(modeIndex);
             Candidate candidate = new Candidate();
@@ -1768,6 +1859,7 @@ final class FullAiMasteringEngine {
             modes.add(NextGenerationMasteringRenderer.Mode.CHANNEL_INTEGRITY);
         }
         // Reference matching and translation consensus never enter audio in v0.10.
+        leanModes(result, modes);
         for (int modeIndex=0; modeIndex<modes.size(); modeIndex++) {
             NextGenerationMasteringRenderer.Mode mode=modes.get(modeIndex);
             Candidate candidate = new Candidate();

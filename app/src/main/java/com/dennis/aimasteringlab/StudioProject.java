@@ -13,7 +13,7 @@ final class StudioProject {
     private StudioProject(File dir,JSONObject data)throws IOException{this.dir=dir.getCanonicalFile();this.data=data;}
     static StudioProject create(File root,String title)throws Exception{
         File dir=new File(root,UUID.randomUUID().toString()).getCanonicalFile();if(!dir.mkdirs())throw new IOException("Could not create saved project");
-        StudioRecipe r=new StudioRecipe();r.title=title.replaceFirst("(?i)\\.wav$","");
+        StudioRecipe r=new StudioRecipe();StudioDefaults.apply(root,r);r.title=title.replaceFirst("(?i)\\.wav$","");
         JSONObject j=new JSONObject().put("schema",1).put("id",dir.getName()).put("name",r.title)
                 .put("created",System.currentTimeMillis()).put("state","IMPORTING").put("revision",0).put("order",System.currentTimeMillis())
                 .put("recipe",r.json()).put("references",new JSONArray()).put("history",new JSONArray());

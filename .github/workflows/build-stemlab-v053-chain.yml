@@ -1,13 +1,13 @@
-name: Stem Lab v0.5.2 One Path TEST
+name: Stem Lab v0.5.3 Chain + Loud TEST
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - experiment/stemlab-v052-one-path
+      - experiment/stemlab-v053-chain
 
 concurrency:
-  group: stemlab-v052-one-path
+  group: stemlab-v053-chain
   cancel-in-progress: true
 
 permissions:
@@ -41,8 +41,8 @@ jobs:
           gradle-version: '8.6'
       - name: Python test tools
         run: pip install --quiet numpy scipy
-      - name: Host checks (one path, Trial B loudness, peak safety)
-        run: bash project/tests/v052/run_host_checks.sh project v051 host-work
+      - name: Host checks (one path, Trial B, chained repairs, loud delivery)
+        run: bash project/tests/v053/run_host_checks.sh project v051 host-work
       - name: Stem-only import regressions
         run: |
           mkdir -p host-fixtures host-v050
@@ -71,26 +71,26 @@ jobs:
         run: gradle --no-daemon :app:assembleDebug
       - name: Package APK and source
         run: |
-          cp project/app/build/outputs/apk/debug/app-debug.apk StemLab-v0.5.2-OnePath-TEST.apk
-          unzip -tq StemLab-v0.5.2-OnePath-TEST.apk
-          (cd project && git archive --format=zip -o ../StemLab-v0.5.2-OnePath-TEST-Source.zip HEAD)
-          sha256sum StemLab-v0.5.2-OnePath-TEST.apk StemLab-v0.5.2-OnePath-TEST-Source.zip > StemLab-v0.5.2-OnePath-TEST-SHA256.txt
-          cp host-work/trialb.txt host-work/hot.txt . 2>/dev/null || true
+          cp project/app/build/outputs/apk/debug/app-debug.apk StemLab-v0.5.3-Chain-TEST.apk
+          unzip -tq StemLab-v0.5.3-Chain-TEST.apk
+          (cd project && git archive --format=zip -o ../StemLab-v0.5.3-Chain-TEST-Source.zip HEAD)
+          sha256sum StemLab-v0.5.3-Chain-TEST.apk StemLab-v0.5.3-Chain-TEST-Source.zip > StemLab-v0.5.3-Chain-TEST-SHA256.txt
+          cp host-work/v052/trialb.txt host-work/v052/hot.txt . 2>/dev/null || true
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: StemLab-v0.5.2-OnePath-TEST-APK
+          name: StemLab-v0.5.3-Chain-TEST-APK
           path: |
-            StemLab-v0.5.2-OnePath-TEST.apk
-            StemLab-v0.5.2-OnePath-TEST-SHA256.txt
+            StemLab-v0.5.3-Chain-TEST.apk
+            StemLab-v0.5.3-Chain-TEST-SHA256.txt
             trialb.txt
             hot.txt
           retention-days: 90
       - name: Upload source
         uses: actions/upload-artifact@v4
         with:
-          name: StemLab-v0.5.2-OnePath-TEST-Source
+          name: StemLab-v0.5.3-Chain-TEST-Source
           path: |
-            StemLab-v0.5.2-OnePath-TEST-Source.zip
-            StemLab-v0.5.2-OnePath-TEST-SHA256.txt
+            StemLab-v0.5.3-Chain-TEST-Source.zip
+            StemLab-v0.5.3-Chain-TEST-SHA256.txt
           retention-days: 90

@@ -34,6 +34,7 @@ final class StudioPipeline {
         File report=p.child("Base_Master_QC.json");StudioProject.atomic(report,FullAiReportWriter.create(source,brain,engine,qc).getBytes(StandardCharsets.UTF_8));
         p.file("base",base);p.file("base_report",report);p.data.put("base_hash",qc.finalMasterSha256)
                 .put("base_meters",StudioAudio.meters(qc.finalMasterVerification)).put("base_winner",qc.finalCandidate.strategy)
+                .put("base_chain",new JSONArray(core.chain)).put("base_repairs",new JSONArray(core.repairs))
                 .put("base_meaningful_change",engine.selected!=engine.transparent)
                 .put("base_mastering_decision",engine.meaningfulChangeDecision)
                 .put("base_final_gate_candidate",engine.meaningfulChangeComparedStrategy==null?"":engine.meaningfulChangeComparedStrategy)
@@ -199,6 +200,8 @@ final class StudioPipeline {
         if(delivered.render!=null)report.put("limiter_max_reduction_db",delivered.render.maximumLimiterReductionDb)
                 .put("limiter_mean_reduction_db",delivered.render.averageLimiterReductionDb).put("limiter_used",delivered.render.limiterUsed)
                 .put("limiter_peak_corrections",delivered.limiterPeakCorrections);
+        report.put("loud_master",delivered.loud).put("glue_mean_reduction_db",delivered.glueMeanReductionDb)
+                .put("glue_max_reduction_db",delivered.glueMaxReductionDb);
         File qc=new File(run,name+"_Studio_QC.json"),recipeFile=new File(run,name+"_Recipe.json");
         StudioProject.atomic(recipeFile,recipe.json().toString(2).getBytes(StandardCharsets.UTF_8));
         // Publish only the two requested release WAVs; QC/recipe data remain inside the project for diagnostics and recovery.

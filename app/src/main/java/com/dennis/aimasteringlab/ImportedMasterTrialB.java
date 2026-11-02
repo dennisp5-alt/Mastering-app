@@ -168,7 +168,7 @@ final class ImportedMasterTrialB {
             // the loudness change is reported, never hidden.
             File output = p.child("final.wav");
             progress.update("Trial B delivery: keeping loudness under " + fmt(r.ceiling) + " dBTP", 70);
-            StudioAudio.Delivery delivered = StudioAudio.deliver(edited, e.analysis, r, output, progress);
+            StudioAudio.Delivery delivered = StudioAudio.deliverStandard(edited, e.analysis, r, output, progress);
             AnalysisResult done = StudioAudio.measure(output, progress);
             StudioAudio.valid(done, a.wav.frames);
             if (done.truePeakEstimateDbtp > r.ceiling + .005)

@@ -102,8 +102,14 @@ public final class StudioActivity extends Activity {
     private static String fmt(double v){return String.format(Locale.US,"%.3f",v);}
     private void home(){
         page="home";shell("Projects & Bulk Mastering");
-        text("Offline mastering for full WAV tracks and independent stem ZIPs. The proven v0.15.7 engine is unchanged.",14,false);
+        text("Offline mastering for full WAV tracks and independent stem ZIPs. Stem Lab 0.5.3: the tone master first, then up to two repairs stacked on top, then your chosen loudness.",14,false);
         button("IMPORT STEM ZIP — VOCALS + INSTRUMENTAL",()->{idle();pick(STEM_ZIP,false);});
+        button("LOUDNESS FOR NEW SONGS: "+StudioDefaults.name(StudioDefaults.target(projects)),()->{
+            idle();
+            new AlertDialog.Builder(this).setTitle("Deliver newly imported songs at")
+                .setItems(StudioDefaults.NAMES,(d,w)->act(()->{StudioDefaults.target(projects,StudioDefaults.TARGETS[w]);home();}))
+                .show();
+        });
         actions("IMPORT WAVS","Select one or more WAV files",()->{idle();pick(WAVS,true);},
                 "MASTER QUEUE / RESUME","Process saved projects",()->{idle();permission();StudioJobs.queue(this,projects,false);home();},true);
         actions("ALBUM WORKSPACE","Organise finished tracks",this::album,
@@ -240,6 +246,9 @@ public final class StudioActivity extends Activity {
             StudioVisuals.metric(this,second,"FORMAT","24-bit  •  48 kHz",StudioVisuals.CYAN);
             LinearLayout.LayoutParams slp=new LinearLayout.LayoutParams(-1,-2);slp.setMargins(0,dp(5),0,dp(5));root.addView(second,slp);
         }
+        org.json.JSONArray chain=p.data.optJSONArray("base_chain");
+        if(chain!=null&&chain.length()>0){StringBuilder c=new StringBuilder();for(int i=0;i<chain.length();i++){if(i>0)c.append("  →  ");c.append(chain.optString(i));}
+            text("Mastering chain: "+c,12,false);}
         if(state.equals("FAILED"))StudioVisuals.notice(this,root,"Mastering needs attention",message,true);
         else if(state.equals("COMPLETE"))StudioVisuals.notice(this,root,"Studio master complete","Verified audio and reports are ready to review or export.",false);
         else StudioVisuals.notice(this,root,state,message,false);
@@ -309,10 +318,10 @@ public final class StudioActivity extends Activity {
         EditText fadeIn=field("Fade in (seconds)",fmt(r.fadeIn),true),fadeOut=field("Fade out (seconds)",fmt(r.fadeOut),true);
         CheckBox edges=check("Repair nonzero start/end boundaries (5 / 10 ms)",r.boundaryRepair);
         text("Boundary repair fades only a flagged edge. Listen to confirm any abrupt ending is intentional.",13,false);
-        Spinner profile=spinner("Delivery starting point",new String[]{"Keep/custom","Streaming −14 / −1.1","Dynamic −16 / −1.1","Louder −12 / −1.1","Broadcast starting point −23 / −2"},0);
+        Spinner profile=spinner("Delivery starting point",new String[]{"Keep/custom","Streaming −14 / −1.1","Dynamic −16 / −1.1","Balanced −12 / −1.1","Broadcast starting point −23 / −2","Loud −11 / −1.0 (country / pop)","Louder −10 / −1.0 (rock / pop)","Very loud −9 / −1.0"},0);
         EditText target=field("Target LUFS-I",fmt(r.target),true),ceiling=field("Maximum true peak dBTP",fmt(r.ceiling),true);
-        profile.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onNothingSelected(android.widget.AdapterView<?> a){}public void onItemSelected(android.widget.AdapterView<?> a,View v,int i,long id){if(i>0){target.setText(new String[]{"","-14","-16","-12","-23"}[i]);ceiling.setText(i==4?"-2":"-1.1");}}});
-        text("Requested loudness may be reduced to protect dynamics. A broadcast preset must be checked against the station's requirements.",13,false);
+        profile.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onNothingSelected(android.widget.AdapterView<?> a){}public void onItemSelected(android.widget.AdapterView<?> a,View v,int i,long id){if(i>0){target.setText(new String[]{"","-14","-16","-12","-23","-11","-10","-9"}[i]);ceiling.setText(i==4?"-2":i>=5?"-1.0":"-1.1");}}});
+        text("Requested loudness may be reduced to protect dynamics. Targets louder than −12.5 LUFS use the loud master (gentle glue compression, then the limiter); if a song cannot get that loud cleanly it is delivered a little quieter and the report says why. A broadcast preset must be checked against the station's requirements.",13,false);
         EditText title=field("Track title",r.title,false),artist=field("Artist",r.artist,false),album=field("Album",r.album,false),isrc=field("ISRC (optional, 12 characters)",r.isrc,false),track=field("Track number",Integer.toString(r.track),true);
         button("SAVE FINISHING SETTINGS",()->{idle();r.trimStart=number(start);r.trimEnd=number(end);r.fadeIn=number(fadeIn);r.fadeOut=number(fadeOut);r.boundaryRepair=edges.isChecked();r.target=number(target);r.ceiling=number(ceiling);
             r.title=title.getText().toString().trim();r.artist=artist.getText().toString().trim();r.album=album.getText().toString().trim();r.isrc=isrc.getText().toString().trim();r.track=(int)number(track);

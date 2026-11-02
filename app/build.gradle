@@ -7,11 +7,11 @@ android {
     compileSdk 34
 
     defaultConfig {
-        applicationId 'com.dennis.stemlab.onepath052'
+        applicationId 'com.dennis.stemlab.chain053'
         minSdk 29
         targetSdk 34
-        versionCode 8
-        versionName '0.5.2-one-path-test'
+        versionCode 9
+        versionName '0.5.3-chain-loud-test'
     }
 
     buildFeatures {
