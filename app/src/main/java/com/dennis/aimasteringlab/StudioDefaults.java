@@ -14,10 +14,10 @@ final class StudioDefaults {
     static final double[] TARGETS = {-14, -12, -11, -10, -9};
     static final String[] NAMES = {
         "Streaming −14 LUFS (Spotify / Apple / YouTube level)",
-        "Balanced −12 LUFS",
-        "Loud −11 LUFS (country / pop)",
-        "Louder −10 LUFS (rock / pop)",
-        "Very loud −9 LUFS (only if it stays clean)",
+        "Balanced −12 LUFS (−2 dBTP)",
+        "Loud −11 LUFS (country / pop, −2 dBTP)",
+        "Louder −10 LUFS (rock / pop, −2 dBTP)",
+        "Very loud −9 LUFS (−2 dBTP, only if it stays clean)",
     };
 
     private StudioDefaults() {}
@@ -42,9 +42,12 @@ final class StudioDefaults {
         return String.format(Locale.US, "%.1f LUFS", t);
     }
 
-    /** A new project's delivery: the default target; loud masters use a −1.0 dBTP ceiling. */
+    /** Spotify: a master louder than −14 LUFS should keep its true peak below −2 dB. */
+    static final double LOUD_CEILING_DBTP = -2.0;
+
+    /** A new project's delivery: the default target; louder than −14 uses a −2.0 dBTP ceiling. */
     static void apply(File root, StudioRecipe r) {
         r.target = target(root);
-        if (r.target > LoudDelivery.LOUD_FROM_LUFS) r.ceiling = -1.0;
+        if (r.target > -14.0 + 1e-9) r.ceiling = LOUD_CEILING_DBTP;
     }
 }

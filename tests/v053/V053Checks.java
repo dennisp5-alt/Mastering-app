@@ -34,7 +34,7 @@ public final class V053Checks {
         root.mkdirs();
         StudioDefaults.target(root, -10);
         StudioProject p = project(input, root);
-        if (Math.abs(p.recipe().target + 10) > 1e-9 || Math.abs(p.recipe().ceiling + 1.0) > 1e-9)
+        if (Math.abs(p.recipe().target + 10) > 1e-9 || Math.abs(p.recipe().ceiling + 2.0) > 1e-9)
             throw new AssertionError("new projects must take the default loudness: " + p.recipe().json());
         long t = System.nanoTime();
         StudioPipeline.master(p, q);
@@ -42,12 +42,15 @@ public final class V053Checks {
         long ms = (System.nanoTime() - t) / 1000000;
         p = StudioProject.load(p.dir);
         JSONArray chain = p.data.getJSONArray("base_chain");
+        JSONObject report = p.data.getJSONObject("final_qc");
+        if (!report.has("base_chain") || !report.has("base_stage_ms") || !report.has("base_tone_winner"))
+            throw new AssertionError("the Studio QC report must carry the chain and stage timings");
         if (chain.length() < 2 || !chain.getString(0).startsWith("tone: "))
             throw new AssertionError("chain not recorded: " + chain);
         JSONObject m = p.data.getJSONObject("master_meters"), qc = p.data.getJSONObject("final_qc");
         double lufs = m.getDouble("lufs"), tp = m.getDouble("true_peak");
         String note = qc.optString("delivery_note");
-        if (tp > -0.995) throw new AssertionError("true peak over −1.0: " + tp);
+        if (tp > -1.995) throw new AssertionError("true peak over −2.0: " + tp);
         boolean reached = lufs > -10.2 && lufs < -9.85;
         boolean explained = note.contains("asked") || note.contains("not possible cleanly");
         if (!reached && !explained) throw new AssertionError("loud target neither reached nor explained: " + lufs + " / " + note);

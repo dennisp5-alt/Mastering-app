@@ -1,13 +1,14 @@
-name: Stem Lab v0.5.3 Chain + Loud TEST
+name: Stem Lab TEST (stable test app)
 
 on:
   workflow_dispatch:
   push:
     branches:
       - experiment/stemlab-v053-chain
+      - experiment/stemlab-v054
 
 concurrency:
-  group: stemlab-v053-chain
+  group: stemlab-test-${{ github.ref_name }}
   cancel-in-progress: true
 
 permissions:
@@ -71,26 +72,26 @@ jobs:
         run: gradle --no-daemon :app:assembleDebug
       - name: Package APK and source
         run: |
-          cp project/app/build/outputs/apk/debug/app-debug.apk StemLab-v0.5.3-Chain-TEST.apk
-          unzip -tq StemLab-v0.5.3-Chain-TEST.apk
-          (cd project && git archive --format=zip -o ../StemLab-v0.5.3-Chain-TEST-Source.zip HEAD)
-          sha256sum StemLab-v0.5.3-Chain-TEST.apk StemLab-v0.5.3-Chain-TEST-Source.zip > StemLab-v0.5.3-Chain-TEST-SHA256.txt
+          cp project/app/build/outputs/apk/debug/app-debug.apk StemLab-v0.5.4-TEST.apk
+          unzip -tq StemLab-v0.5.4-TEST.apk
+          (cd project && git archive --format=zip -o ../StemLab-v0.5.4-TEST-Source.zip HEAD)
+          sha256sum StemLab-v0.5.4-TEST.apk StemLab-v0.5.4-TEST-Source.zip > StemLab-v0.5.4-TEST-SHA256.txt
           cp host-work/v052/trialb.txt host-work/v052/hot.txt . 2>/dev/null || true
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: StemLab-v0.5.3-Chain-TEST-APK
+          name: StemLab-v0.5.4-TEST-APK
           path: |
-            StemLab-v0.5.3-Chain-TEST.apk
-            StemLab-v0.5.3-Chain-TEST-SHA256.txt
+            StemLab-v0.5.4-TEST.apk
+            StemLab-v0.5.4-TEST-SHA256.txt
             trialb.txt
             hot.txt
           retention-days: 90
       - name: Upload source
         uses: actions/upload-artifact@v4
         with:
-          name: StemLab-v0.5.3-Chain-TEST-Source
+          name: StemLab-v0.5.4-TEST-Source
           path: |
-            StemLab-v0.5.3-Chain-TEST-Source.zip
-            StemLab-v0.5.3-Chain-TEST-SHA256.txt
+            StemLab-v0.5.4-TEST-Source.zip
+            StemLab-v0.5.4-TEST-SHA256.txt
           retention-days: 90

@@ -8,7 +8,7 @@
     <application
         android:allowBackup="true"
         android:icon="@drawable/ic_launcher"
-        android:label="Stem Lab 0.5.3 Chain TEST"
+        android:label="Stem Lab TEST"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
         <activity

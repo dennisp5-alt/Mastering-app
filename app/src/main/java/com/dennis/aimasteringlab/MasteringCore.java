@@ -54,6 +54,10 @@ final class MasteringCore {
         final java.util.List<String> chain = new java.util.ArrayList<>();
         /** Families stacked on the tone winner (stereo, advanced, professional, nextgen, stem). */
         final java.util.List<String> repairs = new java.util.ArrayList<>();
+        /** The tone stage's own result (its broad-mastering decisions), or null when not chained. */
+        FullAiMasteringEngine.Result toneEngine;
+        /** Wall-clock milliseconds per stage, in order. */
+        final java.util.LinkedHashMap<String, Long> stageMs = new java.util.LinkedHashMap<>();
     }
 
     private MasteringCore() {}
@@ -125,9 +129,12 @@ final class MasteringCore {
             return out;
         }
         // 1. Tone: the core EQ/dynamics plans compete (and the adaptive broad ladder).
+        long t0 = System.nanoTime();
         out.engine = FullAiMasteringEngine.run(out.processing, out.analysis, out.brain, options.stemArchive,
                 work, options.preference, options.album, FullAiMasteringEngine.Scope.TONE,
                 stages.at("Tone mastering", 50, 76));
+        out.toneEngine = out.engine;
+        out.stageMs.put("tone", (System.nanoTime() - t0) / 1000000);
         out.chain.add("tone: " + out.engine.selected.strategy);
         // 2. Repairs on top of the tone winner: each repair family competes against the
         //    winner itself (as the transparent control), and a family that wins is stacked
@@ -138,6 +145,7 @@ final class MasteringCore {
         java.util.Set<String> used = new java.util.HashSet<>();
         for (int stage = 1; stage <= MAX_REPAIR_STAGES; stage++) {
             int from = 76 + (stage - 1) * 12, to = from + 12;
+            final long stageStart = System.nanoTime();
             File winner = out.engine.selected == null ? null : out.engine.selected.file;
             if (winner == null || !winner.isFile()) break;
             File input = new File(work, "chain-" + stage + "-input.wav");
@@ -176,8 +184,10 @@ final class MasteringCore {
             } catch (IOException repairError) {
                 interrupted(repairError);
                 out.chain.add("repairs " + stage + ": skipped (" + clean(repairError) + ")");
+                out.stageMs.put("repairs " + stage, (System.nanoTime() - stageStart) / 1000000);
                 break;
             }
+            out.stageMs.put("repairs " + stage, (System.nanoTime() - stageStart) / 1000000);
             String family = FullAiMasteringEngine.familyOf(engine.selected);
             if (engine.selected == null || engine.selected == engine.transparent || "core".equals(family)) {
                 out.chain.add("repairs " + stage + ": none proved a benefit");

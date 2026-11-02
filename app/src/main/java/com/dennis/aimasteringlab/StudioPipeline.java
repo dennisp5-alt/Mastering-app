@@ -26,6 +26,9 @@ final class StudioPipeline {
         AnalysisResult source=core.analysis;
         AutonomousMasteringBrain.Result brain=core.brain;
         FullAiMasteringEngine.Result engine=core.engine;
+        // Broad-mastering decisions belong to the tone stage (a repair stage re-measures
+        // the tone master and would report its own, misleading, "unresolved" verdict).
+        FullAiMasteringEngine.Result tone=core.toneEngine!=null?core.toneEngine:engine;
         perf.checkpoint("analysis_repairs_and_candidate_competition_ms");
         FullAiReleaseQc.Result qc=FullAiReleaseQc.runStudioPcmOnly(processing,source,engine,work,ReleaseFormats.camelBase(p.name()),rangeProgress(progress,"Final PCM QC",92,100));
         perf.checkpoint("final_candidate_qc_ms");
@@ -35,22 +38,25 @@ final class StudioPipeline {
         p.file("base",base);p.file("base_report",report);p.data.put("base_hash",qc.finalMasterSha256)
                 .put("base_meters",StudioAudio.meters(qc.finalMasterVerification)).put("base_winner",qc.finalCandidate.strategy)
                 .put("base_chain",new JSONArray(core.chain)).put("base_repairs",new JSONArray(core.repairs))
+                .put("base_stage_ms",new JSONObject(core.stageMs))
+                .put("base_tone_winner",tone.selected==null?"":tone.selected.strategy)
+                .put("base_tone_decision",tone.meaningfulChangeDecision==null?"":tone.meaningfulChangeDecision)
                 .put("base_meaningful_change",engine.selected!=engine.transparent)
                 .put("base_mastering_decision",engine.meaningfulChangeDecision)
                 .put("base_final_gate_candidate",engine.meaningfulChangeComparedStrategy==null?"":engine.meaningfulChangeComparedStrategy)
-                .put("base_broad_mastering_required",engine.broadMasteringNeed!=null&&engine.broadMasteringNeed.required)
-                .put("base_broad_mastering_need",engine.broadMasteringNeed==null?"":engine.broadMasteringNeed.summary())
-                .put("base_broad_mastering_decision",engine.broadMasteringDecision)
-                .put("base_broad_mastering_anchor",engine.broadMasteringAnchor==null?"":engine.broadMasteringAnchor.strategy)
-                .put("base_broad_mastering_anchor_used",engine.broadMasteringAnchorUsed)
-                .put("base_broad_mastering_unresolved",engine.broadMasteringUnresolved)
-                .put("base_early_sparse_peak_shortcut",engine.earlySparsePeakShortcut)
-                .put("base_early_sparse_peak_decision",engine.earlySparsePeakDecision)
-                .put("base_adaptive_broad_attempted",engine.adaptiveBroadCandidatesAttempted)
-                .put("base_adaptive_broad_eligible",engine.adaptiveBroadCandidatesEligible)
-                .put("base_adaptive_broad_decision",engine.adaptiveBroadDecision)
-                .put("base_adaptive_broad_diagnostics",new JSONArray(engine.adaptiveBroadDiagnostics))
-                .put("base_adaptive_broad_anchor",engine.adaptiveBroadAnchor==null?"":engine.adaptiveBroadAnchor.strategy);
+                .put("base_broad_mastering_required",tone.broadMasteringNeed!=null&&tone.broadMasteringNeed.required)
+                .put("base_broad_mastering_need",tone.broadMasteringNeed==null?"":tone.broadMasteringNeed.summary())
+                .put("base_broad_mastering_decision",tone.broadMasteringDecision)
+                .put("base_broad_mastering_anchor",tone.broadMasteringAnchor==null?"":tone.broadMasteringAnchor.strategy)
+                .put("base_broad_mastering_anchor_used",tone.broadMasteringAnchorUsed)
+                .put("base_broad_mastering_unresolved",tone.broadMasteringUnresolved)
+                .put("base_early_sparse_peak_shortcut",tone.earlySparsePeakShortcut)
+                .put("base_early_sparse_peak_decision",tone.earlySparsePeakDecision)
+                .put("base_adaptive_broad_attempted",tone.adaptiveBroadCandidatesAttempted)
+                .put("base_adaptive_broad_eligible",tone.adaptiveBroadCandidatesEligible)
+                .put("base_adaptive_broad_decision",tone.adaptiveBroadDecision)
+                .put("base_adaptive_broad_diagnostics",new JSONArray(tone.adaptiveBroadDiagnostics))
+                .put("base_adaptive_broad_anchor",tone.adaptiveBroadAnchor==null?"":tone.adaptiveBroadAnchor.strategy);
         for (FullAiMasteringEngine.Candidate c : engine.candidates) {
             if (!c.sparsePeakAware) continue;
             p.data.put("sparse_peak_audition_status",c.status==null?"NOT_RUN":c.status)
@@ -169,6 +175,11 @@ final class StudioPipeline {
                 .put("source_sha256",p.data.getString("source_hash")).put("base_sha256",p.data.getString("base_hash"))
                 .put("source_recovery_notice",p.data.optString("source_recovery_notice",""))
                 .put("recipe",recipe.json()).put("base_winner",p.data.optString("base_winner"))
+                .put("base_chain",p.data.optJSONArray("base_chain")==null?new JSONArray():p.data.optJSONArray("base_chain"))
+                .put("base_repairs",p.data.optJSONArray("base_repairs")==null?new JSONArray():p.data.optJSONArray("base_repairs"))
+                .put("base_tone_winner",p.data.optString("base_tone_winner",""))
+                .put("base_tone_decision",p.data.optString("base_tone_decision",""))
+                .put("base_stage_ms",p.data.optJSONObject("base_stage_ms")==null?new JSONObject():p.data.optJSONObject("base_stage_ms"))
                 .put("base_meaningful_change",p.data.optBoolean("base_meaningful_change",false))
                 .put("base_mastering_decision",p.data.optString("base_mastering_decision",""))
                 .put("base_final_gate_candidate",p.data.optString("base_final_gate_candidate",""))

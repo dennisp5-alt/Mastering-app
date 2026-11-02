@@ -7,11 +7,29 @@ android {
     compileSdk 34
 
     defaultConfig {
-        applicationId 'com.dennis.stemlab.chain053'
+        // v0.5.4: one test app from now on; later test builds install over it.
+        applicationId 'com.dennis.stemlab.test'
         minSdk 29
         targetSdk 34
-        versionCode 9
-        versionName '0.5.3-chain-loud-test'
+        versionCode 10
+        versionName '0.5.4-test'
+    }
+
+    signingConfigs {
+        // Test key (see signing/README.md): every CI build has the same signature, so a
+        // new test APK updates the installed one and keeps its projects.
+        stemlabTest {
+            storeFile rootProject.file('signing/stemlab-test.jks')
+            storePassword 'stemlabtest'
+            keyAlias 'stemlab'
+            keyPassword 'stemlabtest'
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.stemlabTest
+        }
     }
 
     buildFeatures {

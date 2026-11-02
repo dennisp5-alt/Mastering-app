@@ -31,3 +31,13 @@ master). Phone timing still to be measured.
   4.5 dB. If the target fails, it steps down 0.5 LU at a time (max 2 LU) and the result says
   "asked −10.0: limiter peaks 6.1 dB there"; if nothing passes, streaming delivery is used and says so.
 - Trial B keeps the streaming delivery (it only restores the EQ's loudness).
+
+# v0.5.4 (after Dennis's first two 0.5.3 songs)
+- One test app from now on: package `com.dennis.stemlab.test`, "Stem Lab TEST", signed with the
+  test key in `signing/` so each new test build installs over the last and keeps its projects.
+  (0.5.3 and earlier stay as separate apps.)
+- Louder presets (−12, −11, −10, −9) use a −2.0 dBTP ceiling, as Spotify asks for masters louder
+  than −14 LUFS; "LOUDNESS FOR NEW SONGS" applies it too.
+- Studio QC now records the chain (`base_chain`, `base_repairs`), the tone stage's winner and
+  decision, and per-stage timing (`base_stage_ms`). Broad-mastering fields come from the tone
+  stage (a repair stage re-measuring the tone master reported a misleading "unresolved").
