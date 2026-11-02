@@ -243,6 +243,10 @@ final class StudioPipeline {
         progress.update("Studio WAV delivery complete",100);
         WavRenderIntegrity.discard(premaster);
         if(!p.validFile("source","source_hash")||!p.validFile("base","base_hash"))throw new IOException("Retained source/base integrity changed");
+        // v0.5.4: a re-render (new loudness, edits) replaces the delivered files; earlier
+        // render folders are no longer referenced, so they are removed to save storage.
+        File[] older=p.dir.listFiles((d,n)->n.startsWith("render-"));
+        if(older!=null)for(File f:older)if(f.isDirectory()&&!f.getCanonicalPath().equals(run.getCanonicalPath()))removeTree(f);
     }
     private static AudioAnalyzer.Progress rangeProgress(AudioAnalyzer.Progress parent,String prefix,int start,int end){
         final int lo=Math.max(0,Math.min(100,start)),hi=Math.max(lo,Math.min(100,end));
